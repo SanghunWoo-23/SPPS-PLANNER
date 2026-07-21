@@ -1,0 +1,7 @@
+SPPS Planner GitHub V1.0.0 package check
+- Source promoted from former V1.0.5 clean native UI build.
+- VERSION.txt updated to SPPS Planner Standalone V1.0.0.
+- README/README_KO updated for GitHub V1.
+- Installer output target updated to SPPS_Planner_Setup_V1.0.0.exe.
+- UI title updated to SPPS Planner V1.0.0.
+- Python compile check passed before packaging.

@@ -1,0 +1,7 @@
+SPPS Planner Standalone V1.0.0
+
+GitHub V1 line based on the former V1.0.5 clean native UI build.
+
+Build output:
+- dist\SPPS_Planner\SPPS_Planner.exe
+- installer\installer_output\SPPS planner V1.0.0.exe

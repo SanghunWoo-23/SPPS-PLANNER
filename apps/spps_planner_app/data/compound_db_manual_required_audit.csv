@@ -1,0 +1,87 @@
+﻿Token,Class,Reagent/protected form,Reagent MW (g/mol),Product MW contribution (g/mol),Chemistry profile,DB note
+Chol,N-term modifier,Chol,386.65,,CONTROL,No reagent calculation unless Counts=Yes. | Product contribution manual-required; attachment chemistry/form not unique.
+Fmoc,N-term modifier,Fmoc,,222.24,CONTROL,No reagent calculation unless Counts=Yes. | Reagent MW manual-required; exact vendor form not unique.
+Boc,N-term modifier,Boc,,100.12,CONTROL,No reagent calculation unless Counts=Yes. | Reagent MW manual-required; exact vendor form not unique.
+Maleimide,N-term modifier,Maleimide generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+Azide,N-term modifier,Azide generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+Alkyne,N-term modifier,Alkyne generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+DBCO,N-term modifier,DBCO generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+TCO,N-term modifier,TCO generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+Tetrazine,N-term modifier,Tetrazine generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+BiotinCap,N-term modifier,BiotinCap,,226.30,ACID_DIC_HOBT,"AA-like acid coupling, default DIC/HOBt; verify exact reagent form. | Reagent MW manual-required; exact vendor form not unique."
+NONE,Label,NONE,,0.00,CONTROL,No reagent calculation unless Counts=Yes. | Reagent MW manual-required; exact vendor form not unique.
+BIOTIN,Label,BIOTIN,,226.30,ACID_DIC_HOBT,"AA-like acid coupling, default DIC/HOBt; verify exact reagent form. | Reagent MW manual-required; exact vendor form not unique."
+Desthiobiotin,Label,Desthiobiotin,,210.30,CONTROL,No reagent calculation unless Counts=Yes. | Reagent MW manual-required; exact vendor form not unique.
+FAM,Label,"FAM generic: choose 5-FAM, 6-FAM, or FAM-NHS for exact reagent",,358.31,MANUAL_REQUIRED,Form-specific rows preferred. Generic rows are manual-required for material usage.
+TAMRA,Label,"TAMRA generic: choose 5-TAMRA, 6-TAMRA, or TAMRA-NHS for exact reagent",,412.45,MANUAL_REQUIRED,Form-specific rows preferred. Generic rows are manual-required for material usage.
+ROX,Label,ROX generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+CY3,Label,CY3 generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+CY5,Label,CY5 generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+CY5_5,Label,CY5_5 generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+CY7,Label,CY7 generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+Alexa488,Label,Alexa488 generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+Alexa555,Label,Alexa555 generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+Alexa647,Label,Alexa647 generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+DOTA,Label,DOTA generic: choose DOTA-tris(tBu) or DOTA-NHS for exact reagent,,,MANUAL_REQUIRED,Form-specific rows preferred. Generic rows are manual-required for material usage.
+NOTA,Label,NOTA generic: choose NOTA-NHS or exact NOTA acid/protected form,,,MANUAL_REQUIRED,Form-specific rows preferred. Generic rows are manual-required for material usage.
+DFO,Label,DFO generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+NBD,Label,NBD generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+Dansyl,Label,Dansyl generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+BODIPY,Label,BODIPY generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+EDANS,Label,EDANS generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+Dabcyl,Label,Dabcyl generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+BHQ1,Label,BHQ1 generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+BHQ2,Label,BHQ2 generic / vendor-form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED: do not use generic token for exact calculation.
+His6,Tag,His6 peptide tag macro (HHHHHH),,822.84,MACRO_SEQUENCE_MANUAL_MATERIALS,Tag macro: product MW known; reagent MW manual unless a prebuilt tag reagent is selected.
+His8,Tag,His8 peptide tag macro (HHHHHHHH),,1097.12,MACRO_SEQUENCE_MANUAL_MATERIALS,Tag macro: product MW known; reagent MW manual unless a prebuilt tag reagent is selected.
+His10,Tag,His10 peptide tag macro (HHHHHHHHHH),,1371.40,MACRO_SEQUENCE_MANUAL_MATERIALS,Tag macro: product MW known; reagent MW manual unless a prebuilt tag reagent is selected.
+FLAG,Tag,FLAG peptide tag macro (DYKDDDDK),,994.97,MACRO_SEQUENCE_MANUAL_MATERIALS,Tag macro: product MW known; reagent MW manual unless a prebuilt tag reagent is selected.
+HA,Tag,HA peptide tag macro (YPYDVPDYA),,1084.17,MACRO_SEQUENCE_MANUAL_MATERIALS,Tag macro: product MW known; reagent MW manual unless a prebuilt tag reagent is selected.
+Myc,Tag,Myc peptide tag macro (EQKLISEEDL),,1185.31,MACRO_SEQUENCE_MANUAL_MATERIALS,Tag macro: product MW known; reagent MW manual unless a prebuilt tag reagent is selected.
+StrepII,Tag,StrepII peptide tag macro (WSHPQFEK),,1040.15,MACRO_SEQUENCE_MANUAL_MATERIALS,Tag macro: product MW known; reagent MW manual unless a prebuilt tag reagent is selected.
+TwinStrep,Tag,TwinStrep peptide tag macro (WSHPQFEKGGGSGGGSGGSAWSHPQFEK),,2869.02,MACRO_SEQUENCE_MANUAL_MATERIALS,Macro tag; verify exact tag sequence if different.
+V5,Tag,V5 peptide tag macro (GKPIPNPLLGLDST),,1403.65,MACRO_SEQUENCE_MANUAL_MATERIALS,Tag macro: product MW known; reagent MW manual unless a prebuilt tag reagent is selected.
+T7,Tag,T7 peptide tag macro (MASMTGGQQMG),,1080.28,MACRO_SEQUENCE_MANUAL_MATERIALS,Tag macro: product MW known; reagent MW manual unless a prebuilt tag reagent is selected.
+ALFA,Tag,ALFA peptide tag macro (SRLEEELRRRLTE),,1668.91,MACRO_SEQUENCE_MANUAL_MATERIALS,Tag macro: product MW known; reagent MW manual unless a prebuilt tag reagent is selected.
+AviTag,Tag,AviTag peptide tag macro (GLNDIFEAQKIEWHE),,1810.99,MACRO_SEQUENCE_MANUAL_MATERIALS,Tag macro: product MW known; reagent MW manual unless a prebuilt tag reagent is selected.
+SpyTag,Tag,SpyTag peptide tag macro (AHIVMVDAYKPTK),,1454.76,MACRO_SEQUENCE_MANUAL_MATERIALS,Tag macro: product MW known; reagent MW manual unless a prebuilt tag reagent is selected.
+Gly,Linker,Gly sequence linker macro,,57.05,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+GG,Linker,GG sequence linker macro,,114.10,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+GGG,Linker,GGG sequence linker macro,,171.15,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+GS,Linker,GS sequence linker macro,,144.13,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+GSG,Linker,GSG sequence linker macro,,201.18,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+G4S,Linker,G4S sequence linker macro,,315.28,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+G4Sx2,Linker,G4Sx2 sequence linker macro,,630.56,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+PEG1,Linker,Fmoc-amino-PEG1-acid / vendor-specific,,88.11,MANUAL_REAGENT_MW_LINKER,Linker = AA-like unit. Product contribution separated from reagent MW. | Reagent MW manual-required; exact vendor form not unique.
+PEG2,Linker,Fmoc-amino-PEG2-acid / vendor-specific,,132.16,MANUAL_REAGENT_MW_LINKER,Linker = AA-like unit. Product contribution separated from reagent MW. | Reagent MW manual-required; exact vendor form not unique.
+PEG3,Linker,Fmoc-amino-PEG3-acid / vendor-specific,,176.21,MANUAL_REAGENT_MW_LINKER,Linker = AA-like unit. Product contribution separated from reagent MW. | Reagent MW manual-required; exact vendor form not unique.
+PEG4,Linker,Fmoc-amino-PEG4-acid / vendor-specific,,220.26,MANUAL_REAGENT_MW_LINKER,Linker = AA-like unit. Product contribution separated from reagent MW. | Reagent MW manual-required; exact vendor form not unique.
+PEG6,Linker,Fmoc-amino-PEG6-acid / vendor-specific,,308.36,MANUAL_REAGENT_MW_LINKER,Linker = AA-like unit. Product contribution separated from reagent MW. | Reagent MW manual-required; exact vendor form not unique.
+PEG8,Linker,Fmoc-amino-PEG8-acid / vendor-specific,,396.47,MANUAL_REAGENT_MW_LINKER,Linker = AA-like unit. Product contribution separated from reagent MW. | Reagent MW manual-required; exact vendor form not unique.
+PEG12,Linker,Fmoc-amino-PEG12-acid / vendor-specific,,572.68,MANUAL_REAGENT_MW_LINKER,Linker = AA-like unit. Product contribution separated from reagent MW. | Reagent MW manual-required; exact vendor form not unique.
+PEG24,Linker,Fmoc-amino-PEG24-acid / vendor-specific,,1101.29,MANUAL_REAGENT_MW_LINKER,Linker = AA-like unit. Product contribution separated from reagent MW. | Reagent MW manual-required; exact vendor form not unique.
+PipLink,Linker,PipLink generic crosslinker/reaction motif; vendor/form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED generic crosslinker.
+LysLink,Linker,LysLink generic crosslinker/reaction motif; vendor/form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED generic crosslinker.
+CysLink,Linker,CysLink generic crosslinker/reaction motif; vendor/form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED generic crosslinker.
+SS,Linker,SS generic crosslinker/reaction motif; vendor/form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED generic crosslinker.
+Triazole,Linker,Triazole generic crosslinker/reaction motif; vendor/form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED generic crosslinker.
+Click,Linker,Click generic crosslinker/reaction motif; vendor/form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED generic crosslinker.
+DSS,Linker,DSS generic crosslinker/reaction motif; vendor/form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED generic crosslinker.
+SMCC,Linker,SMCC generic crosslinker/reaction motif; vendor/form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED generic crosslinker.
+SulfoSMCC,Linker,SulfoSMCC generic crosslinker/reaction motif; vendor/form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED generic crosslinker.
+EDC,Linker,EDC generic crosslinker/reaction motif; vendor/form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED generic crosslinker.
+Hydrazone,Linker,Hydrazone generic crosslinker/reaction motif; vendor/form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED generic crosslinker.
+Oxime,Linker,Oxime generic crosslinker/reaction motif; vendor/form required,,,MANUAL_REQUIRED,MANUAL_REQUIRED generic crosslinker.
+AA_G2,Linker,AA_G2 sequence linker macro,,114.10,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+AA_G4,Linker,AA_G4 sequence linker macro,,228.20,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+AA_G6,Linker,AA_G6 sequence linker macro,,342.30,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+AA_A2,Linker,AA_A2 sequence linker macro,,142.16,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+AA_A4,Linker,AA_A4 sequence linker macro,,284.32,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+AA_GS2,Linker,AA_GS2 sequence linker macro,,288.26,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+AA_GS4,Linker,AA_GS4 sequence linker macro,,576.52,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+AA_GS6,Linker,AA_GS6 sequence linker macro,,864.78,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+AA_AP,Linker,AA_AP sequence linker macro,,168.20,AA_LIKE_MACRO_LINKER,AA-like linker macro; not a single reagent.
+NH2,C-terminal,C-terminal amide output/control,,-0.98,CONTROL,Control token only.
+OH,C-terminal,C-terminal acid/OH output/control,,0.00,CONTROL,Control token only.
+PEG4 acid,Linker,PEG4 acid / Fmoc-PEG4 acid vendor-specific,,220.26,MANUAL_REAGENT_MW_LINKER,Previous inconsistent MW normalized to manual-required reagent form.
+PEG12 acid,Linker,PEG12 acid / Fmoc-PEG12 acid vendor-specific,,572.68,MANUAL_REAGENT_MW_LINKER,Previous inconsistent MW normalized to manual-required reagent form.

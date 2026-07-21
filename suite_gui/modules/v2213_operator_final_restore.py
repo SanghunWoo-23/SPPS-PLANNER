@@ -1,0 +1,399 @@
+"""V2.2.13 operator-requested final restoration.
+
+Restores position-based AA eq/doubling controls, exact sequence-length plan
+construction, Apply Change synchronization, cleavage inclusion in totals,
+compact checklist UI, operator-facing label cleanup, and stable peptide-item
+state handling without deleting legacy functionality.
+"""
+from __future__ import annotations
+
+import re
+import tkinter as tk
+from tkinter import ttk
+from typing import Any
+
+APP_VERSION = "V2.2.13"
+VERSION_LABEL = "SPPS Planner GitHub V2.2.13"
+
+
+def _walk(widget):
+    try:
+        children = widget.winfo_children()
+    except Exception:
+        return
+    for child in children:
+        yield child
+        yield from _walk(child)
+
+
+def _get(var, default=""):
+    try:
+        return var.get()
+    except Exception:
+        return default
+
+
+def _set(var, value):
+    try:
+        var.set(value)
+    except Exception:
+        pass
+
+
+def _num(value, default=0.0):
+    try:
+        return float(str(value).strip())
+    except Exception:
+        return default
+
+
+def _parse_ranges(text: str, default: list[tuple[int, int, float]]) -> list[tuple[int, int, float]]:
+    out: list[tuple[int, int, float]] = []
+    for part in re.split(r"[,;]+", str(text or "")):
+        m = re.search(r"(\d+)\s*-\s*(\d+)\s*:\s*([0-9.]+)", part)
+        if m:
+            a, b, v = int(m.group(1)), int(m.group(2)), float(m.group(3))
+            out.append((min(a,b), max(a,b), v))
+    return out or list(default)
+
+
+def _range_value(position: int, rules, fallback: float) -> float:
+    for start, end, value in rules:
+        if start <= position <= end:
+            return value
+    return fallback
+
+
+def _sequence_length(gui) -> int:
+    seq = str(_get(getattr(gui, "pm_sequence", None), "") or "").strip()
+    try:
+        from spps_planner.parser import parse_sequence
+        return len(list(parse_sequence(seq).core_tokens or []))
+    except Exception:
+        return len(re.findall(r"[A-Za-z]", seq))
+
+
+def _is_aa_row(row: dict[str, Any]) -> bool:
+    return str(row.get("Unit name", "")).strip().lower().startswith("fmoc-")
+
+
+def _is_fmoc_removal(row: dict[str, Any]) -> bool:
+    text = " ".join(str(row.get(k, "")) for k in ("Unit name", "Note"))
+    key = re.sub(r"[^a-z0-9]+", "", text.lower())
+    return "fmocremoval" in key or "deprotectiononly" in key
+
+
+def _apply_generated_position_rules(gui, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = [dict(r) for r in rows if not _is_fmoc_removal(r)]
+    seq_len = _sequence_length(gui)
+    aa_indices = [i for i, r in enumerate(rows) if _is_aa_row(r)]
+    # Direct-loaded 2-CTC historical routes can emit one extra C-terminal AA.
+    if seq_len >= 0 and len(aa_indices) > seq_len:
+        remove_count = len(aa_indices) - seq_len
+        remove = set(aa_indices[:remove_count])
+        rows = [r for i, r in enumerate(rows) if i not in remove]
+        aa_indices = [i for i, r in enumerate(rows) if _is_aa_row(r)]
+
+    use_eq = bool(_get(getattr(gui, "use_position_aa_eq", None), True))
+    use_double = bool(_get(getattr(gui, "use_position_doubling", None), True))
+    eq_rules = _parse_ranges(_get(getattr(gui, "position_aa_eq_rules", None), "1-3:1.5, 4-6:2"), [(1,3,1.5),(4,6,2.0)])
+    dbl_rules = _parse_ranges(_get(getattr(gui, "position_doubling_rules", None), "4-6:2"), [(4,6,2.0)])
+    follows = bool(_get(getattr(gui, "reagent_eq_follows_coupling_eq", None), True))
+    # Direct-loaded 2-CTC omits the already resin-bound C-terminal residue
+    # from the editable coupling rows.  Keep that residue in the positional
+    # count so ranges still refer to the written peptide sequence.
+    cterm_offset = max(0, seq_len - len(aa_indices))
+    for ordinal, row_index in enumerate(aa_indices, start=1):
+        # The editable coupling Plan is ordered C -> N.
+        cterm_position = cterm_offset + ordinal
+        row = rows[row_index]
+        if use_eq:
+            fallback = _num(row.get("Unit eq"), _num(_get(getattr(gui, "coupling_eq", None), 5), 5))
+            eq = _range_value(cterm_position, eq_rules, fallback)
+            row["Unit eq"] = str(int(eq)) if float(eq).is_integer() else str(eq)
+            if follows:
+                for name_col, eq_col in (("Reagent 1","R1 eq"),("Reagent 2 / catalyst","R2 eq"),("Base","Base eq")):
+                    if str(row.get(name_col, "")).strip():
+                        row[eq_col] = row["Unit eq"]
+        if use_double:
+            repeat = int(round(_range_value(cterm_position, dbl_rules, 1.0)))
+            row["Repeat"] = str(max(1, repeat))
+    for i, row in enumerate(rows, 1):
+        row["No"] = str(i)
+    return rows
+
+
+def _patch_v229(v229):
+    if getattr(v229, "_v2213_patched", False):
+        return
+
+    old_generated = v229._generated_plan_rows
+    old_recalc = v229._recalc_plan
+    old_write_linked = v229._write_linked
+    old_visible_protocol = v229._visible_protocol
+    old_total_rows = v229._total_rows
+
+
+    def visible_protocol(gui, ns, inp):
+        materials, checklist = old_visible_protocol(gui, ns, inp)
+        plan = [v229._row_dict(gui.pm_selected_plan_tree, iid) for iid in gui.pm_selected_plan_tree.get_children()]
+        repeated = {str(r.get("No", "")): r for r in plan if int(round(_num(r.get("Repeat"), 1))) > 1}
+        if not repeated:
+            return materials, checklist
+        try:
+            from spps_planner.engine import working_volume_mL
+            working_ml = _num(working_volume_mL(inp), 0)
+        except Exception:
+            working_ml = 0
+        for step, row in repeated.items():
+            # Replace the normal x6 post-coupling wash with two x2 washes.
+            for mat in materials:
+                if str(mat.get("step", "")) == step and "Post-coupling wash" in str(mat.get("class", "")):
+                    mat["planned_mL"] = working_ml * 4
+                    mat["use_count"] = 4
+                    mat["repeat"] = 4
+                    mat["note"] = "Doubling: DMF wash x2 after coupling 1 and x2 after coupling 2"
+            new_check = []
+            replaced = False
+            skip_postwash = False
+            for rec in checklist:
+                same = str(rec.get("unit", "")) == str(row.get("Unit name", ""))
+                op = str(rec.get("operation", ""))
+                if same and op == "Coupling / reaction" and not replaced:
+                    base_note = str(rec.get("note", ""))
+                    is_terminal_ac_aa = (
+                        step == str(plan[-1].get("No", ""))
+                        and v229._is_ac_aa_oh(str(row.get("Unit name", "")))
+                    )
+                    doubling_ops = (
+                        ("Coupling 1", "DMF wash x2", "Coupling 2")
+                        if is_terminal_ac_aa
+                        else ("Coupling 1", "DMF wash x2", "Coupling 2", "DMF wash x2")
+                    )
+                    for op_name in doubling_ops:
+                        new_check.append(dict(rec, operation=op_name, note=(base_note if "Coupling" in op_name else "Doubling sequence")))
+                    replaced = True
+                    skip_postwash = True
+                    continue
+                if skip_postwash and same and op.startswith("Post-coupling DMF wash x"):
+                    skip_postwash = False
+                    continue
+                new_check.append(rec)
+            checklist = new_check
+        for i, rec in enumerate(checklist, 1):
+            rec["line"] = i
+            rec["next_step"] = checklist[i]["operation"] if i < len(checklist) else ""
+        return materials, checklist
+
+    def total_rows(materials):
+        rows = list(old_total_rows(materials))
+        def cls(row):
+            text = (str(row.get("class", "")) + " " + str(row.get("material", ""))).lower()
+            key = re.sub(r"[^a-z0-9가-힣]+", "", text)
+            if "resin" in key: return 0
+            if "solvent" in key or any(x in key for x in ("dmf","dcm","mcdcm","nmp","meoh","methanol")): return 1
+            if "base" in key or any(x in key for x in ("diea","dipea","piperidine")): return 2
+            if "catalyst" in key or "additive" in key or "couplingreagent" in key or any(x in key for x in ("dic","hobt","hbtu","hatu","comu","oxyma")): return 3
+            if "acidcleavage" in key or "cleavagereagent" in key or any(x in key for x in ("tfa","hcl","aceticacid")): return 5
+            return 4
+        return sorted(rows, key=lambda r: (cls(r), str(r.get("material", "")).lower()))
+
+    def generated(gui, ns, inp):
+        return _apply_generated_position_rules(gui, old_generated(gui, ns, inp))
+
+    def recalc(gui, ns, inp):
+        tree = gui.pm_selected_plan_tree
+        dirty = getattr(gui, "_v229_dirty_columns", {})
+        preserve = {}
+        for iid in tree.get_children():
+            if "Unit name" in set(dirty.get(iid, set())):
+                row = v229._row_dict(tree, iid)
+                preserve[iid] = {k: row.get(k, "") for k in ("Unit eq","R1 eq","R2 eq","Base eq","Repeat")}
+        old_recalc(gui, ns, inp)
+        for iid, values in preserve.items():
+            row = v229._row_dict(tree, iid)
+            row.update(values)
+            v229._write_row(tree, iid, row)
+
+    def write_linked(gui, ns, inp, *, include_cleavage: bool):
+        old_write_linked(gui, ns, inp, include_cleavage=include_cleavage)
+        if not include_cleavage:
+            return
+        try:
+            frame = v229._refresh_cleavage(gui, ns, inp)
+            if frame is None or getattr(frame, "empty", True):
+                return
+            materials = []
+            for iid in gui.pm_selected_material_tree.get_children():
+                materials.append(v229._row_dict(gui.pm_selected_material_tree, iid))
+            for rec in frame.fillna("").to_dict("records"):
+                component = str(rec.get("component", "")).strip()
+                if not component or component in {"Total cocktail", "Cys warning", "2-CTC/Trityl warning"}:
+                    continue
+                ml = _num(rec.get("volume_mL"), 0)
+                grams = _num(rec.get("approx_g"), 0)
+                materials.append({
+                    "step": "cleavage", "material": component, "class": "Acid/Cleavage reagent",
+                    "MW": "", "density_g_per_mL": rec.get("density_g_mL", ""),
+                    "planned_mmol": "", "planned_g": grams if grams and not ml else "",
+                    "planned_mL": ml if ml else "", "use_count": 1, "repeat": 1,
+                    "phase": "Cleavage", "note": f"{rec.get('percent','')}% {rec.get('percent_basis','')}",
+                    "source": "Cleavage cocktail",
+                })
+            import suite_gui.modules.v228_fast_legacy_exact_workflow as v228
+            v228._write_rows(gui.pm_selected_material_tree, materials, v229.MATERIAL_COLUMNS, v229.MATERIAL_WIDTHS)
+            v228._write_rows(gui.pm_selected_total_tree, v229._total_rows(materials), v229.TOTAL_COLUMNS, v229.TOTAL_WIDTHS)
+        except Exception:
+            pass
+
+    v229._generated_plan_rows = generated
+    v229._recalc_plan = recalc
+    v229._visible_protocol = visible_protocol
+    v229._total_rows = total_rows
+    v229._write_linked = write_linked
+    v229._v2213_patched = True
+
+
+def _find_setup_notebook(gui):
+    for w in _walk(gui):
+        if isinstance(w, ttk.Notebook):
+            try:
+                labels = [str(w.tab(t, "text")) for t in w.tabs()]
+            except Exception:
+                continue
+            if "Unit defaults" in labels:
+                return w
+    return None
+
+
+def _tab_frame(nb, label):
+    for tab in nb.tabs():
+        try:
+            if str(nb.tab(tab, "text")) == label:
+                return nb.nametowidget(tab)
+        except Exception:
+            pass
+    return None
+
+
+def _install_position_ui(gui):
+    gui.use_position_aa_eq = getattr(gui, "use_position_aa_eq", tk.BooleanVar(value=True))
+    gui.position_aa_eq_rules = getattr(gui, "position_aa_eq_rules", tk.StringVar(value="1-3:1.5, 4-6:2"))
+    gui.use_position_doubling = getattr(gui, "use_position_doubling", tk.BooleanVar(value=True))
+    gui.position_doubling_rules = getattr(gui, "position_doubling_rules", tk.StringVar(value="4-6:2"))
+    nb = _find_setup_notebook(gui)
+    frame = _tab_frame(nb, "Unit defaults") if nb else None
+    if frame is None:
+        return
+    # Remove the incorrect V2.2.12 helper checkboxes and explanatory text.
+    bad_prefixes = (
+        "Use default AA eq", "Use default doubling", "Use the same eq/doubling",
+        "Manual per-unit values", "Default AA doubling",
+    )
+    for w in list(frame.winfo_children()):
+        try:
+            text = str(w.cget("text"))
+        except Exception:
+            text = ""
+        if text.startswith(bad_prefixes):
+            try: w.destroy()
+            except Exception: pass
+    max_row = 0
+    for w in frame.winfo_children():
+        try: max_row = max(max_row, int(w.grid_info().get("row", 0)))
+        except Exception: pass
+    box = ttk.LabelFrame(frame, text="Position rules from C-terminus")
+    box.grid(row=max_row+1, column=0, columnspan=8, sticky="ew", padx=4, pady=(8,4))
+    box.columnconfigure(2, weight=1)
+    ttk.Checkbutton(box, text="AAs eq", variable=gui.use_position_aa_eq).grid(row=0,column=0,sticky="w",padx=5,pady=4)
+    ttk.Label(box, text="C-term ranges").grid(row=0,column=1,sticky="e",padx=4)
+    ttk.Entry(box, textvariable=gui.position_aa_eq_rules, width=28).grid(row=0,column=2,sticky="ew",padx=4)
+    ttk.Checkbutton(box, text="Doubling", variable=gui.use_position_doubling).grid(row=1,column=0,sticky="w",padx=5,pady=4)
+    ttk.Label(box, text="C-term ranges").grid(row=1,column=1,sticky="e",padx=4)
+    ttk.Entry(box, textvariable=gui.position_doubling_rules, width=28).grid(row=1,column=2,sticky="ew",padx=4)
+    ttk.Label(box, text="Example: AAs eq 1-3:1.5, 4-6:2 / Doubling 4-6:2").grid(row=2,column=0,columnspan=3,sticky="w",padx=5,pady=(0,4))
+
+
+def _clean_selected_labels(gui):
+    replacements = {
+        "Selected Peptide Editor":"Peptide Editor", "Selected Plan":"Plan",
+        "Selected Materials":"Materials", "Selected Total Materials":"Total Materials",
+        "Selected Checklist":"Checklist", "Selected Cleavage Cocktail":"Cleavage Cocktail",
+    }
+    for w in _walk(gui):
+        try:
+            text = str(w.cget("text"))
+        except Exception:
+            continue
+        new = replacements.get(text)
+        if not new and text.lower().startswith("selected "):
+            new = text[len("Selected "):]
+        if new:
+            try: w.configure(text=new)
+            except Exception: pass
+    for w in _walk(gui):
+        if isinstance(w, ttk.Notebook):
+            for tab in w.tabs():
+                try:
+                    text = str(w.tab(tab, "text"))
+                    if text in replacements:
+                        w.tab(tab, text=replacements[text])
+                    elif text.lower().startswith("selected "):
+                        w.tab(tab, text=text[len("Selected "):])
+                except Exception:
+                    pass
+
+
+def _compact_checklist(gui):
+    tree = getattr(gui, "progress_tree", None)
+    if tree is not None:
+        widths = {"line":45,"done":55,"checked_at":105,"operation":180,"unit":115,"next_step":185,"note":240}
+        try:
+            for col in tree["columns"]:
+                tree.column(col, width=widths.get(col, 100), minwidth=35, stretch=(col in {"operation","next_step","note"}))
+        except Exception:
+            pass
+    # Reduce large fixed spacer panes above checklist where possible.
+    for w in _walk(gui):
+        if isinstance(w, ttk.Panedwindow):
+            try:
+                w.after_idle(lambda p=w: [p.sashpos(i, 140) for i in range(max(0, len(p.panes())-1))])
+            except Exception:
+                pass
+
+
+def _remove_cleavage_apply_text(gui):
+    for w in list(_walk(gui)):
+        try: text = str(w.cget("text"))
+        except Exception: continue
+        if "Apply with Apply Change" in text:
+            try: w.destroy()
+            except Exception: pass
+
+
+def _install_title(gui):
+    try: gui.title(VERSION_LABEL)
+    except Exception: pass
+    for w in _walk(gui):
+        try:
+            if isinstance(w, ttk.Label) and str(w.cget("text")).startswith("SPPS Planner GitHub"):
+                w.configure(text=VERSION_LABEL)
+        except Exception: pass
+
+
+def install(gui_cls, ns: dict[str, Any], *_args, **_kwargs):
+    import suite_gui.modules.v229_empty_start_exact_apply_sync as v229
+    _patch_v229(v229)
+    old_build = gui_cls._build
+
+    def build(self):
+        old_build(self)
+        _install_title(self)
+        _install_position_ui(self)
+        _clean_selected_labels(self)
+        _compact_checklist(self)
+        _remove_cleavage_apply_text(self)
+
+    gui_cls._build = build
+    gui_cls.TITLE = VERSION_LABEL
+    return gui_cls

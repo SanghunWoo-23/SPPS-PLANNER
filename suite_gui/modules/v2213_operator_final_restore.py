@@ -73,8 +73,31 @@ def _sequence_length(gui) -> int:
         return len(re.findall(r"[A-Za-z]", seq))
 
 
+def _sequence_unit_count(gui) -> int:
+    """Count all written synthesis units used by the shared C-term rules.
+
+    Core tokens already include natural AA, d-AA, internal chemicals and
+    linkers.  A terminal modifier/label/tag such as Ac, FITC, Biotin or His6
+    is one additional synthesis unit.
+    """
+    seq = str(_get(getattr(gui, "pm_sequence", None), "") or "").strip()
+    try:
+        from spps_planner.parser import parse_sequence
+        parsed = parse_sequence(seq)
+        return len(list(parsed.core_tokens or [])) + (1 if str(parsed.nterm or "").strip() else 0)
+    except Exception:
+        return _sequence_length(gui)
+
+
 def _is_aa_row(row: dict[str, Any]) -> bool:
+    # Kept for compatibility with older callers.  Position-rule application
+    # itself now uses every real synthesis unit, not only Fmoc AA rows.
     return str(row.get("Unit name", "")).strip().lower().startswith("fmoc-")
+
+
+def _is_position_unit_row(row: dict[str, Any]) -> bool:
+    """AA, d-AA, chemical, label, tag and linker share one position system."""
+    return bool(str(row.get("Unit name", "") or "").strip()) and not _is_fmoc_removal(row)
 
 
 def _is_fmoc_removal(row: dict[str, Any]) -> bool:
@@ -85,14 +108,15 @@ def _is_fmoc_removal(row: dict[str, Any]) -> bool:
 
 def _apply_generated_position_rules(gui, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = [dict(r) for r in rows if not _is_fmoc_removal(r)]
-    seq_len = _sequence_length(gui)
-    aa_indices = [i for i, r in enumerate(rows) if _is_aa_row(r)]
-    # Direct-loaded 2-CTC historical routes can emit one extra C-terminal AA.
-    if seq_len >= 0 and len(aa_indices) > seq_len:
-        remove_count = len(aa_indices) - seq_len
-        remove = set(aa_indices[:remove_count])
+    seq_units = _sequence_unit_count(gui)
+    unit_indices = [i for i, r in enumerate(rows) if _is_position_unit_row(r)]
+    # Preserve the established direct-loaded 2-CTC handling: if a historical
+    # route emits an extra C-terminal loading unit, remove only that excess.
+    if seq_units >= 0 and len(unit_indices) > seq_units:
+        remove_count = len(unit_indices) - seq_units
+        remove = set(unit_indices[:remove_count])
         rows = [r for i, r in enumerate(rows) if i not in remove]
-        aa_indices = [i for i, r in enumerate(rows) if _is_aa_row(r)]
+        unit_indices = [i for i, r in enumerate(rows) if _is_position_unit_row(r)]
 
     use_eq = bool(_get(getattr(gui, "use_position_aa_eq", None), True))
     use_double = bool(_get(getattr(gui, "use_position_doubling", None), True))
@@ -100,11 +124,12 @@ def _apply_generated_position_rules(gui, rows: list[dict[str, Any]]) -> list[dic
     dbl_rules = _parse_ranges(_get(getattr(gui, "position_doubling_rules", None), "4-6:2"), [(4,6,2.0)])
     follows = bool(_get(getattr(gui, "reagent_eq_follows_coupling_eq", None), True))
     # Direct-loaded 2-CTC omits the already resin-bound C-terminal residue
-    # from the editable coupling rows.  Keep that residue in the positional
-    # count so ranges still refer to the written peptide sequence.
-    cterm_offset = max(0, seq_len - len(aa_indices))
-    for ordinal, row_index in enumerate(aa_indices, start=1):
-        # The editable coupling Plan is ordered C -> N.
+    # from the editable Plan. Keep that residue in the positional count.
+    # Terminal chemical/label/tag units are included in seq_units, so every
+    # real synthesis unit shares the same C-term position system.
+    cterm_offset = max(0, seq_units - len(unit_indices))
+    for ordinal, row_index in enumerate(unit_indices, start=1):
+        # The editable Plan is ordered C -> N across all synthesis units.
         cterm_position = cterm_offset + ordinal
         row = rows[row_index]
         if use_eq:
@@ -199,7 +224,51 @@ def _patch_v229(v229):
         return sorted(rows, key=lambda r: (cls(r), str(r.get("material", "")).lower()))
 
     def generated(gui, ns, inp):
-        return _apply_generated_position_rules(gui, old_generated(gui, ns, inp))
+        # Position rules are applied after the legacy engine has built each row.
+        # Keep the legacy baseline so a changed eq/repeat can also be reflected
+        # in the actual mmol/amount/solvent calculations, not only in the
+        # visible Unit eq / Repeat cells.
+        baseline_rows = []
+        for source_row in old_generated(gui, ns, inp):
+            row = dict(source_row)
+            row["__v2213_old_repeat"] = row.get("Repeat", "1")
+            for eq_col, mmol_col in (("Unit eq", "Unit mmol"), ("R1 eq", "R1 mmol"), ("R2 eq", "R2 mmol"), ("Base eq", "Base mmol")):
+                row[f"__v2213_old_{eq_col}"] = row.get(eq_col, "")
+                row[f"__v2213_old_{mmol_col}"] = row.get(mmol_col, "")
+            row["__v2213_old_solvent_ml"] = row.get("Solvent mL", "")
+            baseline_rows.append(row)
+
+        rows = _apply_generated_position_rules(gui, baseline_rows)
+        for row in rows:
+            old_repeat = max(1.0, _num(row.pop("__v2213_old_repeat", row.get("Repeat", 1)), 1.0))
+            new_repeat = max(1.0, _num(row.get("Repeat", 1), 1.0))
+            repeat_ratio = new_repeat / old_repeat
+
+            for name_col, eq_col, mw_col, den_col, mmol_col, amount_col in (
+                ("Unit name", "Unit eq", "MW", "Density(g/mL)", "Unit mmol", "Unit amount"),
+                ("Reagent 1", "R1 eq", "R1 MW", "R1 Density", "R1 mmol", "R1 amount"),
+                ("Reagent 2 / catalyst", "R2 eq", "R2 MW", "R2 Density", "R2 mmol", "R2 amount"),
+                ("Base", "Base eq", "Base MW", "Base Density", "Base mmol", "Base amount"),
+            ):
+                old_eq = _num(row.pop(f"__v2213_old_{eq_col}", row.get(eq_col, 0)), 0.0)
+                old_mmol = _num(row.pop(f"__v2213_old_{mmol_col}", row.get(mmol_col, 0)), 0.0)
+                new_eq = _num(row.get(eq_col, 0), 0.0)
+                eq_ratio = (new_eq / old_eq) if old_eq > 0 else 1.0
+                new_mmol = old_mmol * repeat_ratio * eq_ratio
+                row[mmol_col] = v229._fmt(new_mmol)
+                row[amount_col] = v229._amount(
+                    str(row.get(name_col, "") or ""),
+                    new_mmol,
+                    _num(row.get(mw_col), 0.0),
+                    _num(row.get(den_col), 0.0),
+                )
+
+            old_solvent_ml = _num(row.pop("__v2213_old_solvent_ml", row.get("Solvent mL", 0)), 0.0)
+            if str(row.get("Coupling solvent", "") or "").strip():
+                row["Solvent mL"] = v229._fmt(old_solvent_ml * repeat_ratio)
+            else:
+                row["Solvent mL"] = ""
+        return rows
 
     def recalc(gui, ns, inp):
         tree = gui.pm_selected_plan_tree

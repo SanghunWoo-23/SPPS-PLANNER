@@ -191,6 +191,47 @@ def _apply_title(gui):
             pass
 
 
+def _bind_resin_live_preview(gui, ns):
+    """Bind the final active resin combobox/variable to the working-volume preview.
+
+    Several legacy UI layers rebuild or replace bindings during startup, so the
+    earlier Solvents/Wash trace can point at a stale variable.  Bind once more
+    at the final V2.0.0 layer and also listen to the actual ComboboxSelected
+    event.  This changes display refresh only; it does not generate/recalculate
+    a Plan.
+    """
+    update = ns.get("_v257_update_volume_preview")
+    if not callable(update):
+        return
+
+    def refresh(*_args):
+        try:
+            update(gui)
+            gui.update_idletasks()
+        except Exception:
+            pass
+
+    try:
+        if not getattr(gui, "_v200_resin_preview_trace", None):
+            gui._v200_resin_preview_trace = gui.pm_resin.trace_add("write", refresh)
+    except Exception:
+        pass
+
+    target_var = str(getattr(gui, "pm_resin", ""))
+    for widget in _walk(gui):
+        if not isinstance(widget, ttk.Combobox):
+            continue
+        try:
+            if str(widget.cget("textvariable")) != target_var:
+                continue
+            if not getattr(widget, "_v200_resin_preview_bound", False):
+                widget.bind("<<ComboboxSelected>>", refresh, add="+")
+                widget._v200_resin_preview_bound = True
+        except Exception:
+            pass
+    refresh()
+
+
 def install(gui_cls, ns, *_args, **_kwargs):
     # Update the active controller constants used by session/export metadata.
     try:
@@ -207,13 +248,14 @@ def install(gui_cls, ns, *_args, **_kwargs):
         old_build(self)
         _ensure_one_start_item(self)
         _enforce_resin_choices(self)
+        _bind_resin_live_preview(self, ns)
         _configure_cleavage_preset(self)
         _apply_title(self)
         # Reassert after legacy idle callbacks that may repopulate combobox values.
         try:
-            self.after_idle(lambda _self=self: _enforce_resin_choices(_self))
+            self.after_idle(lambda _self=self: (_enforce_resin_choices(_self), _bind_resin_live_preview(_self, ns)))
             for delay in (100, 400, 1000):
-                self.after(delay, lambda _self=self: _enforce_resin_choices(_self))
+                self.after(delay, lambda _self=self: (_enforce_resin_choices(_self), _bind_resin_live_preview(_self, ns)))
         except Exception:
             pass
 

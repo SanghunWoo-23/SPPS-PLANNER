@@ -25313,7 +25313,9 @@ def _v257_add_solvent_basis_controls(self):
     ttk.Label(box, text='mL = planned mmol / M').grid(row=1, column=3, columnspan=4, sticky='w', padx=3, pady=2)
     self._v257_volume_preview_label = ttk.Label(box, text='')
     self._v257_volume_preview_label.grid(row=2, column=0, columnspan=7, sticky='w', padx=6, pady=(4,2))
-    for var in (self.solvent_volume_mode, self.amide_ml_per_mmol, self.ctc_ml_per_mmol, self.solvent_molarity_m):
+    for var in (self.solvent_volume_mode, self.amide_ml_per_mmol, self.ctc_ml_per_mmol, self.solvent_molarity_m, getattr(self, 'pm_resin', None)):
+        if var is None:
+            continue
         try: var.trace_add('write', lambda *_: _v257_update_volume_preview(self))
         except Exception: pass
     _v257_hide_unit_ml_per_mmol(self)

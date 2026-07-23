@@ -48,13 +48,29 @@ def _num(value, default=0.0):
 
 
 def _parse_ranges(text: str, default: list[tuple[int, int, float]]) -> list[tuple[int, int, float]]:
+    """Parse C-terminal position rules.
+
+    Accepted forms include both ranges (``4-7:2``) and a single position
+    (``7:2``).  A blank field means "no position-specific override"; it
+    must not silently re-enable the old example/default rules.
+    """
+    raw = str(text or "").strip()
+    if not raw:
+        return []
+
     out: list[tuple[int, int, float]] = []
-    for part in re.split(r"[,;]+", str(text or "")):
-        m = re.search(r"(\d+)\s*-\s*(\d+)\s*:\s*([0-9.]+)", part)
-        if m:
-            a, b, v = int(m.group(1)), int(m.group(2)), float(m.group(3))
-            out.append((min(a,b), max(a,b), v))
-    return out or list(default)
+    for part in re.split(r"[,;]+", raw):
+        m = re.fullmatch(
+            r"\s*(\d+)(?:\s*-\s*(\d+))?\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*",
+            part,
+        )
+        if not m:
+            continue
+        a = int(m.group(1))
+        b = int(m.group(2)) if m.group(2) is not None else a
+        v = float(m.group(3))
+        out.append((min(a, b), max(a, b), v))
+    return out
 
 
 def _range_value(position: int, rules, fallback: float) -> float:
@@ -120,8 +136,8 @@ def _apply_generated_position_rules(gui, rows: list[dict[str, Any]]) -> list[dic
 
     use_eq = bool(_get(getattr(gui, "use_position_aa_eq", None), True))
     use_double = bool(_get(getattr(gui, "use_position_doubling", None), True))
-    eq_rules = _parse_ranges(_get(getattr(gui, "position_aa_eq_rules", None), "1-3:1.5, 4-6:2"), [(1,3,1.5),(4,6,2.0)])
-    dbl_rules = _parse_ranges(_get(getattr(gui, "position_doubling_rules", None), "4-6:2"), [(4,6,2.0)])
+    eq_rules = _parse_ranges(_get(getattr(gui, "position_aa_eq_rules", None), ""), [])
+    dbl_rules = _parse_ranges(_get(getattr(gui, "position_doubling_rules", None), ""), [])
     follows = bool(_get(getattr(gui, "reagent_eq_follows_coupling_eq", None), True))
     # Direct-loaded 2-CTC omits the already resin-bound C-terminal residue
     # from the editable Plan. Keep that residue in the positional count.
@@ -160,55 +176,189 @@ def _patch_v229(v229):
 
 
     def visible_protocol(gui, ns, inp):
+        """Return Materials/Checklist in the exact bench execution order.
+
+        Operator-confirmed ordinary SPPS cycle:
+          Deprotection x2 -> DMF wash x6 -> Coupling 1 -> DMF wash x2
+          -> Coupling 2 -> DMF wash x2 -> ... -> next unit deprotection.
+
+        Repeat=N therefore means N complete coupling reactions.  DMF x2 is
+        placed between repeated couplings and, for a non-terminal unit, after
+        the last coupling before the next unit starts.  The already accepted
+        terminal flows (final Fmoc deprotection, Ac2O/Ac-AA final washes, etc.)
+        are preserved exactly.  Direct 2-CTC loading keeps its special legacy
+        loading/wash flow.
+        """
         materials, checklist = old_visible_protocol(gui, ns, inp)
         plan = [v229._row_dict(gui.pm_selected_plan_tree, iid) for iid in gui.pm_selected_plan_tree.get_children()]
-        repeated = {str(r.get("No", "")): r for r in plan if int(round(_num(r.get("Repeat"), 1))) > 1}
-        if not repeated:
+        if not plan:
             return materials, checklist
+
         try:
             from spps_planner.engine import working_volume_mL
             working_ml = _num(working_volume_mL(inp), 0)
         except Exception:
-            working_ml = 0
-        for step, row in repeated.items():
-            # Replace the normal x6 post-coupling wash with two x2 washes.
-            for mat in materials:
-                if str(mat.get("step", "")) == step and "Post-coupling wash" in str(mat.get("class", "")):
-                    mat["planned_mL"] = working_ml * 4
-                    mat["use_count"] = 4
-                    mat["repeat"] = 4
-                    mat["note"] = "Doubling: DMF wash x2 after coupling 1 and x2 after coupling 2"
-            new_check = []
-            replaced = False
-            skip_postwash = False
-            for rec in checklist:
-                same = str(rec.get("unit", "")) == str(row.get("Unit name", ""))
-                op = str(rec.get("operation", ""))
-                if same and op == "Coupling / reaction" and not replaced:
-                    base_note = str(rec.get("note", ""))
-                    is_terminal_ac_aa = (
-                        step == str(plan[-1].get("No", ""))
-                        and v229._is_ac_aa_oh(str(row.get("Unit name", "")))
-                    )
-                    doubling_ops = (
-                        ("Coupling 1", "DMF wash x2", "Coupling 2")
-                        if is_terminal_ac_aa
-                        else ("Coupling 1", "DMF wash x2", "Coupling 2", "DMF wash x2")
-                    )
-                    for op_name in doubling_ops:
-                        new_check.append(dict(rec, operation=op_name, note=(base_note if "Coupling" in op_name else "Doubling sequence")))
-                    replaced = True
-                    skip_postwash = True
+            working_ml = 0.0
+
+        # ---------- Checklist: exact operation sequence ----------
+        rebuilt_checklist = []
+        reaction_index = 0
+        for rec in checklist:
+            op = str(rec.get("operation", "") or "")
+            current_index = min(reaction_index, len(plan) - 1)
+            current_row = plan[current_index] if plan else {}
+            direct_loading = bool(
+                current_row
+                and v229._is_direct_2ctc_loading_row(inp, current_row, current_index)
+            )
+
+            # The ordinary pre-coupling wash is always DMF x6 after the two
+            # deprotection reactions.  Direct 2-CTC loading is intentionally
+            # excluded because it has its own established loading flow.
+            if op == "DMF wash x2" and str(rec.get("note", "")) == "Before coupling" and not direct_loading:
+                rebuilt_checklist.append(dict(rec, operation="DMF wash x6"))
+                continue
+
+            if op == "Coupling / reaction" and reaction_index < len(plan):
+                row = plan[reaction_index]
+                repeat = max(1, int(round(_num(row.get("Repeat"), 1))))
+                base_note = str(rec.get("note", ""))
+                for coupling_no in range(1, repeat + 1):
+                    rebuilt_checklist.append(dict(
+                        rec,
+                        operation=(f"Coupling {coupling_no}" if repeat > 1 else "Coupling / reaction"),
+                        note=base_note,
+                    ))
+                    if coupling_no < repeat:
+                        rebuilt_checklist.append(dict(
+                            rec,
+                            operation="DMF wash x2",
+                            note=f"Repeat coupling x{repeat}: inter-coupling wash after Coupling {coupling_no}",
+                        ))
+                reaction_index += 1
+                continue
+
+            # For an ordinary non-terminal unit, the wash after the final
+            # coupling is DMF x2, then the next unit begins with deprotection
+            # x2 -> DMF x6.  Keep direct-loading 2-CTC and all terminal flows.
+            if op == "Post-coupling DMF wash x6" and reaction_index > 0:
+                prev_index = reaction_index - 1
+                prev_row = plan[prev_index]
+                prev_direct = v229._is_direct_2ctc_loading_row(inp, prev_row, prev_index)
+                if not prev_direct:
+                    rebuilt_checklist.append(dict(rec, operation="Post-coupling DMF wash x2"))
                     continue
-                if skip_postwash and same and op.startswith("Post-coupling DMF wash x"):
-                    skip_postwash = False
-                    continue
-                new_check.append(rec)
-            checklist = new_check
-        for i, rec in enumerate(checklist, 1):
+
+            rebuilt_checklist.append(rec)
+
+        for i, rec in enumerate(rebuilt_checklist, 1):
             rec["line"] = i
-            rec["next_step"] = checklist[i]["operation"] if i < len(checklist) else ""
-        return materials, checklist
+            rec["next_step"] = rebuilt_checklist[i]["operation"] if i < len(rebuilt_checklist) else ""
+        checklist = rebuilt_checklist
+
+        # ---------- Materials: same exact step order as the checklist ----------
+        # old_visible_protocol already emits each Plan step contiguously.  We
+        # keep deprotection/final chemistry intact, change the ordinary wash
+        # counts, split aggregate repeated-coupling material totals into each
+        # actual coupling cycle, and insert DMF x2 at the exact interval.
+        resin_rows = [dict(r) for r in materials if str(r.get("step", "")) == "resin"]
+        rows_by_step = {}
+        for rec in materials:
+            step_key = str(rec.get("step", ""))
+            if step_key == "resin":
+                continue
+            rows_by_step.setdefault(step_key, []).append(dict(rec))
+
+        def _div(value, divisor):
+            if divisor <= 1:
+                return value
+            text = str(value or "").strip()
+            if not text:
+                return value
+            try:
+                return v229._fmt(_num(text, 0.0) / divisor)
+            except Exception:
+                return value
+
+        rebuilt_materials = list(resin_rows)
+        for row_index, row in enumerate(plan):
+            step = str(row.get("No", "") or (row_index + 1))
+            step_rows = rows_by_step.get(step, [])
+            repeat = max(1, int(round(_num(row.get("Repeat"), 1))))
+            direct_loading = v229._is_direct_2ctc_loading_row(inp, row, row_index)
+
+            before = []
+            coupling = []
+            after = []
+            seen_coupling = False
+            for rec in step_rows:
+                if str(rec.get("phase", "")) == "Coupling":
+                    seen_coupling = True
+                    coupling.append(rec)
+                elif not seen_coupling:
+                    before.append(rec)
+                else:
+                    after.append(rec)
+
+            # Correct ordinary pre-coupling DMF wash to x6.
+            for rec in before:
+                if str(rec.get("class", "")) == "Pre-coupling wash solvent" and not direct_loading:
+                    rec["planned_mL"] = v229._fmt(working_ml * 6) if working_ml > 0 else rec.get("planned_mL", "")
+                    rec["use_count"] = 6
+                    rec["repeat"] = 6
+                    rec["note"] = "DMF wash x6 before coupling"
+                rebuilt_materials.append(rec)
+
+            # Split repeat-aggregated coupling totals into actual Coupling 1..N
+            # blocks so Materials is visually and numerically in bench order.
+            if coupling:
+                for coupling_no in range(1, repeat + 1):
+                    for source in coupling:
+                        rec = dict(source)
+                        for key in ("planned_mmol", "planned_g", "planned_mL"):
+                            rec[key] = _div(rec.get(key, ""), repeat)
+                        rec["use_count"] = 1
+                        rec["repeat"] = 1
+                        rec["phase"] = f"Coupling {coupling_no}" if repeat > 1 else "Coupling"
+                        note = str(rec.get("note", "") or "")
+                        if repeat > 1:
+                            rec["note"] = (note + f" | Coupling {coupling_no}/{repeat}").strip(" |")
+                        rebuilt_materials.append(rec)
+
+                    if coupling_no < repeat and working_ml > 0:
+                        extra = v229._material_row(
+                            gui, ns, step, "DMF", "Inter-coupling wash solvent",
+                            amount=f"{v229._fmt(working_ml * 2)} mL",
+                            phase="DMF wash",
+                            note=f"Repeat coupling x{repeat}: DMF wash x2 after Coupling {coupling_no}",
+                            source="Repeat coupling protocol",
+                            use_count=2,
+                            repeat=2,
+                        )
+                        if extra:
+                            rebuilt_materials.append(extra)
+
+            # Correct ordinary post-final-coupling wash to x2.  Terminal rows
+            # and direct 2-CTC loading keep their established special sequence.
+            for rec in after:
+                if str(rec.get("class", "")) == "Post-coupling wash solvent" and not direct_loading:
+                    # The terminal Fmoc flow already uses x2; this assignment is
+                    # therefore idempotent and preserves its accepted behavior.
+                    rec["planned_mL"] = v229._fmt(working_ml * 2) if working_ml > 0 else rec.get("planned_mL", "")
+                    rec["use_count"] = 2
+                    rec["repeat"] = 2
+                    rec["note"] = "DMF wash x2 after final coupling of this unit"
+                rebuilt_materials.append(rec)
+
+        # Preserve any non-plan rows added by the legacy controller, in their
+        # original relative order, without allowing them to jump ahead of the
+        # synthesis steps above.
+        known_steps = {str(r.get("No", "") or (i + 1)) for i, r in enumerate(plan)} | {"resin"}
+        for rec in materials:
+            if str(rec.get("step", "")) not in known_steps:
+                rebuilt_materials.append(dict(rec))
+
+        return rebuilt_materials, checklist
 
     def total_rows(materials):
         rows = list(old_total_rows(materials))
@@ -273,6 +423,39 @@ def _patch_v229(v229):
     def recalc(gui, ns, inp):
         tree = gui.pm_selected_plan_tree
         dirty = getattr(gui, "_v229_dirty_columns", {})
+
+        # Apply the *current* C-term repeat rule when Apply Change is pressed.
+        # Previously the range was only evaluated during Generate, so checking
+        # Doubling or changing e.g. 4-7:3 after a Plan already existed had no
+        # effect.  Keep direct 2-CTC loading chemistry untouched; all actual
+        # coupling rows receive Repeat=N (N may be 2, 3, 4, ...).
+        current_rows = [v229._row_dict(tree, iid) for iid in tree.get_children()]
+        unit_indices = [i for i, row in enumerate(current_rows) if _is_position_unit_row(row)]
+        seq_units = _sequence_unit_count(gui)
+        cterm_offset = max(0, seq_units - len(unit_indices))
+        use_repeat_rule = bool(_get(getattr(gui, "use_position_doubling", None), True))
+        repeat_rules = _parse_ranges(
+            _get(getattr(gui, "position_doubling_rules", None), ""),
+            [],
+        )
+        ordinal_by_index = {row_index: ordinal for ordinal, row_index in enumerate(unit_indices, start=1)}
+        for position, iid in enumerate(tree.get_children()):
+            if position not in ordinal_by_index:
+                continue
+            row = v229._row_dict(tree, iid)
+            if v229._is_direct_2ctc_loading_row(inp, row, position):
+                continue
+            cterm_position = cterm_offset + ordinal_by_index[position]
+            new_repeat = 1
+            if use_repeat_rule:
+                new_repeat = max(1, int(round(_range_value(cterm_position, repeat_rules, 1.0))))
+            old_repeat_value = max(1, int(round(_num(row.get("Repeat"), 1))))
+            if old_repeat_value != new_repeat:
+                row["Repeat"] = str(new_repeat)
+                v229._write_row(tree, iid, row)
+                dirty.setdefault(iid, set()).add("Repeat")
+        gui._v229_dirty_columns = dirty
+
         preserve = {}
         for iid in tree.get_children():
             if "Unit name" in set(dirty.get(iid, set())):
@@ -347,9 +530,9 @@ def _tab_frame(nb, label):
 
 def _install_position_ui(gui):
     gui.use_position_aa_eq = getattr(gui, "use_position_aa_eq", tk.BooleanVar(value=True))
-    gui.position_aa_eq_rules = getattr(gui, "position_aa_eq_rules", tk.StringVar(value="1-3:1.5, 4-6:2"))
+    gui.position_aa_eq_rules = getattr(gui, "position_aa_eq_rules", tk.StringVar(value=""))
     gui.use_position_doubling = getattr(gui, "use_position_doubling", tk.BooleanVar(value=True))
-    gui.position_doubling_rules = getattr(gui, "position_doubling_rules", tk.StringVar(value="4-6:2"))
+    gui.position_doubling_rules = getattr(gui, "position_doubling_rules", tk.StringVar(value=""))
     nb = _find_setup_notebook(gui)
     frame = _tab_frame(nb, "Unit defaults") if nb else None
     if frame is None:

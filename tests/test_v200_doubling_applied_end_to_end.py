@@ -61,12 +61,13 @@ def test_doubling_changes_real_amounts_materials_checklist_and_totals(monkeypatc
             assert float(row["Solvent mL"]) == pytest.approx(16.0)
 
         materials = _rows(gui.pm_selected_material_tree)
-        gly = next(r for r in materials if r["material"] == "Fmoc-Gly-OH")
-        assert float(gly["planned_mmol"]) == pytest.approx(4.0)
-        assert gly["repeat"] == "2"
-        dic_rows = [r for r in materials if r["material"] == "DIC" and r["phase"] == "Coupling"]
-        assert len(dic_rows) == 3
-        assert all(float(r["planned_mmol"]) == pytest.approx(4.0) for r in dic_rows)
+        gly_rows = [r for r in materials if r["material"] == "Fmoc-Gly-OH"]
+        assert len(gly_rows) == 2
+        assert sum(float(r["planned_mmol"]) for r in gly_rows) == pytest.approx(4.0)
+        assert [r["phase"] for r in gly_rows] == ["Coupling 1", "Coupling 2"]
+        dic_rows = [r for r in materials if r["material"] == "DIC" and str(r["phase"]).startswith("Coupling")]
+        assert len(dic_rows) == 6
+        assert all(float(r["planned_mmol"]) == pytest.approx(2.0) for r in dic_rows)
 
         checklist = _rows(gui.progress_tree)
         for unit in ("Fmoc-Lys(Boc)-OH", "Fmoc-His(Trt)-OH", "Fmoc-Gly-OH"):

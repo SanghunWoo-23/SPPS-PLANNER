@@ -184,8 +184,33 @@ def _is_ac2o(unit: str) -> bool:
     return key in {"ac", "ac2o", "aceticanhydride", "aceticanhydrideac2o", "aceticanhydrideac2ofornterminalacetylation"}
 
 
+def _has_nterm_temporary_protection(unit: str) -> bool:
+    """Return True when the coupled unit carries an N-terminal Fmoc handle.
+
+    Final deprotection is decided by the *temporary N-terminal protecting
+    group on the coupled building block*, not by whether the row happens to be
+    classified as a natural AA.  This therefore covers Fmoc-AA, d-AA,
+    non-natural AA and AA-like/linker building blocks such as Fmoc-Ahx.
+
+    Side-chain protecting groups (Boc, OtBu, Pbf, Trt, side-chain Fmoc, etc.)
+    are deliberately ignored here; they belong to cleavage/orthogonal
+    chemistry and must not trigger the standard piperidine terminal cycle.
+    """
+    text = str(unit or "").strip()
+    if not text:
+        return False
+    # Accept common ways vendors/users write an N-terminal Fmoc prefix while
+    # requiring it to occur at the beginning, so H-Lys(Fmoc)-OH does not
+    # become a false positive merely because it has a side-chain Fmoc group.
+    # Explicit "Fmoc-free" descriptions are also excluded.
+    if re.match(r"^(?:N(?:alpha|\u03b1)?[-\s]*)?Fmoc[-\s]*free\b", text, re.IGNORECASE):
+        return False
+    return bool(re.match(r"^(?:N(?:alpha|\u03b1)?[-\s]*)?Fmoc(?:[-\s(]|$)", text, re.IGNORECASE))
+
+
 def _is_fmoc(unit: str) -> bool:
-    return str(unit or "").strip().lower().startswith("fmoc-")
+    """Backward-compatible alias for N-terminal Fmoc-protected units."""
+    return _has_nterm_temporary_protection(unit)
 
 
 def _is_ac_aa_oh(unit: str) -> bool:
@@ -195,10 +220,10 @@ def _is_ac_aa_oh(unit: str) -> bool:
 
 
 def _is_terminal_chemical(unit: str) -> bool:
-    text = str(unit or "").strip().lower()
+    text = str(unit or "").strip()
     if not text:
         return False
-    return not text.startswith("fmoc-")
+    return not _has_nterm_temporary_protection(text)
 
 
 def _build_plan_input(gui, ns: dict[str, Any]):
@@ -666,13 +691,14 @@ def _visible_protocol(gui, ns: dict[str, Any], inp) -> tuple[list[dict[str, Any]
         operation(step, "Coupling / reaction", unit, f"Unit eq={row.get('Unit eq','')}; R1={row.get('Reagent 1','')} {row.get('R1 eq','')} eq; R2={row.get('Reagent 2 / catalyst','')} {row.get('R2 eq','')} eq; Base={row.get('Base','')} {row.get('Base eq','')} eq")
 
         if is_last:
-            is_fmoc_aa = _is_fmoc(unit)
+            has_nterm_temp_protection = _has_nterm_temporary_protection(unit)
             is_acetylation = _is_ac2o(unit)
             is_ac_aa = _is_ac_aa_oh(unit)
 
-            if is_fmoc_aa or is_acetylation or is_ac_aa:
+            if has_nterm_temp_protection or is_acetylation or is_ac_aa:
                 # Operator-confirmed terminal STD:
-                #   Fmoc-AA: coupling -> DMF x2 -> 20% piperidine/DMF x2
+                #   N-terminal Fmoc-protected AA/AA-like building block:
+                #            coupling -> DMF x2 -> 20% piperidine/DMF x2
                 #            -> final DMF x3 -> final MC/DCM x3.
                 #   Ac2O:    acetylation -> final DMF x3
                 #            -> final MC/DCM x3.
@@ -680,7 +706,7 @@ def _visible_protocol(gui, ns: dict[str, Any], inp) -> tuple[list[dict[str, Any]
                 #            -> final MC/DCM x3; no deprotection.
                 # There is no separate DMF x6 wash after the terminal
                 # deprotection in these final sequences.
-                if is_fmoc_aa:
+                if has_nterm_temp_protection:
                     add_solvent(step, "DMF", working_ml * 2, "Post-coupling wash solvent", "DMF wash", "DMF wash x2 after final coupling", 2)
                     operation(step, "Post-coupling DMF wash x2", unit)
 

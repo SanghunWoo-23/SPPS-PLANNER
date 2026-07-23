@@ -79,6 +79,11 @@ def test_cterm_ranges_count_the_written_cterm_residue_for_direct_2ctc(monkeypatc
         gui.pm_sequence.set("ACDEFGH")
         gui.pm_scale.set("1")
         gui.pm_resin.set("2-CTC")
+        # Position-rule fields now intentionally start blank.  Enter the
+        # historical rules explicitly here so this regression continues to
+        # verify the direct-2CTC C-terminal offset behavior itself.
+        gui.position_aa_eq_rules.set("1-3:1.5, 4-6:2")
+        gui.position_doubling_rules.set("4-6:2")
         assert gui.pm_generate_selected() is True
         plan = _rows(gui.pm_selected_plan_tree)
 

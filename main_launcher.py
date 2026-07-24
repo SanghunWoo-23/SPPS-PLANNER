@@ -9,7 +9,7 @@ from tkinter import messagebox
 
 APP_NAME = "SPPS Planner"
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-RUNTIME_LOG_DIR = ROOT / "outputs" / "runtime_logs"
+RUNTIME_LOG_DIR = None
 
 
 def _ensure_runtime_environment() -> None:
@@ -18,10 +18,16 @@ def _ensure_runtime_environment() -> None:
         sp = str(p)
         if sp not in sys.path:
             sys.path.insert(0, sp)
+    global RUNTIME_LOG_DIR
     try:
-        RUNTIME_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        from spps_planner.user_paths import user_logs_dir
+        RUNTIME_LOG_DIR = user_logs_dir()
     except Exception:
-        pass
+        RUNTIME_LOG_DIR = ROOT / "runtime_logs"
+        try:
+            RUNTIME_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
 
 
 def main() -> None:

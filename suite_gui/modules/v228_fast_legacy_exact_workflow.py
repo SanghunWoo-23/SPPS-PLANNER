@@ -20,6 +20,7 @@ import re
 import tkinter as tk
 from tkinter import ttk, messagebox
 import pandas as pd
+from suite_gui import state_persistence
 
 VERSION = "V2.2.8"
 TITLE = "SPPS Planner GitHub V2.2.8 - Fast Legacy UI + Exact Workflow"
@@ -911,17 +912,19 @@ def save_project(gui, ns, show=True):
             out = Path("outputs/project_manager_exports")
         out.mkdir(parents=True, exist_ok=True)
         state = gui._collect_state() if hasattr(gui, "_collect_state") else {}
-        state.update({
-            "app_version": VERSION,
-            "saved_at": datetime.now().isoformat(timespec="seconds"),
-            "active_index": _active_index(gui),
-            "selected_pm_index": _active_index(gui) or 0,
-            "pm_items": list(getattr(gui, "pm_items", []) or []),
-        })
+        active = _active_index(gui)
+        state = state_persistence.project_state(
+            app_version=VERSION,
+            saved_at=datetime.now().isoformat(timespec="seconds"),
+            active_index=active,
+            selected_pm_index=active or 0,
+            pm_items=getattr(gui, "pm_items", []),
+            defaults=state.get("defaults", {}),
+            batch_rows=state.get("batch_rows"),
+            base=state,
+        )
         path = out / "project_manager_state.json"
-        temp = path.with_suffix(path.suffix + ".tmp")
-        temp.write_text(json.dumps(state, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
-        temp.replace(path)
+        state_persistence.atomic_write_json(path, state)
         gui.last_outdir = out
         if show:
             try:
@@ -1342,10 +1345,7 @@ def save_session(gui):
         state["pm_items"] = list(getattr(gui, "pm_items", []) or [])
         state["selected_pm_index"] = _active_index(gui) or 0
         path = Path(getattr(gui, "state_file", Path.cwd() / "project_manager_autosave.json"))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp = path.with_suffix(path.suffix + ".tmp")
-        temp.write_text(json.dumps(state, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
-        temp.replace(path)
+        state_persistence.atomic_write_json(path, state)
         gui._autosave_after_id = None
         return path
     except Exception:

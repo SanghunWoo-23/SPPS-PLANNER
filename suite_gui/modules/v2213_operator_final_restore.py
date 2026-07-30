@@ -630,7 +630,16 @@ def _install_title(gui):
         try:
             if isinstance(w, ttk.Label) and str(w.cget("text")).startswith("SPPS Planner GitHub"):
                 w.configure(text=VERSION_LABEL)
-        except Exception: pass
+        except Exception:
+            pass
+
+
+def apply_post_build(gui):
+    _install_title(gui)
+    _install_position_ui(gui)
+    _clean_selected_labels(gui)
+    _compact_checklist(gui)
+    _remove_cleavage_apply_text(gui)
 
 
 def install(gui_cls, ns: dict[str, Any], *_args, **_kwargs):
@@ -640,11 +649,7 @@ def install(gui_cls, ns: dict[str, Any], *_args, **_kwargs):
 
     def build(self):
         old_build(self)
-        _install_title(self)
-        _install_position_ui(self)
-        _clean_selected_labels(self)
-        _compact_checklist(self)
-        _remove_cleavage_apply_text(self)
+        apply_post_build(self)
 
     gui_cls._build = build
     gui_cls.TITLE = VERSION_LABEL

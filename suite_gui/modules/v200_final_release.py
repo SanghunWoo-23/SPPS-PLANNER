@@ -232,7 +232,34 @@ def _bind_resin_live_preview(gui, ns):
     refresh()
 
 
-def install(gui_cls, ns, *_args, **_kwargs):
+def apply_post_build(gui, ns):
+    """Apply the accepted V2.0.0 display/startup corrections."""
+    _ensure_one_start_item(gui)
+    _enforce_resin_choices(gui)
+    _bind_resin_live_preview(gui, ns)
+    _configure_cleavage_preset(gui)
+    _apply_title(gui)
+    # Reassert after legacy idle callbacks that may repopulate combobox values.
+    try:
+        gui.after_idle(
+            lambda _gui=gui: (
+                _enforce_resin_choices(_gui),
+                _bind_resin_live_preview(_gui, ns),
+            )
+        )
+        for delay in (100, 400, 1000):
+            gui.after(
+                delay,
+                lambda _gui=gui: (
+                    _enforce_resin_choices(_gui),
+                    _bind_resin_live_preview(_gui, ns),
+                ),
+            )
+    except Exception:
+        pass
+
+
+def install(gui_cls, ns, *_args, wrap_build=True, **_kwargs):
     # Update the active controller constants used by session/export metadata.
     try:
         import suite_gui.modules.v229_empty_start_exact_apply_sync as v229
@@ -246,18 +273,7 @@ def install(gui_cls, ns, *_args, **_kwargs):
 
     def build(self):
         old_build(self)
-        _ensure_one_start_item(self)
-        _enforce_resin_choices(self)
-        _bind_resin_live_preview(self, ns)
-        _configure_cleavage_preset(self)
-        _apply_title(self)
-        # Reassert after legacy idle callbacks that may repopulate combobox values.
-        try:
-            self.after_idle(lambda _self=self: (_enforce_resin_choices(_self), _bind_resin_live_preview(_self, ns)))
-            for delay in (100, 400, 1000):
-                self.after(delay, lambda _self=self: (_enforce_resin_choices(_self), _bind_resin_live_preview(_self, ns)))
-        except Exception:
-            pass
+        apply_post_build(self, ns)
 
     def destroy(self):
         try:
@@ -268,7 +284,8 @@ def install(gui_cls, ns, *_args, **_kwargs):
             # that harmless duplicate-cleanup error.
             return None
 
-    gui_cls._build = build
+    if wrap_build:
+        gui_cls._build = build
     gui_cls.destroy = destroy
     gui_cls.TITLE = VERSION_LABEL
     return gui_cls

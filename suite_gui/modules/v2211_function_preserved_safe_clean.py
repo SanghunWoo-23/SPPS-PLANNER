@@ -206,6 +206,34 @@ def _extend_class_unit_values(gui_cls):
         pass
 
 
+def apply_post_build(gui):
+    _extend_class_unit_values(type(gui))
+    try:
+        gui.title(VERSION_LABEL)
+    except Exception:
+        pass
+    for widget in _walk(gui):
+        try:
+            if (
+                isinstance(widget, ttk.Label)
+                and str(widget.cget("text")).startswith("SPPS Planner GitHub")
+            ):
+                widget.configure(text=VERSION_LABEL)
+        except Exception:
+            pass
+    _rename_setup_tabs(gui)
+    _ensure_loading_tab(gui)
+    _ensure_unit_defaults_alias(gui)
+    try:
+        gui.UNIT_VALUES = _dedupe(
+            list(getattr(gui, "UNIT_VALUES", []) or [])
+            + AC_AA_OPTIONS
+            + EXTRA_CHEMICAL_OPTIONS
+        )
+    except Exception:
+        pass
+
+
 def install(gui_cls, ns: dict[str, Any], *_args, **_kwargs):
     _patch_v229_unit_options(ns)
     _extend_class_unit_values(gui_cls)
@@ -217,25 +245,7 @@ def install(gui_cls, ns: dict[str, Any], *_args, **_kwargs):
 
     def build(self):
         old_build(self)
-        _extend_class_unit_values(type(self))
-        try:
-            self.title(VERSION_LABEL)
-        except Exception:
-            pass
-        # Update top title label and all version labels that still show earlier text.
-        for w in _walk(self):
-            try:
-                if isinstance(w, ttk.Label) and str(w.cget("text")).startswith("SPPS Planner GitHub"):
-                    w.configure(text=VERSION_LABEL)
-            except Exception:
-                pass
-        _rename_setup_tabs(self)
-        _ensure_loading_tab(self)
-        _ensure_unit_defaults_alias(self)
-        try:
-            self.UNIT_VALUES = _dedupe(list(getattr(self, "UNIT_VALUES", []) or []) + AC_AA_OPTIONS + EXTRA_CHEMICAL_OPTIONS)
-        except Exception:
-            pass
+        apply_post_build(self)
 
     gui_cls._build = build
     return gui_cls

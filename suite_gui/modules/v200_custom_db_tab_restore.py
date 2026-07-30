@@ -13,7 +13,14 @@ import json
 APP_VERSION = "V2.0.0"
 
 
-def install(gui_cls, ns, *_args, **_kwargs):
+def install(
+    gui_cls,
+    ns,
+    *_args,
+    wrap_build=True,
+    return_post_build=False,
+    **_kwargs,
+):
     old_build = gui_cls._build
     old_save = gui_cls.save_autosave_state
     init_custom = ns.get("_v245_init_custom_db")
@@ -127,19 +134,30 @@ def install(gui_cls, ns, *_args, **_kwargs):
 
     def build(self):
         old_build(self)
+        apply_post_build(self)
+
+    def apply_post_build(self):
         load_custom(self)
         restore_and_pin(self)
         # Some accepted legacy layers finish rebuilding Setup on idle. Reassert
         # only the missing Custom DB tab and the same fixed toggle placement.
-        try:
-            self.after_idle(lambda _self=self: restore_and_pin(_self))
-            for delay in (120, 450):
-                self.after(delay, lambda _self=self: restore_and_pin(_self))
-        except Exception:
-            pass
+        _schedule_restore(self, restore_and_pin)
 
-    gui_cls._build = build
+    if wrap_build:
+        gui_cls._build = build
     gui_cls.save_autosave_state = save_autosave_state
     gui_cls.schedule_autosave = schedule_autosave
     gui_cls.restore_custom_db_tab = restore
+    if return_post_build:
+        return apply_post_build
     return gui_cls
+
+
+def _schedule_restore(gui, restore_and_pin):
+    """Reassert the accepted Custom DB tab after legacy idle rebuilds."""
+    try:
+        gui.after_idle(lambda _gui=gui: restore_and_pin(_gui))
+        for delay in (120, 450):
+            gui.after(delay, lambda _gui=gui: restore_and_pin(_gui))
+    except Exception:
+        pass

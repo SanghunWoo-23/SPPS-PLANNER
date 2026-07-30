@@ -1,6 +1,8 @@
 """Public Tk GUI entry point for SPPS Planner V2.0.0."""
 from __future__ import annotations
-from suite_gui.classic_2094_tk_gui import SPPSGui, main, launch
+from suite_gui.release import SPPSGui, main, launch
+
 __all__ = ["SPPSGui", "main", "launch"]
+
 if __name__ == "__main__":
     launch()

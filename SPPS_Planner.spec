@@ -1,6 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_all
 
 project = Path(SPECPATH)
 datas = [
@@ -13,6 +12,12 @@ datas = [
 ]
 hiddenimports = [
     "suite_gui.spps_tk_gui",
+    "suite_gui.release",
+    "suite_gui.release_composition",
+    "suite_gui.release_contract",
+    "suite_gui.modules.classic_workflow",
+    "suite_gui.modules.workbench_workflow",
+    "suite_gui.legacy_controller",
     "peptiforg_core.ui_helpers",
     "spps_planner",
     "spps_planner.engine",
@@ -24,32 +29,17 @@ hiddenimports = [
     "tkinter.filedialog",
     "tkinter.messagebox",
 ]
-for package in ("pandas", "numpy", "openpyxl", "sklearn", "joblib"):
-    package_datas, package_binaries, package_hidden = collect_all(package)
-    datas += package_datas
-    hiddenimports += package_hidden
-    if package == "pandas":
-        pandas_binaries = package_binaries
-    elif package == "numpy":
-        numpy_binaries = package_binaries
-    elif package == "openpyxl":
-        openpyxl_binaries = package_binaries
-    elif package == "sklearn":
-        sklearn_binaries = package_binaries
-    else:
-        joblib_binaries = package_binaries
-binaries = pandas_binaries + numpy_binaries + openpyxl_binaries + sklearn_binaries + joblib_binaries
 
 a = Analysis(
     [str(project / "main_launcher.py")],
     pathex=[str(project), str(project / "apps" / "spps_planner_app")],
-    binaries=binaries,
+    binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["jedi", "IPython", "notebook", "jupyter", "matplotlib", "scipy"],
+    excludes=["jedi", "IPython", "notebook", "jupyter", "matplotlib"],
     noarchive=False,
     optimize=0,
 )

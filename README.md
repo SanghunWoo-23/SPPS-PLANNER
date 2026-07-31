@@ -15,7 +15,7 @@ records.
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white)](#quick-start)
 [![Tests](https://img.shields.io/badge/regression_tests-61%20passed-16A34A?style=for-the-badge)](#verification)
 
-**[한국어](README_KO.md) · [Quick start](#quick-start) · [Features](#what-it-does) · [Build](#build-for-windows) · [Architecture](docs/ARCHITECTURE.md)**
+**[한국어](README_KO.md) · [English Manual](docs/USER_MANUAL_EN.md) · [한국어 매뉴얼](docs/USER_MANUAL_KO.md) · [Quick start](#quick-start) · [Features](#what-it-does) · [Build](#build-for-windows)**
 
 </div>
 
@@ -69,6 +69,10 @@ Materials · Checklist · Totals · Batch · Export
 - Legacy saved `CTC(합성용)` values migrate to `CTC(합성기)`.
 
 ## Quick start
+
+New users should read the
+**[Detailed English User Manual](docs/USER_MANUAL_EN.md)**.
+The **[Korean manual](docs/USER_MANUAL_KO.md)** is also available.
 
 ### Requirements
 
@@ -133,6 +137,13 @@ SPPS-Planner/
 
 See [Architecture](docs/ARCHITECTURE.md) for the complete execution flow and
 the boundary between compatibility code and active workflows.
+
+### Documentation
+
+- [Detailed User Manual — English](docs/USER_MANUAL_EN.md)
+- [상세 사용자 매뉴얼 — 한국어](docs/USER_MANUAL_KO.md)
+- Plain-text copies: [English TXT](docs/USER_MANUAL_EN.txt) · [한국어 TXT](docs/USER_MANUAL_KO.txt)
+- [Architecture and execution flow](docs/ARCHITECTURE.md)
 
 ## Session and Custom DB
 

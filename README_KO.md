@@ -14,7 +14,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white)](#빠른-시작)
 [![Tests](https://img.shields.io/badge/regression_tests-61%20passed-16A34A?style=for-the-badge)](#검증)
 
-**[English](README.md) · [빠른 시작](#빠른-시작) · [주요 기능](#주요-기능) · [Windows 빌드](#windows-빌드) · [코드 구조](docs/ARCHITECTURE.md)**
+**[English](README.md) · [상세 한국어 매뉴얼](docs/USER_MANUAL_KO.md) · [English Manual](docs/USER_MANUAL_EN.md) · [빠른 시작](#빠른-시작) · [주요 기능](#주요-기능) · [Windows 빌드](#windows-빌드)**
 
 </div>
 
@@ -67,6 +67,10 @@ Materials · Checklist · Total · Batch · Export
 - 과거 저장값 `CTC(합성용)`은 `CTC(합성기)`로 호환됩니다.
 
 ## 빠른 시작
+
+처음 사용하는 경우 **[상세 한국어 사용자 매뉴얼](docs/USER_MANUAL_KO.md)**을
+먼저 읽는 것을 권장합니다.
+**[English manual](docs/USER_MANUAL_EN.md)**도 함께 제공합니다.
 
 ### 준비 사항
 
@@ -131,6 +135,13 @@ SPPS-Planner/
 
 실행 순서와 호환 코드·활성 코드의 구분은
 [Architecture 문서](docs/ARCHITECTURE.md)에서 확인할 수 있습니다.
+
+### 문서
+
+- [상세 사용자 매뉴얼 — 한국어](docs/USER_MANUAL_KO.md)
+- [Detailed User Manual — English](docs/USER_MANUAL_EN.md)
+- 메모장용 파일: [한국어 TXT](docs/USER_MANUAL_KO.txt) · [English TXT](docs/USER_MANUAL_EN.txt)
+- [Architecture 및 실행 구조](docs/ARCHITECTURE.md)
 
 ## 자동저장과 Custom DB
 

@@ -39,6 +39,12 @@ def test_branch_sequence_is_not_silently_dropped():
     assert plan_summary(PlanInput(sequence="Ac-G-H-K-K-K(GGEP)-NH2", scale_mmol=0.4))["branch_count"] == 1
 
 
+def test_acetylated_amino_acid_modifier_is_parsed_without_runtime_patch():
+    parsed = parse_sequence("Ac-Glu(OtBu)-OH-EEMQRR-NH2")
+    assert parsed.nterm == "Ac-Glu(OtBu)-OH"
+    assert parsed.core_tokens == ["E", "E", "M", "Q", "R", "R"]
+
+
 def test_free_nterm_final_deprotection_is_counted():
     m = generate_step_matrix(PlanInput(sequence="GHK-NH2", scale_mmol=0.4))
     final = m.iloc[-1]

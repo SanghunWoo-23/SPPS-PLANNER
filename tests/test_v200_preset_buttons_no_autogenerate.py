@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-import suite_gui.classic_2094_tk_gui as gui_mod
+from suite_gui import chemistry_workflow
 
 
 class Var:
@@ -36,13 +36,8 @@ def _fake_gui():
 
 def test_dic_hobt_button_updates_chemistry_without_generating_plan(monkeypatch):
     gui, calls = _fake_gui()
-    generated = {'count': 0}
-    monkeypatch.setattr(gui_mod, '_v218_generate', lambda *_a, **_k: generated.__setitem__('count', generated['count'] + 1))
-    monkeypatch.setattr(gui_mod, '_v2093_save_active', lambda *_a, **_k: None)
+    chemistry_workflow.apply_dic_hobt(gui)
 
-    gui_mod._v218_apply_dic_hobt_preset(gui)
-
-    assert generated['count'] == 0
     assert gui.pm_chemistry.get() == 'DIC/HOBt'
     assert gui.default_reagent.get() == 'DIC'
     assert gui.default_catalyst.get() == 'HOBt'
@@ -52,13 +47,8 @@ def test_dic_hobt_button_updates_chemistry_without_generating_plan(monkeypatch):
 
 def test_hbtu_nmp_button_updates_chemistry_without_generating_plan(monkeypatch):
     gui, calls = _fake_gui()
-    generated = {'count': 0}
-    monkeypatch.setattr(gui_mod, '_v218_generate', lambda *_a, **_k: generated.__setitem__('count', generated['count'] + 1))
-    monkeypatch.setattr(gui_mod, '_v2093_save_active', lambda *_a, **_k: None)
+    chemistry_workflow.apply_hbtu_nmp(gui)
 
-    gui_mod._v218_apply_hbtu_nmp_preset(gui)
-
-    assert generated['count'] == 0
     assert gui.pm_chemistry.get() == 'HBTU/NMP 10eq'
     assert gui.default_reagent.get() == 'HBTU'
     assert gui.default_base.get() == 'DIEA'

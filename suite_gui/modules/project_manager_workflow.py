@@ -17,8 +17,8 @@ import tkinter as tk
 from tkinter import ttk
 from suite_gui import peptide_item_collection
 
-APP_VERSION = "V2.2.12"
-VERSION_LABEL = "SPPS Planner GitHub V2.2.12 - Peptide Items Multi-Select + Legacy Controls"
+APP_VERSION = "V3.0.0"
+VERSION_LABEL = "SPPS Planner V3.0.0"
 
 
 def _walk(widget):
@@ -220,7 +220,17 @@ def single_select(gui, v229, ns: dict[str, Any], _event=None):
     new_index = selected[0]
     old_index = _active_index(gui)
     if old_index is not None:
-        _save_active(gui, v229, include_outputs=True)
+        # Generated/applied outputs already live on the item.  Re-reading every
+        # Treeview row on every click was the dominant Project Manager delay.
+        # Snapshot the large output tables only when a Plan cell is actually
+        # being edited; ordinary switching saves the small editor payload only.
+        tree = getattr(gui, "pm_selected_plan_tree", None)
+        editor = getattr(tree, "_v229_editor", None) if tree is not None else None
+        include_outputs = bool(
+            getattr(gui, "_v229_dirty_columns", {})
+            or editor is not None
+        )
+        _save_active(gui, v229, include_outputs=include_outputs)
     if old_index != new_index:
         _restore(gui, v229, ns, new_index)
     else:
@@ -345,11 +355,11 @@ def _install_item_bindings(gui, v229, ns: dict[str, Any]):
     except Exception:
         pass
     try:
-        gui.pm_list.bind("<<ListboxSelect>>", lambda e, _g=gui: single_select(_g, v229, ns, e), add=False)
-        gui.pm_list.bind("<Double-Button-1>", lambda e, _g=gui: double_click(_g, v229, ns, e), add=False)
-        gui.pm_list.bind("<Return>", lambda e, _g=gui: double_click(_g, v229, ns, e), add=False)
-        gui.pm_list.bind("<Delete>", lambda e, _g=gui: (delete_items(_g, v229, ns), "break"), add=False)
-        gui.pm_list.bind("<BackSpace>", lambda e, _g=gui: (delete_items(_g, v229, ns), "break"), add=False)
+        gui.pm_list.bind("<<ListboxSelect>>", gui.pm_on_select, add=False)
+        gui.pm_list.bind("<Double-Button-1>", gui.pm_on_double_click, add=False)
+        gui.pm_list.bind("<Return>", gui.pm_on_double_click, add=False)
+        gui.pm_list.bind("<Delete>", lambda _e: (gui.pm_delete_peptide(), "break"), add=False)
+        gui.pm_list.bind("<BackSpace>", lambda _e: (gui.pm_delete_peptide(), "break"), add=False)
         gui.pm_list.bind("<ButtonPress-1>", lambda e, _g=gui: _start_drag(_g, e), add=False)
         gui.pm_list.bind("<B1-Motion>", lambda e, _g=gui: _drag_motion(_g, e), add=False)
         gui.pm_list.bind("<ButtonRelease-1>", lambda e, _g=gui: _end_drag(_g, e), add=False)
@@ -361,68 +371,9 @@ def _install_item_bindings(gui, v229, ns: dict[str, Any]):
             if isinstance(widget, ttk.Button):
                 text = str(widget.cget("text"))
                 if text == "Delete":
-                    widget.configure(command=lambda _g=gui: delete_items(_g, v229, ns))
+                    widget.configure(command=gui.pm_delete_peptide)
     except Exception:
         pass
-
-
-def _normalize_class(text: str) -> str:
-    key = re.sub(r"[^a-z0-9]+", "", str(text or "").lower())
-    if "resin" in key:
-        return "resin"
-    if "solvent" in key or key in {"dmf", "dcm", "mcdcm", "nmp", "meoh", "methanol", "water", "dw"}:
-        return "solvent"
-    if "base" in key or key in {"diea", "dipea", "piperidine", "lutidine", "collidine"}:
-        return "base"
-    if "catalyst" in key or "additive" in key or key in {"hobt", "oxyma"}:
-        return "catalyst"
-    if "acid" in key or key in {"tfa", "hcl", "acoh"}:
-        return "acid"
-    return "aa"
-
-
-def _patch_total_sort(v229):
-    old_total_rows = getattr(v229, "_total_rows", None)
-    if not callable(old_total_rows) or getattr(v229, "_v2212_total_sort", False):
-        return
-    order = {"resin": 0, "solvent": 1, "base": 2, "catalyst": 3, "aa": 4, "acid": 5}
-
-    def total_rows(materials):
-        rows = []
-        for row in list(old_total_rows(materials)):
-            material_key = re.sub(r"[^a-z0-9]+", "", str(row.get("material", "")).lower())
-            if material_key in {"", "na", "none", "nan"}:
-                continue
-            rows.append(row)
-        def key(row):
-            cls = _normalize_class(str(row.get("class", "")) + " " + str(row.get("material", "")))
-            return (order.get(cls, 99), str(row.get("material", "")).lower())
-        return sorted(rows, key=key)
-
-    v229._total_rows = total_rows
-    v229._v2212_total_sort = True
-
-
-def _patch_unified_chemistry(v229):
-    old_defaults = getattr(v229, "_chemistry_defaults", None)
-    if not callable(old_defaults) or getattr(v229, "_v2212_unified_defaults", False):
-        return
-
-    def chemistry_defaults(gui, ns, inp, unit: str):
-        _sync_modifier_to_aa(gui)
-        data = old_defaults(gui, ns, inp, unit)
-        # When unified mode is on, non-Fmoc chemicals and Ac-AA use the same
-        # operator-facing Unit eq/repeat default system as amino acids.
-        if bool(_safe_get(getattr(gui, "unit_defaults_unified", None), True)):
-            if not str(unit or "").strip().lower().startswith("fmoc-"):
-                try:
-                    data["unit_eq"] = v229._num(_safe_get(getattr(gui, "coupling_eq", None), data.get("unit_eq", 3)), data.get("unit_eq", 3))
-                except Exception:
-                    pass
-        return data
-
-    v229._chemistry_defaults = chemistry_defaults
-    v229._v2212_unified_defaults = True
 
 
 def _find_setup_notebook(gui):
@@ -564,79 +515,3 @@ def apply_post_build(gui, v229, ns):
             gui.pm_list.activate(0)
         except Exception:
             pass
-
-
-def install(gui_cls, ns: dict[str, Any], *_args, **_kwargs):
-    import suite_gui.modules.v229_empty_start_exact_apply_sync as v229
-    _patch_total_sort(v229)
-    _patch_unified_chemistry(v229)
-    try:
-        gui_cls.TITLE = VERSION_LABEL
-    except Exception:
-        pass
-    old_build = gui_cls._build
-
-    def build(self):
-        old_build(self)
-        apply_post_build(self, v229, ns)
-
-    gui_cls._build = build
-    gui_cls.pm_on_select = lambda self, event=None: single_select(self, v229, ns, event)
-    gui_cls.pm_on_double_click = lambda self, event=None: double_click(self, v229, ns, event)
-    gui_cls.pm_delete_peptide = lambda self: delete_items(self, v229, ns)
-
-    # Keep modifier/chemical defaults merged with AA defaults before generation/apply.
-    old_generate = gui_cls.generate_update_plan
-    old_apply = getattr(gui_cls, "apply_change", None)
-    old_export = getattr(gui_cls, "export_outputs", None)
-
-    def generate(self, *a, **k):
-        _sync_modifier_to_aa(self)
-        return old_generate(self, *a, **k)
-
-    def apply(self, *a, **k):
-        _sync_modifier_to_aa(self)
-        if callable(old_apply):
-            return old_apply(self, *a, **k)
-        return old_generate(self, *a, **k)
-
-    def export(self, *a, **k):
-        _sync_modifier_to_aa(self)
-        result = old_export(self, *a, **k) if callable(old_export) else None
-        try:
-            from pathlib import Path as _Path
-            import json as _json
-            out = _Path(getattr(self, "last_outdir", ""))
-            if out.exists():
-                renames = {
-                    "project_manager_selected_outputs_v2.2.9.xlsx": "project_manager_selected_outputs_v2.2.12.xlsx",
-                    "project_manager_state_v2.2.9.json": "project_manager_state_v2.2.12.json",
-                }
-                for old, new in renames.items():
-                    src = out / old
-                    dst = out / new
-                    if src.exists():
-                        try:
-                            if old.endswith(".json"):
-                                data = _json.loads(src.read_text(encoding="utf-8"))
-                                data["app_version"] = APP_VERSION
-                                dst.write_text(_json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
-                                src.unlink(missing_ok=True)
-                            else:
-                                src.replace(dst)
-                                if result == src:
-                                    result = dst
-                        except Exception:
-                            pass
-        except Exception:
-            pass
-        return result
-
-    gui_cls.generate_update_plan = generate
-    gui_cls.pm_generate_selected = generate
-    gui_cls.pm_calculate_all = generate
-    gui_cls.apply_change = apply
-    gui_cls.pm_apply_change = apply
-    gui_cls.export_outputs = export
-    gui_cls.export_selected_outputs = export
-    return gui_cls

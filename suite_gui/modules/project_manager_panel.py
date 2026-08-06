@@ -1,4 +1,4 @@
-"""Project Manager controller for SPPS Planner V2.0.99.
+"""Project Manager controller for SPPS Planner V3.0.0.
 
 This module is the next extraction layer from the historical Tk patch stack.
 It centralizes Project Manager actions behind a small controller object so GUI

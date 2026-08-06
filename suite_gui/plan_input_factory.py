@@ -171,7 +171,7 @@ def build_editor_plan_input(gui, resin, reagent_eq_follows=None):
             0, integer(gui, "default_base_count", 1 if base else 0)
         ),
         reagent_eq_follows_coupling_eq=bool(reagent_eq_follows),
-        auto_short_peptide_eq=True,
+        auto_short_peptide_eq=False,
         step_overrides_text="",
         cleavage_eq_override=number(gui, "cleavage_eq_override", 0.0),
         cleavage_preset=value(gui, "cleavage_preset", "AUTO") or "AUTO",

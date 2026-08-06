@@ -1,4 +1,4 @@
-"""Peptide Items list behavior for SPPS Planner V2.0.99.
+"""Peptide Items list behavior for SPPS Planner V3.0.99.
 
 This is now an extracted implementation, not only a wrapper around legacy
 ``_v2093_*`` globals.  It keeps Shift/Ctrl multi-select, Delete, Duplicate,

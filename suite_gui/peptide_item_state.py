@@ -1,6 +1,8 @@
 """Project Manager peptide-item editor and output snapshot state."""
 from __future__ import annotations
 
+from suite_gui import catalogs
+
 
 EDITOR_FIELDS = (
     ("pm_project", "project", ""),
@@ -27,6 +29,33 @@ OUTPUT_TREES = (
     ("selected_cleavage_rows", "pm_cleavage_tree"),
 )
 
+TAB_TO_OUTPUT = {
+    "Selected Plan": "selected_plan_rows",
+    "Plan": "selected_plan_rows",
+    "Selected Materials": "selected_material_rows",
+    "Materials": "selected_material_rows",
+    "Selected Total Materials": "selected_total_rows",
+    "Total Materials": "selected_total_rows",
+    "Selected Checklist": "selected_checklist_rows",
+    "Checklist": "selected_checklist_rows",
+    "Cleavage Cocktail": "selected_cleavage_rows",
+}
+
+
+def _canonicalize_saved_rows(rows):
+    """Migrate legacy display aliases while preserving sequence notation."""
+    result = []
+    unit_fields = {
+        "Unit name", "material", "AA/Chemical/label/tag/linker", "unit",
+    }
+    for source in list(rows or []):
+        row = dict(source)
+        for field in unit_fields:
+            if field in row:
+                row[field] = catalogs.canonical_unit_name(row.get(field, ""))
+        result.append(row)
+    return result
+
 
 def snapshot(gui, adapter, active_index):
     index = active_index(gui)
@@ -35,6 +64,9 @@ def snapshot(gui, adapter, active_index):
     item = gui.pm_items[index]
     item.update(adapter._editor_payload(gui))
     for item_key, tree_name in OUTPUT_TREES:
+        rendered = getattr(gui, "_pm_rendered_output_index", {})
+        if rendered and rendered.get(item_key) != index:
+            continue
         item[item_key] = adapter._tree_rows(getattr(gui, tree_name, None))
     try:
         adapter._refresh_list_label(gui, index)
@@ -102,6 +134,9 @@ def restore_item(
     if not (0 <= int(index) < len(gui.pm_items)):
         return
     item = gui.pm_items[int(index)]
+    for output_key, _tree_name in OUTPUT_TREES:
+        if output_key in item:
+            item[output_key] = _canonicalize_saved_rows(item[output_key])
     gui._v229_switching = True
     try:
         for name, key, default in EDITOR_FIELDS:
@@ -122,39 +157,77 @@ def restore_item(
         gui.pm_list.activate(index)
     finally:
         gui._v229_switching = False
-    adapter._write_rows(
-        gui.pm_selected_plan_tree,
-        item.get("selected_plan_rows", []),
-        plan_columns,
-        plan_widths,
-    )
-    adapter._write_rows(
-        gui.pm_selected_material_tree,
-        item.get("selected_material_rows", []),
-        material_columns,
-        material_widths,
-    )
-    total_tree = getattr(
-        gui, "pm_selected_total_tree", getattr(gui, "pm_total_tree", None)
-    )
-    adapter._write_rows(
-        total_tree,
-        item.get("selected_total_rows", []),
-        total_columns,
-        total_widths,
-    )
-    adapter._write_rows(
-        gui.progress_tree,
-        item.get("selected_checklist_rows", []),
-        check_columns,
-        check_widths,
-    )
-    adapter._write_rows(
-        gui.pm_cleavage_tree,
-        item.get("selected_cleavage_rows", []),
-    )
+    writers = {
+        "selected_plan_rows": lambda: adapter._write_rows(
+            gui.pm_selected_plan_tree, item.get("selected_plan_rows", []),
+            plan_columns, plan_widths,
+        ),
+        "selected_material_rows": lambda: adapter._write_rows(
+            gui.pm_selected_material_tree, item.get("selected_material_rows", []),
+            material_columns, material_widths,
+        ),
+        "selected_total_rows": lambda: adapter._write_rows(
+            getattr(gui, "pm_selected_total_tree", getattr(gui, "pm_total_tree", None)),
+            item.get("selected_total_rows", []), total_columns, total_widths,
+        ),
+        "selected_checklist_rows": lambda: adapter._write_rows(
+            gui.progress_tree, item.get("selected_checklist_rows", []),
+            check_columns, check_widths,
+        ),
+        "selected_cleavage_rows": lambda: adapter._write_rows(
+            gui.pm_cleavage_tree, item.get("selected_cleavage_rows", []),
+        ),
+    }
+    notebook = getattr(gui, "pm_results_notebook", None)
+    rendered = getattr(gui, "_pm_rendered_output_index", {})
+    gui._pm_rendered_output_index = rendered
+
+    def selected_output_key():
+        try:
+            tab = notebook.select()
+            return TAB_TO_OUTPUT.get(str(notebook.tab(tab, "text")))
+        except Exception:
+            return None
+
+    def render_current_tab(_event=None):
+        current_index = getattr(gui, "_v229_active_index", None)
+        if current_index is None or not (0 <= int(current_index) < len(gui.pm_items)):
+            return
+        key = selected_output_key()
+        if key is None or rendered.get(key) == int(current_index):
+            return
+        current_item = gui.pm_items[int(current_index)]
+        original_item = item
+        if current_item is original_item:
+            writers[key]()
+        else:
+            # Re-enter through the normal restore path on the next selection;
+            # this guard prevents a queued tab event painting an older item.
+            return
+        rendered[key] = int(current_index)
+        if key == "selected_plan_rows":
+            bind_plan_editor(gui, namespace)
+
+    if notebook is None:
+        for key, writer in writers.items():
+            writer()
+            rendered[key] = int(index)
+    else:
+        render_current_tab()
+        gui._pm_lazy_output_renderer = render_current_tab
+        if not getattr(gui, "_pm_lazy_output_bound", False):
+            def dispatch_current_renderer(_event=None):
+                renderer = getattr(gui, "_pm_lazy_output_renderer", None)
+                if callable(renderer):
+                    renderer()
+
+            notebook.bind(
+                "<<NotebookTabChanged>>", dispatch_current_renderer, add="+",
+            )
+            gui._pm_lazy_output_bound = True
     gui._v229_dirty_columns = {}
-    bind_plan_editor(gui, namespace)
+    if notebook is None:
+        bind_plan_editor(gui, namespace)
 
 
 def live_sync(gui, adapter, active_index):

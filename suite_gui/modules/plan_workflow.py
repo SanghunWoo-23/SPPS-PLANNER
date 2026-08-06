@@ -11,18 +11,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 import json
+import math
 import re
 import tkinter as tk
 from tkinter import ttk, messagebox
 import pandas as pd
 
-from suite_gui.modules import v228_fast_legacy_exact_workflow as v228
+from suite_gui.modules import workspace_widgets as v228
 from suite_gui import peptide_item_state
 from suite_gui import peptide_item_collection
 from suite_gui import state_persistence
+from suite_gui import position_rules
 
-VERSION = "V2.0.0"
-TITLE = "SPPS Planner V2.0.0"
+VERSION = "V3.0.0"
+TITLE = "SPPS Planner V3.0.0"
 
 PLAN_COLUMNS = [
     "No", "Unit name", "MW", "Density(g/mL)", "Unit eq", "Unit mmol", "Unit amount",
@@ -55,7 +57,8 @@ def _num(value: Any, default: float = 0.0) -> float:
     try:
         if value is None or str(value).strip() == "":
             return default
-        return float(str(value).replace(",", "").replace("mL", "").replace("ml", "").replace("g", "").strip())
+        number = float(str(value).replace(",", "").replace("mL", "").replace("ml", "").replace("g", "").strip())
+        return number if math.isfinite(number) else default
     except Exception:
         return default
 
@@ -65,6 +68,8 @@ def _fmt(value: Any, digits: int = 6) -> str:
         number = float(value)
     except Exception:
         return "" if value is None else str(value)
+    if not math.isfinite(number):
+        return ""
     if abs(number) < 1e-12:
         return ""
     if abs(number - round(number)) < 1e-10:
@@ -101,6 +106,14 @@ def _active_index(gui) -> int | None:
 def _lookup(gui, ns: dict[str, Any], name: str) -> tuple[float, float]:
     if not str(name or "").strip():
         return 0.0, 0.0
+    from suite_gui import custom_db_workflow
+    custom = custom_db_workflow.lookup(gui, name)
+    if custom is not None:
+        return _num(custom[0]), _num(custom[1])
+    from suite_gui.calculation_context import material_lookup
+    direct = material_lookup(name)
+    if direct != (0.0, 0.0):
+        return direct
     for fn_name in ("_v251_lookup", "_v248_lookup", "_v216_lookup_mw_density", "_v29_material_lookup"):
         fn = ns.get(fn_name)
         if callable(fn):
@@ -151,35 +164,23 @@ def _canonical(ns: dict[str, Any], value: str) -> str:
         return "DIC"
     if simple in {"diea", "dipea"}:
         return "DIEA"
-    fn = ns.get("_v251_canon")
-    if callable(fn):
-        try:
-            return str(fn(raw))
-        except Exception:
-            pass
-    return raw
+    from suite_gui.calculation_context import canonical
+    return canonical(raw)
 
 
 def _unit_options(gui, ns: dict[str, Any], column: str) -> list[str]:
-    fn = ns.get("_v251_options_for_col") or ns.get("_v249_options_for_col")
-    if callable(fn):
-        try:
-            return list(fn(gui, column))
-        except Exception:
-            pass
-    return []
+    from suite_gui.calculation_context import options_for_column
+    return options_for_column(gui, column)
 
 
 def _sequence_aa_eq(gui) -> float:
-    seq = str(_var(gui, "pm_sequence", "") or "").strip()
-    default_eq = _num(_var(gui, "coupling_eq", 5), 5.0)
-    try:
-        from spps_planner.parser import parse_sequence
-        parsed = parse_sequence(seq)
-        count = len(list(parsed.core_tokens or []))
-    except Exception:
-        count = len([x for x in re.split(r"[-\s]+", seq) if x and x.upper() not in {"AC", "NH2", "OH"}])
-    return 2.0 if 0 < count <= 5 else default_eq
+    """Return the operator-selected default amino-acid coupling equivalent.
+
+    Sequence length must not silently override the value shown in Unit defaults.
+    Position-specific rules and per-row edits are applied later by their existing
+    workflows.
+    """
+    return _num(_var(gui, "coupling_eq", 5), 5.0)
 
 
 def _is_ac2o(unit: str) -> bool:
@@ -233,10 +234,13 @@ def _build_plan_input(gui, ns: dict[str, Any]):
     seq = str(_var(gui, "pm_sequence", "") or "").strip()
     if not seq:
         raise ValueError("Sequence is empty. Enter a sequence before Generate or Apply Change.")
-    base_fn = ns.get("_v226_plan_input") or ns.get("_v222_plan_input") or ns.get("_v218_plan_input")
-    if not callable(base_fn):
-        raise RuntimeError("PlanInput controller is unavailable.")
-    base = base_fn(gui)
+    from suite_gui.plan_input_factory import build_editor_plan_input
+    from suite_gui.resin_profiles import normalize_resin
+    base = build_editor_plan_input(
+        gui,
+        normalize_resin(_var(gui, "pm_resin", "Rink Amide AM")),
+        bool(_var(gui, "reagent_eq_follows_coupling_eq", True)),
+    )
     follows = bool(_var(gui, "reagent_eq_follows_coupling_eq", True))
     chemistry = str(_var(gui, "pm_chemistry", "") or "").upper()
 
@@ -277,7 +281,7 @@ def _build_plan_input(gui, ns: dict[str, Any]):
         default_base_count=base_count,
         default_reaction_solvent=reaction_solvent,
         reagent_eq_follows_coupling_eq=follows,
-        auto_short_peptide_eq=True,
+        auto_short_peptide_eq=False,
         short_peptide_max_len=5,
         short_peptide_coupling_eq=2.0,
         cleavage_preset=str(_var(gui, "cleavage_preset", "") or ""),
@@ -336,7 +340,51 @@ def _generated_plan_rows(gui, ns: dict[str, Any], inp) -> list[dict[str, Any]]:
             "Base mmol": _fmt(base_mmol), "Base amount": _amount(base, base_mmol, base_mw, base_den),
             "Coupling solvent": solvent, "Solvent mL": _fmt(solvent_ml), "Repeat": str(repeat), "Note": note,
         })
-    return rows
+    baseline = []
+    for source in rows:
+        row = dict(source)
+        row["__old_repeat"] = row.get("Repeat", "1")
+        for eq_column, mmol_column in (
+            ("Unit eq", "Unit mmol"),
+            ("R1 eq", "R1 mmol"),
+            ("R2 eq", "R2 mmol"),
+            ("Base eq", "Base mmol"),
+        ):
+            row[f"__old_{eq_column}"] = row.get(eq_column, "")
+            row[f"__old_{mmol_column}"] = row.get(mmol_column, "")
+        row["__old_solvent_ml"] = row.get("Solvent mL", "")
+        baseline.append(row)
+
+    adjusted = position_rules.apply_generated(gui, baseline)
+    for row in adjusted:
+        old_repeat = max(1.0, _num(row.pop("__old_repeat", 1), 1.0))
+        new_repeat = max(1.0, _num(row.get("Repeat"), 1.0))
+        repeat_ratio = new_repeat / old_repeat
+        for name_column, eq_column, mw_column, density_column, mmol_column, amount_column in (
+            ("Unit name", "Unit eq", "MW", "Density(g/mL)", "Unit mmol", "Unit amount"),
+            ("Reagent 1", "R1 eq", "R1 MW", "R1 Density", "R1 mmol", "R1 amount"),
+            ("Reagent 2 / catalyst", "R2 eq", "R2 MW", "R2 Density", "R2 mmol", "R2 amount"),
+            ("Base", "Base eq", "Base MW", "Base Density", "Base mmol", "Base amount"),
+        ):
+            old_eq = _num(row.pop(f"__old_{eq_column}", row.get(eq_column)), 0.0)
+            old_mmol = _num(row.pop(f"__old_{mmol_column}", row.get(mmol_column)), 0.0)
+            new_eq = _num(row.get(eq_column), 0.0)
+            eq_ratio = new_eq / old_eq if old_eq > 0 else 1.0
+            new_mmol = old_mmol * repeat_ratio * eq_ratio
+            row[mmol_column] = _fmt(new_mmol)
+            row[amount_column] = _amount(
+                str(row.get(name_column, "") or ""),
+                new_mmol,
+                _num(row.get(mw_column), 0.0),
+                _num(row.get(density_column), 0.0),
+            )
+        old_solvent = _num(row.pop("__old_solvent_ml", row.get("Solvent mL")), 0.0)
+        row["Solvent mL"] = (
+            _fmt(old_solvent * repeat_ratio)
+            if str(row.get("Coupling solvent", "") or "").strip()
+            else ""
+        )
+    return adjusted
 
 
 def _row_dict(tree, iid) -> dict[str, str]:
@@ -358,7 +406,12 @@ def _chemistry_defaults(gui, ns, inp, unit: str) -> dict[str, Any]:
             "base": "DIEA", "base_eq": _num(_var(gui, "default_base_eq", 5), 5.0) or 5.0,
             "solvent": str(_var(gui, "default_coupling_solution_solvent", "DMF") or "DMF"),
         }
-    unit_eq = _sequence_aa_eq(gui) if _is_fmoc(unit) else _num(_var(gui, "modifier_eq", 3), 3.0)
+    unified = bool(_var(gui, "unit_defaults_unified", True))
+    unit_eq = (
+        _sequence_aa_eq(gui)
+        if _is_fmoc(unit) or unified
+        else _num(_var(gui, "modifier_eq", 3), 3.0)
+    )
     follows = bool(getattr(inp, "reagent_eq_follows_coupling_eq", True))
     chemistry = str(_var(gui, "pm_chemistry", "") or "").upper()
     r1_eq = unit_eq if follows else _num(getattr(inp, "default_reagent_eq", 0), 0.0)
@@ -467,6 +520,20 @@ def _recalc_direct_loading_row(gui, ns: dict[str, Any], inp, row: dict[str, str]
 def _recalc_plan(gui, ns: dict[str, Any], inp) -> None:
     tree = gui.pm_selected_plan_tree
     dirty_map = getattr(gui, "_v229_dirty_columns", {})
+    current_rows = [_row_dict(tree, iid) for iid in tree.get_children()]
+    repeat_by_index = position_rules.desired_repeats(gui, current_rows)
+    for position, iid in enumerate(tree.get_children()):
+        if position not in repeat_by_index:
+            continue
+        row = current_rows[position]
+        if _is_direct_2ctc_loading_row(inp, row, position):
+            continue
+        repeat = str(repeat_by_index[position])
+        if row.get("Repeat") != repeat:
+            row["Repeat"] = repeat
+            _write_row(tree, iid, row)
+            dirty_map.setdefault(iid, set()).add("Repeat")
+    gui._v229_dirty_columns = dirty_map
     scale = _num(inp.scale_mmol, 0.0)
     for position, iid in enumerate(list(tree.get_children())):
         row = _row_dict(tree, iid)
@@ -663,35 +730,67 @@ def _visible_protocol(gui, ns: dict[str, Any], inp) -> tuple[list[dict[str, Any]
         unit = row.get("Unit name", "")
         is_first = idx == 0
         is_last = idx == final_index
-        is_terminal = _is_terminal_chemical(unit)
+        repeat = max(1, int(round(_num(row.get("Repeat"), 1))))
 
         if is_first and profile == "CTC_DIRECT" and bool(getattr(inp, "apply_resin_loading", False)):
             add_solvent(step, "MC/DCM", working_ml, "Swell solvent", "Swell", "2-CTC DCM swell x1")
             operation(step, "Swell: MC/DCM x1", unit, "Direct-loading 2-CTC")
         else:
-            # Regular cycles: deprotect twice, then DMF wash x2. Final coupling uses DMF wash x6.
+            # Accepted ordinary cycle: deprotect twice, then DMF wash x6.
             if not (is_first and profile == "CTC_DIRECT"):
                 total_solution = working_ml * depro_count
                 add_solvent(step, depro_base, total_solution * base_fraction, "Deprotection base", "Deprotection", depro_text, depro_count)
                 add_solvent(step, "DMF", total_solution * (1.0 - base_fraction), "Deprotection solvent", "Deprotection", depro_text, depro_count)
                 for rep in range(1, depro_count + 1):
                     operation(step, f"Deprotection {rep}", unit, depro_text)
-                prewash = 6 if is_last or is_terminal else 2
+                prewash = 6
                 add_solvent(step, "DMF", working_ml * prewash, "Pre-coupling wash solvent", "DMF wash", f"DMF wash x{prewash} before coupling", prewash)
                 operation(step, f"DMF wash x{prewash}", unit, "Before coupling")
 
-        for material, cls, eq_key, mmol_key, amount_key in (
-            (row.get("Unit name", ""), "AA/Chemical", "Unit eq", "Unit mmol", "Unit amount"),
-            (row.get("Reagent 1", ""), "Coupling reagent", "R1 eq", "R1 mmol", "R1 amount"),
-            (row.get("Reagent 2 / catalyst", ""), "Catalyst/additive", "R2 eq", "R2 mmol", "R2 amount"),
-            (row.get("Base", ""), "Base", "Base eq", "Base mmol", "Base amount"),
-        ):
-            rec = _material_row(gui, ns, step, material, cls, _num(row.get(mmol_key), 0), row.get(amount_key, ""), "Coupling", f"{eq_key}={row.get(eq_key,'')}", "Visible Selected Plan", 1, row.get("Repeat", "1"))
-            if rec:
-                materials.append(rec)
-        solvent_ml = _num(row.get("Solvent mL"), 0.0)
-        add_solvent(step, row.get("Coupling solvent", ""), solvent_ml, "Coupling solvent", "Coupling", "Visible Selected Plan coupling solvent")
-        operation(step, "Coupling / reaction", unit, f"Unit eq={row.get('Unit eq','')}; R1={row.get('Reagent 1','')} {row.get('R1 eq','')} eq; R2={row.get('Reagent 2 / catalyst','')} {row.get('R2 eq','')} eq; Base={row.get('Base','')} {row.get('Base eq','')} eq")
+        coupling_note = (
+            f"Unit eq={row.get('Unit eq','')}; "
+            f"R1={row.get('Reagent 1','')} {row.get('R1 eq','')} eq; "
+            f"R2={row.get('Reagent 2 / catalyst','')} {row.get('R2 eq','')} eq; "
+            f"Base={row.get('Base','')} {row.get('Base eq','')} eq"
+        )
+        for coupling_number in range(1, repeat + 1):
+            phase = f"Coupling {coupling_number}" if repeat > 1 else "Coupling"
+            for material, cls, eq_key, mmol_key in (
+                (row.get("Unit name", ""), "AA/Chemical", "Unit eq", "Unit mmol"),
+                (row.get("Reagent 1", ""), "Coupling reagent", "R1 eq", "R1 mmol"),
+                (row.get("Reagent 2 / catalyst", ""), "Catalyst/additive", "R2 eq", "R2 mmol"),
+                (row.get("Base", ""), "Base", "Base eq", "Base mmol"),
+            ):
+                rec = _material_row(
+                    gui, ns, step, material, cls,
+                    _num(row.get(mmol_key), 0) / repeat,
+                    "", phase,
+                    f"{eq_key}={row.get(eq_key, '')}"
+                    + (f" | Coupling {coupling_number}/{repeat}" if repeat > 1 else ""),
+                    "Visible Selected Plan", 1, 1,
+                )
+                if rec:
+                    materials.append(rec)
+            solvent_ml = _num(row.get("Solvent mL"), 0.0) / repeat
+            add_solvent(
+                step, row.get("Coupling solvent", ""), solvent_ml,
+                "Coupling solvent", phase,
+                "Visible Selected Plan coupling solvent", 1,
+            )
+            operation(
+                step,
+                f"Coupling {coupling_number}" if repeat > 1 else "Coupling / reaction",
+                unit,
+                coupling_note,
+            )
+            if coupling_number < repeat:
+                add_solvent(
+                    step, "DMF", working_ml * 2,
+                    "Inter-coupling wash solvent", "DMF wash",
+                    f"Repeat coupling x{repeat}: DMF wash x2 after Coupling {coupling_number}",
+                    2,
+                )
+                operation(step, "DMF wash x2", unit, "Between repeated couplings")
 
         if is_last:
             has_nterm_temp_protection = _has_nterm_temporary_protection(unit)
@@ -738,9 +837,12 @@ def _visible_protocol(gui, ns: dict[str, Any], inp) -> tuple[list[dict[str, Any]
                 add_solvent(step, "MC/DCM", working_ml * 3, "Final wash solvent", "Final wash", "MC/DCM x3 after final coupling", 3)
                 operation(step, "Final MC/DCM wash x3", unit)
         else:
-            postwash = 6
-            add_solvent(step, "DMF", working_ml * postwash, "Post-coupling wash solvent", "DMF wash", "DMF wash x6 after coupling", postwash)
-            operation(step, "Post-coupling DMF wash x6", unit)
+            add_solvent(
+                step, "DMF", working_ml * 2,
+                "Post-coupling wash solvent", "DMF wash",
+                "DMF wash x2 after final coupling of this unit", 2,
+            )
+            operation(step, "Post-coupling DMF wash x2", unit)
 
     for i in range(len(checklist) - 1):
         checklist[i]["next_step"] = checklist[i + 1]["operation"]
@@ -779,41 +881,157 @@ def _total_rows(materials: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "total mmol": _fmt(rec["mmol"]), "total amount": amount,
             "note": "Merged from visible Selected Plan and protocol",
         })
-    return out
+
+    def category(row: dict[str, Any]) -> tuple[int, str]:
+        text = (
+            str(row.get("class", "")) + " " + str(row.get("material", ""))
+        ).lower()
+        key = re.sub(r"[^a-z0-9가-힣]+", "", text)
+        if "resin" in key:
+            order = 0
+        elif "solvent" in key or any(
+            name in key for name in ("dmf", "dcm", "mcdcm", "nmp", "meoh", "methanol")
+        ):
+            order = 1
+        elif "base" in key or any(
+            name in key for name in ("diea", "dipea", "piperidine")
+        ):
+            order = 2
+        elif "catalyst" in key or "additive" in key or "couplingreagent" in key:
+            order = 3
+        elif "acidcleavage" in key or "cleavagereagent" in key or any(
+            name in key for name in ("tfa", "hcl", "aceticacid")
+        ):
+            order = 5
+        else:
+            order = 4
+        return order, str(row.get("material", "")).lower()
+
+    return sorted(
+        (
+            row for row in out
+            if re.sub(r"[^a-z0-9]+", "", str(row.get("material", "")).lower())
+            not in {"", "na", "none", "nan"}
+        ),
+        key=category,
+    )
 
 
-def _write_linked(gui, ns: dict[str, Any], inp, *, include_cleavage: bool) -> None:
+def _write_linked(
+    gui,
+    ns: dict[str, Any],
+    inp,
+    *,
+    include_cleavage: bool,
+    paint_all_linked: bool = False,
+) -> None:
     materials, checklist = _visible_protocol(gui, ns, inp)
-    v228._write_rows(gui.pm_selected_material_tree, materials, MATERIAL_COLUMNS, MATERIAL_WIDTHS)
-    v228._write_rows(gui.pm_selected_total_tree, _total_rows(materials), TOTAL_COLUMNS, TOTAL_WIDTHS)
-    v228._write_rows(gui.progress_tree, checklist, CHECK_COLUMNS, CHECK_WIDTHS)
+    notebook = getattr(gui, "pm_results_notebook", None)
     try:
-        gui._update_progress_widgets()
+        selected_label = str(notebook.tab(notebook.select(), "text"))
     except Exception:
-        pass
-    if include_cleavage:
-        _refresh_cleavage(gui, ns, inp)
-    else:
-        # Generate creates the synthesis plan only.  Cleavage is operator-driven
-        # and is created when Apply Change is pressed after entering a cocktail.
-        v228._clear_tree(getattr(gui, "pm_cleavage_tree", None))
+        selected_label = ""
+    paint_all = notebook is None
+    paint_cleavage = paint_all or selected_label == "Cleavage Cocktail"
+    cleavage = (
+        _refresh_cleavage(gui, ns, inp, paint=paint_cleavage)
+        if include_cleavage else pd.DataFrame()
+    )
+    if include_cleavage and cleavage is not None and not cleavage.empty:
+        for record in cleavage.fillna("").to_dict("records"):
+            component = str(record.get("component", "") or "").strip()
+            if not component or component in {
+                "Total cocktail", "Cys warning", "2-CTC/Trityl warning",
+            }:
+                continue
+            volume = _num(record.get("volume_mL"), 0.0)
+            grams = _num(record.get("approx_g"), 0.0)
+            materials.append({
+                "step": "cleavage",
+                "material": component,
+                "class": "Acid/Cleavage reagent",
+                "MW": "",
+                "density_g_per_mL": record.get("density_g_mL", ""),
+                "planned_mmol": "",
+                "planned_g": _fmt(grams) if grams and not volume else "",
+                "planned_mL": _fmt(volume) if volume else "",
+                "use_count": 1,
+                "repeat": 1,
+                "phase": "Cleavage",
+                "note": f"{record.get('percent', '')}% {record.get('percent_basis', '')}".strip(),
+                "source": "Cleavage cocktail",
+            })
+    total_rows = _total_rows(materials)
+    cleavage_rows = (
+        cleavage.fillna("").to_dict("records")
+        if cleavage is not None and not cleavage.empty else []
+    )
+    index = _active_index(gui)
+    if index is not None:
+        item = gui.pm_items[index]
+        item["selected_material_rows"] = list(materials)
+        item["selected_total_rows"] = list(total_rows)
+        item["selected_checklist_rows"] = list(checklist)
+        if include_cleavage:
+            item["selected_cleavage_rows"] = list(cleavage_rows)
+
+    outputs = (
+        (
+            "selected_material_rows", {"Selected Materials", "Materials"},
+            gui.pm_selected_material_tree, materials,
+            MATERIAL_COLUMNS, MATERIAL_WIDTHS,
+        ),
+        (
+            "selected_total_rows", {"Selected Total Materials", "Total Materials"},
+            gui.pm_selected_total_tree, total_rows,
+            TOTAL_COLUMNS, TOTAL_WIDTHS,
+        ),
+        (
+            "selected_checklist_rows", {"Selected Checklist", "Checklist"},
+            gui.progress_tree, checklist, CHECK_COLUMNS, CHECK_WIDTHS,
+        ),
+    )
+    rendered = getattr(gui, "_pm_rendered_output_index", {})
+    for key, labels, tree, rows, columns, widths in outputs:
+        if paint_all_linked or paint_all or selected_label in labels:
+            v228._write_rows(tree, rows, columns, widths)
+            if index is not None:
+                rendered[key] = index
+        elif index is not None and rendered.get(key) == index:
+            rendered.pop(key, None)
+    gui._pm_rendered_output_index = rendered
+    if paint_all_linked or paint_all or selected_label in {"Selected Checklist", "Checklist"}:
+        try:
+            gui._update_progress_widgets()
+        except Exception:
+            pass
+    if include_cleavage and index is not None:
+        if paint_cleavage:
+            rendered["selected_cleavage_rows"] = index
+        elif rendered.get("selected_cleavage_rows") == index:
+            rendered.pop("selected_cleavage_rows", None)
 
 
-def _refresh_cleavage(gui, ns: dict[str, Any], inp=None):
+def _refresh_cleavage(gui, ns: dict[str, Any], inp=None, *, paint: bool = True):
     """Generate cleavage only from an explicit operator entry/preset."""
     components = str(_var(gui, "cleavage_components_text", "") or "").strip()
     preset = str(_var(gui, "cleavage_preset", "") or "").strip()
     if not components and preset.upper() in {"", "AUTO"}:
-        v228._clear_tree(getattr(gui, "pm_cleavage_tree", None))
+        if paint:
+            v228._clear_tree(getattr(gui, "pm_cleavage_tree", None))
         return pd.DataFrame()
     try:
         inp = inp or _build_plan_input(gui, ns)
         from spps_planner.engine import generate_cleavage_cocktail
         frame = generate_cleavage_cocktail(inp)
-        v228._write_rows(gui.pm_cleavage_tree, frame.fillna("").to_dict("records"))
+        if paint:
+            v228._write_rows(
+                gui.pm_cleavage_tree, frame.fillna("").to_dict("records"),
+            )
         return frame
     except Exception:
-        v228._clear_tree(getattr(gui, "pm_cleavage_tree", None))
+        if paint:
+            v228._clear_tree(getattr(gui, "pm_cleavage_tree", None))
         return pd.DataFrame()
 
 
@@ -1031,7 +1249,14 @@ def generate(gui, ns: dict[str, Any]):
         v228._write_rows(gui.pm_selected_plan_tree, rows, PLAN_COLUMNS, PLAN_WIDTHS)
         gui._v229_dirty_columns = {}
         _bind_plan_editor(gui, ns)
-        _write_linked(gui, ns, inp, include_cleavage=False)
+        # Generate is the one-click synthesis calculation: Plan, Materials,
+        # Checklist and Total Materials are all calculated and painted now.
+        # Cleavage remains an explicit Apply Change operation.
+        _write_linked(
+            gui, ns, inp,
+            include_cleavage=False,
+            paint_all_linked=True,
+        )
         index = _active_index(gui)
         if index is not None:
             gui.pm_items[index]["status"] = "Calculated"
@@ -1086,7 +1311,7 @@ def _delete_selected(gui, ns):
         row = _row_dict(gui.pm_selected_plan_tree, iid)
         row["No"] = str(number)
         _write_row(gui.pm_selected_plan_tree, iid, row)
-    apply_change(gui, ns)
+    gui.apply_change()
 
 
 def _install_plan_toolbar(gui, ns):
@@ -1113,9 +1338,9 @@ def _install_action_buttons(gui, ns):
         except Exception:
             continue
         if text == "Generate":
-            widget.configure(command=lambda: generate(gui, ns))
+            widget.configure(command=gui.generate_update_plan)
         elif text == "Apply Change":
-            widget.configure(command=lambda: apply_change(gui, ns))
+            widget.configure(command=gui.apply_change)
 
 
 def _find_setup_notebook(gui):
@@ -1205,7 +1430,7 @@ def _install_eq_follow_control(gui):
     for tab in notebook.tabs():
         if str(notebook.tab(tab, "text")) == "Reagents":
             frame = notebook.nametowidget(tab)
-            ttk.Checkbutton(frame, text="Reagent / catalyst / base eq follows AA eq (1-5 mer: 2 eq, longer: Default AA eq)", variable=gui.reagent_eq_follows_coupling_eq).grid(row=6, column=0, columnspan=8, sticky="w", pady=(7, 2))
+            ttk.Checkbutton(frame, text="Reagent / catalyst / base eq follows Default AA eq", variable=gui.reagent_eq_follows_coupling_eq).grid(row=6, column=0, columnspan=8, sticky="w", pady=(7, 2))
             break
 
 
@@ -1295,10 +1520,33 @@ def _install_traces(gui):
         except Exception:
             pass
         try:
-            token = variable.trace_add("write", lambda *_a, _gui=gui: _gui.after_idle(lambda: _live_sync(_gui)))
+            token = variable.trace_add(
+                "write", lambda *_a, _gui=gui: _schedule_live_sync(_gui),
+            )
             gui._v229_trace_tokens.append((variable, token))
         except Exception:
             pass
+
+
+def _schedule_live_sync(gui):
+    """Save one editor change per idle cycle and ignore programmatic restores."""
+    if (
+        getattr(gui, "_v229_switching", False)
+        or getattr(gui, "_v2212_switching", False)
+        or getattr(gui, "_restoring_state", False)
+    ):
+        return
+    if getattr(gui, "_v3_live_sync_after_id", None):
+        return
+
+    def run():
+        gui._v3_live_sync_after_id = None
+        _live_sync(gui)
+
+    try:
+        gui._v3_live_sync_after_id = gui.after_idle(run)
+    except Exception:
+        run()
 
 
 def _session_path(gui) -> Path:
@@ -1420,25 +1668,25 @@ def delete_item(gui):
 
 def _bind_item_actions(gui, ns):
     gui.pm_list.bind("<<ListboxSelect>>", lambda e: _single_select(gui, e), add=False)
-    gui.pm_list.bind("<Double-Button-1>", lambda e: _double_click(gui, ns, e), add=False)
-    gui.pm_list.bind("<Return>", lambda e: _double_click(gui, ns, e), add=False)
+    gui.pm_list.bind("<Double-Button-1>", gui.pm_on_double_click, add=False)
+    gui.pm_list.bind("<Return>", gui.pm_on_double_click, add=False)
     try:
         parent = gui.pm_list.master
         for widget in v228._walk(parent):
             if isinstance(widget, ttk.Button):
                 text = str(widget.cget("text"))
                 if text == "Add":
-                    widget.configure(command=lambda: add_item(gui))
+                    widget.configure(command=gui.pm_add_peptide)
                 elif text == "Duplicate":
-                    widget.configure(command=lambda: duplicate_item(gui))
+                    widget.configure(command=gui.pm_duplicate_peptide)
                 elif text == "Delete":
-                    widget.configure(command=lambda: delete_item(gui))
+                    widget.configure(command=gui.pm_delete_peptide)
     except Exception:
         pass
 
 
 def export_outputs(gui, ns):
-    """Export the exact visible V2.0.0 state without replacing manual edits."""
+    """Export the exact visible V3.0.0 state without replacing manual edits."""
     try:
         if not v228._tree_rows(getattr(gui, "pm_selected_plan_tree", None)):
             if not generate(gui, ns):
@@ -1490,7 +1738,7 @@ def export_outputs(gui, ns):
             "cleavage_components_text": item.get("cleavage_components_text", ""),
         }])
 
-        xlsx = out / "project_manager_selected_outputs_v2.0.0.xlsx"
+        xlsx = out / "project_manager_selected_outputs_v3.0.0.xlsx"
         with pd.ExcelWriter(xlsx, engine="openpyxl") as writer:
             editor_summary.to_excel(writer, index=False, sheet_name="00_EDITOR_SUMMARY")
             visible_plan.to_excel(writer, index=False, sheet_name="01_SELECTED_PLAN_VISIBLE")
@@ -1514,9 +1762,9 @@ def export_outputs(gui, ns):
         state = {
             "app_version": VERSION, "saved_at": datetime.now().isoformat(timespec="seconds"),
             "active_index": index, "pm_items": list(getattr(gui, "pm_items", []) or []),
-            "visible_selected_plan_source": "current edited TreeView; Apply Change-linked V2.0.0 tables; no regeneration during export",
+            "visible_selected_plan_source": "current edited TreeView; Apply Change-linked V3.0.0 tables; no regeneration during export",
         }
-        (out / "project_manager_state_v2.0.0.json").write_text(
+        (out / "project_manager_state_v3.0.0.json").write_text(
             json.dumps(state, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
         )
         gui.last_outdir = out
@@ -1544,66 +1792,3 @@ def _normalize_title(gui) -> None:
             if text.startswith("SPPS Planner GitHub"):
                 widget.configure(text=TITLE)
                 break
-
-
-def install(
-    gui_cls,
-    ns: dict[str, Any],
-    original_build,
-    *,
-    wrap_build=True,
-    return_build=False,
-):
-    def no_op(_self, *args, **kwargs):
-        return None
-
-    def build(gui):
-        gui._v229_ns = ns
-        gui._v228_ns = ns
-        gui._v229_switching = True
-        original_build(gui)
-        gui._v229_switching = False
-        try:
-            v228._cancel_pending_legacy_jobs(gui)
-        except Exception:
-            pass
-        v228._hide_non_workbench_tabs(gui)
-        _normalize_title(gui)
-        _install_result_tabs(gui, ns)
-        _install_action_buttons(gui, ns)
-        _install_loading_controls(gui)
-        _install_eq_follow_control(gui)
-        _rename_editor_loading(gui)
-        _install_traces(gui)
-        _load_items_only(gui)
-        _bind_item_actions(gui, ns)
-        _clear_editor_and_outputs(gui)
-        try:
-            v228._cancel_pending_legacy_jobs(gui)
-        except Exception:
-            pass
-
-    if wrap_build:
-        gui_cls._build = build
-    # Prevent the hidden old single-plan table from generating sample output after _build.
-    gui_cls.rebuild_table = no_op
-    gui_cls.refresh_outputs_from_tree = no_op
-    gui_cls.pm_live_sync_selected = _live_sync
-    gui_cls.pm_on_select = _single_select
-    gui_cls.pm_on_double_click = lambda self, event=None: _double_click(self, ns, event)
-    gui_cls.pm_generate_selected = lambda self, *a, **k: generate(self, ns)
-    gui_cls.pm_calculate_all = lambda self, *a, **k: generate(self, ns)
-    gui_cls.generate_update_plan = lambda self, *a, **k: generate(self, ns)
-    gui_cls.apply_change = lambda self, *a, **k: apply_change(self, ns)
-    gui_cls.pm_apply_change = lambda self, *a, **k: apply_change(self, ns)
-    gui_cls.apply_plan_mw_density = lambda self, *a, **k: apply_change(self, ns)
-    gui_cls.pm_add_peptide = lambda self, item=None: add_item(self, item)
-    gui_cls.pm_duplicate_peptide = lambda self: duplicate_item(self)
-    gui_cls.pm_delete_peptide = lambda self: delete_item(self)
-    gui_cls.save_autosave_state = lambda self: save_session(self)
-    gui_cls.schedule_autosave = lambda self: schedule_autosave(self)
-    gui_cls.export_outputs = lambda self: export_outputs(self, ns)
-    gui_cls.export_selected_outputs = lambda self: export_outputs(self, ns)
-    if return_build:
-        return build
-    return gui_cls

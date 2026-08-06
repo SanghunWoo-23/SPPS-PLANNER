@@ -50,7 +50,7 @@ def test_session_state_keeps_the_accepted_json_shape(tmp_path):
     state = harness._collect_state()
 
     assert harness.synced == 1
-    assert state["app_version"] == "V2.0.0"
+    assert state["app_version"] == "V3.0.0"
     assert state["selected_pm_index"] == 1
     assert state["pm_items"] == harness.pm_items
     assert state["batch_rows"] == [
@@ -66,7 +66,7 @@ def test_session_save_is_atomic_and_close_saves_before_destroy(tmp_path):
 
     harness.save_autosave_state()
     saved = json.loads(path.read_text(encoding="utf-8"))
-    assert saved["app_version"] == "V2.0.0"
+    assert saved["app_version"] == "V3.0.0"
     assert not path.with_suffix(".tmp").exists()
 
     harness.on_close()

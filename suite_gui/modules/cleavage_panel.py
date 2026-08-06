@@ -1,4 +1,4 @@
-"""Cleavage cocktail panel helpers for SPPS Planner V2.0.99."""
+"""Cleavage cocktail panel helpers for SPPS Planner V3.0.0."""
 from __future__ import annotations
 from . import gui_common as state
 

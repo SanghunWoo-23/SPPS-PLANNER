@@ -14,7 +14,7 @@ def _new_gui(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
-    import suite_gui.modules.v229_empty_start_exact_apply_sync as ctl
+    from suite_gui.modules import plan_workflow as ctl
     ctl.messagebox.showerror = lambda *a, **k: None
     ctl.messagebox.showinfo = lambda *a, **k: None
     from suite_gui.classic_2094_tk_gui import SPPSGui
@@ -30,7 +30,7 @@ def _new_gui(monkeypatch, tmp_path):
 
 
 def test_single_position_parser_and_blank_rule_have_no_hidden_defaults():
-    from suite_gui.modules.v2213_operator_final_restore import _parse_ranges
+    from suite_gui.modules.operator_controls import _parse_ranges
 
     assert _parse_ranges("7:2", [(4, 6, 2.0)]) == [(7, 7, 2.0)]
     assert _parse_ranges(" 7 : 1.5 ", []) == [(7, 7, 1.5)]

@@ -2,15 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tools.audit_legacy_gui import audit
 
-
-def test_legacy_audit_finds_patch_hotspots_without_importing_tk():
+def test_legacy_controller_and_numbered_patch_sources_are_removed():
     root = Path(__file__).resolve().parents[1]
-    report = audit(root / "suite_gui" / "legacy_controller.py")
-
-    assert report["line_count"] > 40_000
-    assert report["top_level_definition_count"] > 100
-    assert report["spps_gui_binding_count"] > 100
-    assert report["repeated_spps_gui_bindings"]
-    assert report["preserved_aliases"]
+    assert not (root / "suite_gui" / "legacy_controller.py").exists()
+    assert not (root / "suite_gui" / "release_composition.py").exists()
+    assert list((root / "suite_gui" / "modules").glob("v[0-9]*.py")) == []
+    compat = root / "suite_gui" / "compat"
+    assert not compat.exists() or list(compat.glob("*.py")) == []

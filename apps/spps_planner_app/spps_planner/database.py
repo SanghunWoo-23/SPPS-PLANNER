@@ -12,6 +12,39 @@ except Exception:
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 REAGENT_LIBRARY_DIR = DATA_DIR / "spps_reagent_library"
 
+# Rows whose bundled definitions are part of the operator-facing V3 Fmoc
+# catalog.  These are migrated deliberately when an older bundled default is
+# found in the user database; unrelated user-created rows remain untouched.
+V3_FMOC_CATALOG_TOKENS = {
+    *(f"d{letter}" for letter in "ARNDCEQGHILKMFPSTWYV"),
+    "Dab", "Orn", "Nle", "Nva", "Aib", "Sar", "Dap", "Cit",
+    "Hyp", "Cha", "hArg", "hLys", "Pen", "Bpa",
+    "Ahx", "AEEA", "PEG1", "PEG2", "PEG3", "PEG4", "PEG5CH2",
+    "PEG6", "PEG8", "PEG11CH2", "PEG12", "PEG24", "bAla",
+    "Ava5", "Aun11", "Ado12", "PEG3AMIDO", "PEG4AMIDO",
+    "PEG5AMIDO", "PEG6AMIDO", "PEG8AMIDO", "PEG10AMIDO",
+    "PEG12AMIDO", "PEG20AMIDO", "gAla", "GABA",
+}
+
+LEGACY_BUNDLED_SOURCE_MARKERS = {
+    "formula-normalized proxy",
+    "curated linker policy",
+    "v2.0.92 curated db",
+    "curated/vendor/formula",
+}
+
+
+def _is_legacy_bundled_default(row: pd.Series) -> bool:
+    source = _clean_token_value(row.get("Source used", "")).lower()
+    protected = _clean_token_value(row.get("Reagent/protected form", "")).lower()
+    return source in LEGACY_BUNDLED_SOURCE_MARKERS or any(
+        marker in protected
+        for marker in (
+            "default/proxy", "vendor-specific", "verify vendor form",
+            "fmoc-4-aminobutyric acid /", "fmoc-beta-ala-oh",
+        )
+    )
+
 
 def _clean_token_value(value) -> str:
     if value is None:
@@ -161,6 +194,31 @@ def _migrate_user_compounds_if_needed(user_path: Path, bundled_path: Path) -> bo
         if col not in user_df.columns:
             user_df[col] = ""
             changed = True
+    if "Token" in user_df.columns and "Token" in bundled_df.columns:
+        user_tokens = user_df["Token"].map(_clean_token_value)
+        bundled_rows = {
+            _clean_token_value(row.get("Token", "")): row
+            for _, row in bundled_df.iterrows()
+            if _clean_token_value(row.get("Token", ""))
+        }
+        for token in V3_FMOC_CATALOG_TOKENS:
+            bundled_row = bundled_rows.get(token)
+            if bundled_row is None:
+                continue
+            matching = user_tokens[user_tokens.str.lower().eq(token.lower())].index
+            if len(matching) == 0:
+                user_df = pd.concat(
+                    [user_df, pd.DataFrame([{c: bundled_row.get(c, "") for c in user_df.columns}])],
+                    ignore_index=True,
+                )
+                user_tokens = user_df["Token"].map(_clean_token_value)
+                changed = True
+                continue
+            index = matching[0]
+            if _is_legacy_bundled_default(user_df.loc[index]):
+                for col in bundled_df.columns:
+                    user_df.at[index, col] = bundled_row.get(col, "")
+                changed = True
     # Preserve any user-only columns but order bundled columns first.
     ordered = list(bundled_df.columns) + [c for c in user_df.columns if c not in bundled_df.columns]
     user_df = user_df[ordered]
@@ -230,16 +288,20 @@ def load_rules(path: str | Path | None = None) -> dict:
 
 
 def compound_lookup(compounds: pd.DataFrame) -> dict:
+    """Index internal sequence tokens and exact protected bottle names."""
     lookup = {}
     if compounds is None or compounds.empty:
         return lookup
     for _, row in compounds.iterrows():
         token = _clean_token_value(row.get("Token", ""))
-        if token:
-            data = row.to_dict()
-            lookup[token] = data
-            lookup.setdefault(token.upper(), data)
-            lookup.setdefault(token.lower(), data)
+        protected = _clean_token_value(row.get("Reagent/protected form", ""))
+        data = row.to_dict()
+        for name in (token, protected):
+            if not name:
+                continue
+            lookup.setdefault(name, data)
+            lookup.setdefault(name.upper(), data)
+            lookup.setdefault(name.lower(), data)
     return lookup
 
 

@@ -10,6 +10,10 @@ from pathlib import Path
 
 
 TARGET_NAMES = {"SPPSGui", "gui_cls"}
+ENGINE_PUBLIC_API = {
+    "generate_cleavage_cocktail", "recommend_cleavage_preset", "plan_summary",
+    "generate_step_materials", "generate_materials",
+}
 
 
 def _target_binding(target) -> str | None:
@@ -79,7 +83,32 @@ def audit_active_release() -> dict:
             for name, details in routes.items()
             if details["module"] == "suite_gui.legacy_controller"
         ),
+        "numbered_module_routes": sorted(
+            name
+            for name, details in routes.items()
+            if details["module"].startswith("suite_gui.modules.v")
+        ),
         "routes": routes,
+    }
+
+
+def audit_engine_api() -> dict:
+    """Ensure the calculation API has one source definition per public name."""
+    path = Path(__file__).resolve().parents[1] / "apps" / "spps_planner_app" / "spps_planner" / "engine.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    definitions = Counter(
+        node.name for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name in ENGINE_PUBLIC_API
+    )
+    duplicates = {
+        name: count for name, count in definitions.items() if count != 1
+    }
+    missing = sorted(ENGINE_PUBLIC_API - set(definitions))
+    return {
+        "definitions": dict(definitions),
+        "duplicates": duplicates,
+        "missing": missing,
     }
 
 

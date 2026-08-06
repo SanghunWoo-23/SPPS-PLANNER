@@ -12,6 +12,21 @@ ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 RUNTIME_LOG_DIR = None
 
 
+def _enable_windows_dpi_awareness() -> bool:
+    """Enable crisp Tk sizing on Windows without affecting other platforms."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            ctypes.windll.user32.SetProcessDPIAware()
+        return True
+    except Exception:
+        return False
+
+
 def _ensure_runtime_environment() -> None:
     os.chdir(ROOT)
     for p in [ROOT, ROOT / "suite_gui", ROOT / "peptiforg_core", ROOT / "apps" / "spps_planner_app"]:
@@ -32,6 +47,10 @@ def _ensure_runtime_environment() -> None:
 
 def main() -> None:
     _ensure_runtime_environment()
+    if "--self-test" in sys.argv:
+        from suite_gui.runtime_selftest import write_report
+        raise SystemExit(write_report())
+    _enable_windows_dpi_awareness()
     try:
         from suite_gui.spps_tk_gui import main as spps_main
         spps_main()

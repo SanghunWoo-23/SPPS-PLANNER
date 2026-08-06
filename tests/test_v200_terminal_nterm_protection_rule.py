@@ -14,7 +14,7 @@ def _new_gui(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
-    import suite_gui.modules.v229_empty_start_exact_apply_sync as ctl
+    from suite_gui.modules import plan_workflow as ctl
     ctl.messagebox.showerror = lambda *a, **k: None
     ctl.messagebox.showinfo = lambda *a, **k: None
     from suite_gui.classic_2094_tk_gui import SPPSGui
@@ -30,7 +30,7 @@ def _new_gui(monkeypatch, tmp_path):
 
 
 def test_terminal_deprotection_classifier_uses_nterm_fmoc_only():
-    import suite_gui.modules.v229_empty_start_exact_apply_sync as ctl
+    from suite_gui.modules import plan_workflow as ctl
 
     for protected in (
         "Fmoc-Gly-OH",
@@ -87,7 +87,7 @@ def test_terminal_fmoc_aa_like_linker_gets_final_deprotection(monkeypatch, tmp_p
 def test_apply_change_custom_n_fmoc_terminal_unit_gets_final_deprotection(monkeypatch, tmp_path):
     gui = _new_gui(monkeypatch, tmp_path)
     try:
-        import suite_gui.modules.v229_empty_start_exact_apply_sync as ctl
+        from suite_gui.modules import plan_workflow as ctl
 
         gui.pm_sequence.set("EEMQRR-NH2")
         gui.pm_scale.set("1")

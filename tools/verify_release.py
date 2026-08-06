@@ -1,4 +1,4 @@
-"""Repeatable final verification for the SPPS Planner V2.0.0 source release."""
+"""Repeatable final verification for the SPPS Planner V3.0.0 source release."""
 from __future__ import annotations
 
 import argparse
@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "V2.0.0"
+EXPECTED_VERSION = "V3.0.0"
 REQUIRED_FILES = (
     "main_launcher.py",
     "SPPS_Planner.spec",
@@ -33,13 +33,47 @@ def verify_static_release() -> None:
     from suite_gui.release_contract import validate_release_controller
 
     validate_release_controller(SPPSGui)
-    if SPPSGui.TITLE != "SPPS Planner V2.0.0":
+    if SPPSGui.TITLE != "SPPS Planner V3.0.0":
         raise RuntimeError(f"Unexpected release title: {SPPSGui.TITLE}")
+    from tools.verify_windows_release import verify_all as verify_windows
+    verify_windows()
 
 
-def run_tests(passes: int) -> None:
+def verify_monkey_patch_free() -> None:
+    from tools.audit_monkey_patches import (
+        audit, audit_active_release, audit_engine_api,
+    )
+
+    source = audit(ROOT / "suite_gui")
+    active = audit_active_release()
+    engine = audit_engine_api()
+    if source["binding_count"] != 0 or source["build_wrapper_count"] != 0:
+        raise RuntimeError(
+            "Runtime GUI rebinding remains: "
+            f"{source['binding_count']} bindings, "
+            f"{source['build_wrapper_count']} build wrappers"
+        )
+    if active["legacy_controller_routes"] or active["numbered_module_routes"]:
+        raise RuntimeError("A legacy or numbered controller route is active")
+    if engine["duplicates"] or engine["missing"]:
+        raise RuntimeError(
+            "Engine public API is rebound or incomplete: "
+            f"duplicates={engine['duplicates']}, missing={engine['missing']}"
+        )
+
+
+def run_verification_passes(passes: int) -> None:
     for number in range(1, passes + 1):
-        print(f"[verify] pytest pass {number}/{passes}", flush=True)
+        print(f"[verify] complete pass {number}/{passes}", flush=True)
+        verify_static_release()
+        verify_monkey_patch_free()
+        if not compileall.compile_dir(ROOT / "suite_gui", quiet=1):
+            raise RuntimeError("suite_gui compilation failed")
+        if not compileall.compile_dir(
+            ROOT / "apps" / "spps_planner_app" / "spps_planner",
+            quiet=1,
+        ):
+            raise RuntimeError("spps_planner compilation failed")
         subprocess.run(
             [sys.executable, "-m", "pytest", "-q"],
             cwd=ROOT,
@@ -54,15 +88,7 @@ def main() -> int:
     if args.passes < 1:
         parser.error("--passes must be at least 1")
     sys.path.insert(0, str(ROOT))
-    verify_static_release()
-    if not compileall.compile_dir(ROOT / "suite_gui", quiet=1):
-        raise RuntimeError("suite_gui compilation failed")
-    if not compileall.compile_dir(
-        ROOT / "apps" / "spps_planner_app" / "spps_planner",
-        quiet=1,
-    ):
-        raise RuntimeError("spps_planner compilation failed")
-    run_tests(args.passes)
+    run_verification_passes(args.passes)
     print(f"[verify] SPPS Planner {EXPECTED_VERSION}: all checks passed")
     return 0
 

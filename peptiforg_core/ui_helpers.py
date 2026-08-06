@@ -19,34 +19,35 @@ def set_pepforge_icon(window: tk.Tk | tk.Toplevel) -> None:
     The old function name is kept for compatibility with Pepforge/SPPS shared code,
     but this planner should prefer SPPS_Planner_Icon.* over Pepforge_Icon.*.
     """
-    try:
-        ico = _asset_path("SPPS_Planner_Icon.ico")
-        if ico.exists() and os.name == "nt":
+    applied = False
+    ico = _asset_path("SPPS_Planner_Icon.ico")
+    if os.name == "nt" and ico.exists():
+        try:
+            window.iconbitmap(default=str(ico))
+            applied = True
+        except tk.TclError:
             try:
-                window.iconbitmap(default=str(ico))
-            except Exception:
-                try:
-                    window.iconbitmap(str(ico))
-                except Exception:
-                    pass
-    except Exception:
-        pass
-    try:
+                window.iconbitmap(str(ico))
+                applied = True
+            except tk.TclError:
+                applied = False
+
+    if not applied:
         for fname in ("SPPS_Planner_Icon.png", "Pepforge_Icon.png"):
             png = _asset_path(fname)
-            if png.exists():
+            if not png.exists():
+                continue
+            try:
                 img = tk.PhotoImage(file=str(png))
                 window.iconphoto(True, img)
-                # keep a Python reference; otherwise Tk may discard the image
+                # Keep a Python reference; otherwise Tk may discard the image.
                 setattr(window, "_pepforge_icon_img", img)
-                setattr(window, "_spps_icon_status", "OK")
-                return
-        setattr(window, "_spps_icon_status", "MISSING")
-    except Exception as e:
-        try:
-            setattr(window, "_spps_icon_status", f"ERROR: {e}")
-        except Exception:
-            pass
+                applied = True
+                break
+            except tk.TclError:
+                continue
+
+    setattr(window, "_spps_icon_status", "OK" if applied else "MISSING")
 
 def open_path(path: str | Path) -> None:
     p = Path(path)

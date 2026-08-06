@@ -79,19 +79,23 @@ class SPPSGui(tk.Tk):
         ico = self._asset_path("SPPS_Planner_Icon.ico")
         png = self._asset_path("SPPS_Planner_Icon.png")
         applied = False
-        try:
-            if ico.exists():
-                self.iconbitmap(str(ico))
+        if os.name == "nt" and ico.exists():
+            try:
+                self.iconbitmap(default=str(ico))
                 applied = True
-        except Exception:
-            applied = False
-        try:
-            if png.exists():
+            except tk.TclError:
+                try:
+                    self.iconbitmap(str(ico))
+                    applied = True
+                except tk.TclError:
+                    applied = False
+        if not applied and png.exists():
+            try:
                 self._spps_icon_image = tk.PhotoImage(file=str(png))
                 self.iconphoto(True, self._spps_icon_image)
                 applied = True
-        except Exception:
-            pass
+            except tk.TclError:
+                applied = False
         try:
             self._icon_status = "OK" if applied else "missing"
         except Exception:

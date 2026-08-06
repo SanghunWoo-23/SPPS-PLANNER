@@ -18,16 +18,14 @@ def test_active_release_routes_are_semantic_and_not_legacy_patch_functions():
     )
 
 
-def test_release_composition_uses_semantic_workflow_boundaries():
-    from suite_gui import release_composition
-    from suite_gui.modules import classic_workflow, workbench_workflow
+def test_public_release_uses_direct_controller_not_runtime_composition():
+    from pathlib import Path
 
-    layers = {layer.name: layer for layer in release_composition.RELEASE_LAYERS}
-    assert layers["classic_workflow_restore"].installer is classic_workflow.install
-    assert (
-        layers["fast_legacy_exact_workflow"].installer
-        is workbench_workflow.install
-    )
+    source = (
+        Path(__file__).resolve().parents[1] / "suite_gui" / "release.py"
+    ).read_text(encoding="utf-8")
+    assert "from suite_gui.controller import SPPSGui, main" in source
+    assert "release_composition" not in source
 
 
 def test_active_audit_separates_runtime_routes_from_historical_bindings():

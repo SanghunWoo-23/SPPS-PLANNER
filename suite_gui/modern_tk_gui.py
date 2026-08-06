@@ -1,7 +1,7 @@
-"""Modern modular Tk GUI for SPPS Planner V2.1.9.
+"""Alternate modular Tk GUI components retained for SPPS Planner V3.0.0.
 
-This is the active GUI. The historical 43k-line implementation is not shipped
-in the clean release package. Project Manager, advanced settings, batch, DB,
+The canonical release UI is assembled by ``suite_gui.ui_build``. Project
+Manager, advanced settings, batch, DB,
 data-log, ML, export, and self-test actions are delegated to focused modules.
 """
 from __future__ import annotations
@@ -47,7 +47,7 @@ class SPPSGui(tk.Tk):
         "QA": ["Project Manager", "Data Log", "Windows Self-Test"],
     }
     MODE_HELP = {
-        "Essential": "V2.0.94에 가까운 기본 합성 계산 화면입니다. 핵심 입력과 작업용 결과만 표시합니다.",
+        "Essential": "핵심 합성 계산과 작업용 결과만 표시합니다.",
         "Workbench": "필요할 때만 여는 실무 도구 화면: Advanced, Batch, Data Log를 추가 표시합니다.",
         "Expert": "전체 기능 표시: DB Editor, ML Lab, QA까지 모두 엽니다.",
         "QA": "검증용: Project Manager, Data Log, Windows Self-Test만 표시합니다.",

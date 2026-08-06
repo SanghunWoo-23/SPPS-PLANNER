@@ -1,4 +1,4 @@
-"""GUI structure diagnostics for SPPS Planner V2.0.99."""
+"""GUI structure diagnostics for SPPS Planner V3.0.0."""
 from __future__ import annotations
 
 from pathlib import Path

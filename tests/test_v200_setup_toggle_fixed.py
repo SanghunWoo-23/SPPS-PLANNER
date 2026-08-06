@@ -30,7 +30,7 @@ def test_setup_toggle_is_fixed_from_start_through_show_hide(monkeypatch, tmp_pat
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
 
-    import suite_gui.modules.v229_empty_start_exact_apply_sync as ctl
+    from suite_gui.modules import plan_workflow as ctl
 
     ctl.messagebox.showerror = lambda *a, **k: None
     ctl.messagebox.showinfo = lambda *a, **k: None

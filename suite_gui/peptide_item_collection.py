@@ -4,10 +4,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 
 def blank_item(number: int) -> dict[str, Any]:
     return {
+        "work_item_id": uuid4().hex,
         "project": f"Project-{number:03d}",
         "peptide": f"Peptide-{number:03d}",
         "sequence": "",
@@ -25,6 +27,8 @@ def blank_item(number: int) -> dict[str, Any]:
 def append_item(items, item=None):
     result = list(items or [])
     created = dict(item or blank_item(len(result) + 1))
+    if not str(created.get("work_item_id", "")).strip():
+        created["work_item_id"] = uuid4().hex
     result.append(created)
     return result, len(result) - 1, created
 
@@ -35,6 +39,12 @@ def duplicate_item(items, index):
         return result, None, None
     created = json.loads(json.dumps(result[int(index)], default=str))
     created["peptide"] = f"{created.get('peptide', 'Peptide')}_copy"
+    created["work_item_id"] = uuid4().hex
+    created.pop("synthesis_execution", None)
+    created.pop("ml_review", None)
+    created.pop("risk_review", None)
+    created.pop("runs", None)
+    created.pop("active_run_id", None)
     result.append(created)
     return result, len(result) - 1, created
 

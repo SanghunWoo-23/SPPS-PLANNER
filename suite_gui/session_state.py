@@ -18,12 +18,13 @@ DEFAULT_STATE_FIELDS = (
     "default_base", "default_base_eq", "default_base_count", "default_depro",
     "default_depro_ratio", "default_depro_count", "default_solvent1",
     "default_solvent1_count", "default_solvent2", "default_solvent2_count",
-    "final_meoh_count", "ml_per_mmol", "default_coupling_solution_solvent",
+    "final_meoh_count", "default_coupling_solution_solvent",
     "default_loading_dissolve_solvent", "outdir", "batch_solution_conc",
     "batch_coupling_eq", "batch_actual_round_ml", "batch_actual_extra_ml",
     "batch_default_scale", "batch_default_resin", "batch_default_loading",
     "loading_aa_eq", "loading_diea_eq", "batch_hbtu_eq", "batch_hbtu_conc",
-    "batch_hbtu_mw", "batch_nmp_density",
+    "batch_hbtu_mw", "batch_nmp_density", "solvent_volume_mode",
+    "amide_ml_per_mmol", "ctc_ml_per_mmol", "solvent_molarity_m",
 )
 
 
@@ -80,7 +81,7 @@ class SessionStateMixin:
             except Exception:
                 pass
         return state_persistence.project_state(
-            app_version="V2.0.0",
+            app_version="V3.0.0",
             saved_at=datetime.now().isoformat(timespec="seconds"),
             selected_pm_index=selected_pm,
             pm_items=getattr(self, "pm_items", []),
@@ -105,7 +106,11 @@ class SessionStateMixin:
                 return
             state = state_persistence.read_json_object(self.state_file)
             self._restoring_state = True
-            defaults = state.get("defaults", {}) if isinstance(state, dict) else {}
+            defaults = dict(state.get("defaults", {})) if isinstance(state, dict) else {}
+            legacy_volume = defaults.pop("ml_per_mmol", None)
+            if legacy_volume not in (None, ""):
+                defaults.setdefault("amide_ml_per_mmol", legacy_volume)
+                defaults.setdefault("ctc_ml_per_mmol", legacy_volume)
             for name, value in defaults.items():
                 try:
                     variable = getattr(self, name, None)

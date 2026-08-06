@@ -24,7 +24,7 @@ def _new_gui(monkeypatch, tmp_path):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
 
-    import suite_gui.modules.v229_empty_start_exact_apply_sync as ctl
+    from suite_gui.modules import plan_workflow as ctl
 
     ctl.messagebox.showerror = lambda *a, **k: None
     ctl.messagebox.showinfo = lambda *a, **k: None
@@ -202,7 +202,7 @@ def test_open_cell_editor_is_committed_before_apply_change(monkeypatch, tmp_path
 
 def test_visible_snapshot_diff_marks_unit_name_without_tk():
     from types import SimpleNamespace
-    import suite_gui.modules.v229_empty_start_exact_apply_sync as ctl
+    from suite_gui.modules import plan_workflow as ctl
 
     class FakeTree:
         def __init__(self):
@@ -243,7 +243,7 @@ def test_visible_snapshot_diff_marks_unit_name_without_tk():
 
 def test_commit_editor_calls_direct_callback_without_tk_event_queue():
     from types import SimpleNamespace
-    import suite_gui.modules.v229_empty_start_exact_apply_sync as ctl
+    from suite_gui.modules import plan_workflow as ctl
 
     called = []
 

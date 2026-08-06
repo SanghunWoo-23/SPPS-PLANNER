@@ -32,6 +32,15 @@ NTERM_MODIFIERS = [
     "His6", "His8", "His10", "FLAG", "HA", "Myc", "StrepII", "TwinStrep", "V5", "T7", "ALFA", "AviTag", "SpyTag"
 ]
 
+ACETYLATED_AMINO_ACIDS = [
+    "Ac-Ala-OH", "Ac-Arg(Pbf)-OH", "Ac-Asn(Trt)-OH", "Ac-Asp(OtBu)-OH",
+    "Ac-Cys(Trt)-OH", "Ac-Gln(Trt)-OH", "Ac-Glu(OtBu)-OH", "Ac-Gly-OH",
+    "Ac-His(Trt)-OH", "Ac-Ile-OH", "Ac-Leu-OH", "Ac-Lys(Boc)-OH",
+    "Ac-Met-OH", "Ac-Phe-OH", "Ac-Pro-OH", "Ac-Ser(tBu)-OH",
+    "Ac-Thr(tBu)-OH", "Ac-Trp(Boc)-OH", "Ac-Tyr(tBu)-OH", "Ac-Val-OH",
+]
+NTERM_MODIFIERS.extend(ACETYLATED_AMINO_ACIDS)
+
 NTERM_MODIFIER_ALIASES = {
     "AC": "Ac", "ACETYL": "Ac", "ACETICACID": "Ac",
     "FMOC": "Fmoc", "FMOCCL": "Fmoc", "BOC": "Boc", "BOC2O": "Boc",
@@ -51,6 +60,10 @@ NTERM_MODIFIER_ALIASES = {
     "MYC": "Myc", "STREPII": "StrepII", "TWINSTREP": "TwinStrep", "V5": "V5",
     "T7": "T7", "ALFA": "ALFA", "AVITAG": "AviTag", "SPYTAG": "SpyTag",
 }
+NTERM_MODIFIER_ALIASES.update({
+    re.sub(r"[^A-Za-z0-9]", "", name).upper(): name
+    for name in ACETYLATED_AMINO_ACIDS
+})
 
 def _norm_key(token: str) -> str:
     return re.sub(r"[^A-Za-z0-9]", "", str(token or "")).upper()
@@ -116,9 +129,17 @@ def _consume_leading_nterm_modifier(parts: list[str]) -> tuple[str, list[str]]:
     if not parts:
         return "", parts
     # Try longest practical modifier first because some names contain hyphens.
-    max_len = min(4, len(parts))
+    max_len = min(8, len(parts))
     for n in range(max_len, 0, -1):
-        cand = "-".join(parts[:n])
+        candidate_parts = parts[:n]
+        if n > 1 and all(
+            len(part) == 1 and part.isupper() and part in NATURAL_AA_LETTERS
+            for part in candidate_parts
+        ):
+            # Dashed peptide input such as A-C-D or F-A-M is a residue
+            # sequence, not the aliases Ac or FAM.
+            continue
+        cand = "-".join(candidate_parts)
         mod = _normalise_nterm_modifier(cand)
         if mod:
             return mod, parts[n:]
@@ -186,9 +207,13 @@ def _normalize_core_aliases(text: str) -> str:
         (r"(?i)g[-_ ]?ala", "gAla"),
         (r"(?i)gaba", "gAla"),
     ]
-    for pat, repl in replacements:
-        s = re.sub(pat, repl, s)
-    return s
+    # Exact bottle names are entered in brackets and must remain byte-for-byte
+    # intact.  Alias normalization applies only to ordinary sequence segments.
+    parts = re.split(r"(\[[^\]]*\])", s)
+    for index in range(0, len(parts), 2):
+        for pat, repl in replacements:
+            parts[index] = re.sub(pat, repl, parts[index])
+    return "".join(parts)
 
 
 def _tokenize_compact_segment(segment: str) -> list[str]:
@@ -198,7 +223,11 @@ def _tokenize_compact_segment(segment: str) -> list[str]:
     segment (Ahx, AEEA, Cha, PEG4, etc.) or in bracket notation.  Plain FASTA
     chunks such as EEMQRR are still split into amino-acid residues.
     """
-    seg = _uppercase_plain_natural_segment(str(segment or "").strip().strip("[]"))
+    raw_segment = str(segment or "").strip()
+    if raw_segment.startswith("[") and raw_segment.endswith("]"):
+        token = raw_segment[1:-1].strip()
+        return [TOKEN_CANONICAL.get(token.upper(), token)] if token else []
+    seg = _uppercase_plain_natural_segment(raw_segment)
     if not seg:
         return []
     if seg.upper() in KNOWN_CORE_TOKENS:
@@ -261,7 +290,12 @@ def _tokenize_segment_with_branches(segment: str) -> tuple[list[str], list[dict]
     removed rather than treated as branches. Whole-token branch handles such as
     K(Mtt) stay as K(Mtt).
     """
-    seg = _uppercase_plain_natural_segment(str(segment or "").strip().strip("[]"))
+    raw_segment = str(segment or "").strip()
+    if raw_segment.startswith("[") and raw_segment.endswith("]"):
+        token = raw_segment[1:-1].strip()
+        canonical = TOKEN_CANONICAL.get(token.upper(), token)
+        return ([canonical] if canonical else []), [], []
+    seg = _uppercase_plain_natural_segment(raw_segment)
     warnings: list[str] = []
     if not seg:
         return [], [], warnings
@@ -357,7 +391,9 @@ def parse_sequence(seq: str) -> ParsedSequence:
     if not s:
         return ParsedSequence(raw=raw, nterm="", core="", cterm_text="", core_tokens=[])
 
-    parts = [p.strip() for p in s.split("-") if p.strip()]
+    # Preserve hyphens inside bracketed exact reagent names such as
+    # [Fmoc-NH-PEG4-CH2COOH].
+    parts = [p.strip() for p in _split_top_level(s) if p.strip()]
     nterm = ""
     cterm = ""
 

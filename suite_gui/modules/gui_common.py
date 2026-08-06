@@ -1,4 +1,4 @@
-"""Shared Tk Project Manager helpers for SPPS Planner V2.1.9.
+"""Shared Tk Project Manager helpers for SPPS Planner V3.0.0.
 
 This module is the first real extraction from the historical 43k-line Tk file.
 It owns state snapshots, list refresh, tree export, PlanInput construction, and

@@ -1,0 +1,204 @@
+﻿level,table,item,issue,recommended_action
+INFO,compounds.csv,Maleimide,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Azide,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Alkyne,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,DBCO,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,TCO,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Tetrazine,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,FAM,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,TAMRA,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,ROX,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,CY3,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,CY5,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,CY5_5,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,CY7,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Alexa488,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Alexa555,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Alexa647,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,DOTA,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,NOTA,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,DFO,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,NBD,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Dansyl,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,BODIPY,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,EDANS,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Dabcyl,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,BHQ1,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,BHQ2,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,His6,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,His8,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,His10,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,FLAG,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,HA,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Myc,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,StrepII,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,TwinStrep,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,V5,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,T7,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,ALFA,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,AviTag,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,SpyTag,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Gly,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,GG,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,GGG,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,GS,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,GSG,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,G4S,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,G4Sx2,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,PipLink,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,LysLink,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,CysLink,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,SS,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Triazole,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Click,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,DSS,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,SMCC,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,SulfoSMCC,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,EDC,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Hydrazone,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Oxime,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,AA_G2,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,AA_G4,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,AA_G6,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,AA_A2,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,AA_A4,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,AA_GS2,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,AA_GS4,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,AA_GS6,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,AA_AP,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,DOTA-NHS,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,PEG4 acid,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,PEG12 acid,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Sulfo-Cy5-NHS,Manual/macro token has no reagent MW by design.,Use expanded residues or add a vendor/form-specific row before using this for material mass.
+INFO,compounds.csv,Maleimide,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Azide,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Alkyne,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,DBCO,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,TCO,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Tetrazine,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,ROX,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,CY3,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,CY5,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,CY5_5,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,CY7,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Alexa488,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Alexa555,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Alexa647,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,NOTA,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,DFO,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,NBD,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Dansyl,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,BODIPY,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,EDANS,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Dabcyl,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,BHQ1,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,BHQ2,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,PipLink,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,LysLink,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,CysLink,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,SS,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Triazole,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Click,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,DSS,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,SMCC,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,SulfoSMCC,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,EDC,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Hydrazone,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Oxime,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,CY5-NHS,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Sulfo-Cy5-NHS-K,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Sulfo-Cy5-NHS-TEA,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+INFO,compounds.csv,Sulfo-Cy5-NHS,Manual/macro token has no product MW contribution by design.,Use expanded residues or add exact product contribution once the form is known.
+WARNING,compounds.csv,Ac-Ala-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Arg(Pbf)-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Asn(Trt)-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Asp(OtBu)-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Cys(Trt)-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Gln(Trt)-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Glu(OtBu)-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Gly-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-His(Trt)-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Ile-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Leu-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Lys(Boc)-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Met-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Phe-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Pro-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Ser(tBu)-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Thr(tBu)-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Trp(Boc)-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Tyr(tBu)-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Ac-Val-OH,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Cys(Acm),Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Cys(StBu),Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Cys(tBu),Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Lys(Dde),Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Lys(ivDde),Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Lys(Alloc),Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Lys(Mtt),Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Lys(Fmoc),Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,D-Lys(Dde),Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,D-Lys(ivDde),Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Asp(OAll),Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Glu(OAll),Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Met(O),Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Met(O2),Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Abu,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,D-Abu,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,1-Nal,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,2-Nal,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,D-1-Nal,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,D-2-Nal,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Tic,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,D-Tic,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,4-F-Phe,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,D-4-F-Phe,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,4-Cl-Phe,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,D-4-Cl-Phe,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,N-Me-Ala,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,N-Me-Leu,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,N-Me-Phe,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,N-Me-Val,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,Pra,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+WARNING,compounds.csv,D-Pra,Active coupling token has missing product MW contribution; product MW may be underestimated.,Add product contribution for final MW/M+H/M+Na calculation.
+INFO,compounds.csv,Chol,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,Maleimide,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,Azide,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,Alkyne,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,DBCO,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,TCO,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,Tetrazine,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,FAM,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,TAMRA,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,ROX,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,CY3,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,CY5,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,CY5_5,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,CY7,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,Alexa488,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,Alexa555,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,Alexa647,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,DOTA,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,NOTA,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,DFO,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,NBD,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,Dansyl,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,BODIPY,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,EDANS,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,Dabcyl,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,BHQ1,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,BHQ2,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,PipLink,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,LysLink,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,CysLink,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,SS,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,Triazole,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,Click,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,DSS,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,SMCC,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,SulfoSMCC,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,EDC,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,Hydrazone,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,Oxime,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,DOTA-NHS,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.
+INFO,compounds.csv,Sulfo-Cy5-NHS,Generic/manual-required token present.,Use exact acid/NHS/salt/protected form for final material calculation.

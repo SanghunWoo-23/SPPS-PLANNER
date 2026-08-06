@@ -92,6 +92,23 @@ class _Gui:
         self.autosaves += 1
 
 
+class _Notebook:
+    def __init__(self):
+        self.label = "Selected Plan"
+        self.callback = None
+
+    def select(self):
+        return "current"
+
+    def tab(self, _tab, option):
+        assert option == "text"
+        return self.label
+
+    def bind(self, _event, callback, add=None):
+        assert add == "+"
+        self.callback = callback
+
+
 def _set(gui, name, value):
     getattr(gui, name).set(value)
 
@@ -177,3 +194,24 @@ def test_live_sync_updates_only_the_active_item_and_schedules_autosave():
     assert gui.pm_items[1]["project"] == "B-edited"
     assert gui.pm_items[1]["sequence"] == "RRR"
     assert gui.autosaves == 1
+
+
+def test_restore_renders_only_visible_result_tab_until_operator_opens_another():
+    gui = _Gui()
+    gui.pm_results_notebook = _Notebook()
+    gui.pm_items = [{
+        "selected_plan_rows": [{"No": "1"}],
+        "selected_material_rows": [{"material": "Fmoc-Ala-OH"}],
+    }]
+
+    peptide_item_state.restore_item(
+        gui, 0, _Adapter, _set, lambda *_args: None, {},
+        plan_columns=[], plan_widths={}, material_columns=[], material_widths={},
+        total_columns=[], total_widths={}, check_columns=[], check_widths={},
+    )
+
+    assert gui.pm_selected_plan_tree.rows == [{"No": "1"}]
+    assert gui.pm_selected_material_tree.rows == []
+    gui.pm_results_notebook.label = "Selected Materials"
+    gui.pm_results_notebook.callback()
+    assert gui.pm_selected_material_tree.rows == [{"material": "Fmoc-Ala-OH"}]

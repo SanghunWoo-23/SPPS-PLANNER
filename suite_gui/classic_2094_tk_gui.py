@@ -7,12 +7,11 @@ from __future__ import annotations
 
 import sys
 
-from suite_gui import legacy_controller as _implementation
+from suite_gui import release as _implementation
 
 
 if __name__ == "__main__":
     _implementation.main()
 else:
-    # Preserve the complete historical module surface, including private
-    # helper names used by older integrations and regression tests.
+    # Preserve the historical public import identity without loading patches.
     sys.modules[__name__] = _implementation

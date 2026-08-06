@@ -14,7 +14,7 @@ def _new_gui(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
-    import suite_gui.modules.v229_empty_start_exact_apply_sync as ctl
+    from suite_gui.modules import plan_workflow as ctl
     ctl.messagebox.showerror = lambda *a, **k: None
     ctl.messagebox.showinfo = lambda *a, **k: None
     from suite_gui.classic_2094_tk_gui import SPPSGui

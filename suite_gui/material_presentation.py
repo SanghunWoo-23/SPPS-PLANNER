@@ -9,6 +9,8 @@ import re
 
 import pandas as pd
 
+from suite_gui import catalogs
+
 
 LIQUID_NAMES = {
     "dic", "diea", "dipea", "dmf", "dcm", "mc", "mc/dcm", "nmp",
@@ -122,6 +124,10 @@ def clean_operator_table(gui, frame, *, total=False):
         material = str(
             row.get("material", row.get("component", "")) or ""
         ).strip()
+        canonical_material = catalogs.canonical_unit_name(material)
+        if canonical_material != material and "material" in out.columns:
+            out.at[index, "material"] = canonical_material
+            material = canonical_material
         reagent = str(row.get("reagent", "") or "").strip()
         material_class = str(
             row.get("class", row.get("role", "")) or ""
@@ -151,10 +157,7 @@ def clean_operator_table(gui, frame, *, total=False):
             ):
                 out.at[index, "class"] = "Resin"
             material = resin_label
-        if material in AA_REAGENT_NAMES and material_class.upper() == "AA":
-            material = AA_REAGENT_NAMES[material]
-            if "material" in out.columns:
-                out.at[index, "material"] = material
+        if material_class.upper() == "AA" and material.startswith("Fmoc-"):
             if "class" in out.columns:
                 out.at[index, "class"] = "AA/Chemical"
         if not is_liquid(material, material_class, state, unit, reagent):

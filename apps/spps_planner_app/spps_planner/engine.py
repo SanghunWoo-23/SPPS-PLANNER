@@ -648,7 +648,7 @@ def _parse_cleavage_components_text(text: str) -> dict[str, float]:
     return comps
 
 
-def recommend_cleavage_preset(inp: PlanInput | str) -> dict[str, Any]:
+def _recommend_cleavage_preset_initial(inp: PlanInput | str) -> dict[str, Any]:
     """Recommend a cleavage cocktail preset from peptide composition.
 
     This does not claim a universal bench method.  It makes the UI useful by
@@ -717,7 +717,7 @@ def _selected_cleavage_components(inp: PlanInput) -> dict[str, float]:
     return _preset_components(requested)
 
 
-def generate_cleavage_cocktail(inp: PlanInput) -> pd.DataFrame:
+def _generate_cleavage_cocktail_initial(inp: PlanInput) -> pd.DataFrame:
     """Generate a dedicated cleavage cocktail calculator table.
 
     Component volumes are calculated from the equivalent-based neat TFA volume.
@@ -1212,14 +1212,14 @@ def generate_step_matrix(inp: PlanInput, compounds: pd.DataFrame | None = None, 
             steps.append(_make_step(step_no, btok, "Branch AA coupling", _profile_for(btok, lookup), depro, wash, rxn, post, 0, 1.0, 0.0, dmf, pip, 0.0, note, inp, overrides, lookup, n + j, 0))
             step_no += 1
 
-    # v2.0.0 hotfix: the editable Plan table must show synthesis units from the
+    # v3.0.0 hotfix: the editable Plan table must show synthesis units from the
     # user-entered peptide notation only.  Fmoc removal is an operation/checklist
     # event, not a synthetic unit row.  Therefore Ac-EEMQRR-NH2 ends with Ac,
     # not an extra "Fmoc removal" row.
     if parsed.nterm:
         token = parsed.nterm
         rxn = int(rules.get("last_reaction", 1))
-        # v2.0.0 label/linker generalization:
+        # v3.0.0 label/linker generalization:
         # Any explicit N-terminal chemical, label, cap, or tag is treated as
         # the final coupling/capping unit, similar to an amino-acid coupling row.
         # The editable Plan shows only the real sequence unit. The practical
@@ -1333,7 +1333,7 @@ def generate_step_reagent_plan(inp: PlanInput, compounds: pd.DataFrame | None = 
     return matrix[[c for c in cols if c in matrix.columns]].copy()
 
 
-def generate_materials(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:
+def _generate_materials_core(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:
     """Generate total raw-material usage for the plan.
 
     v2.0.2 normalizes this table as real totals instead of silent per-step
@@ -1541,7 +1541,7 @@ def generate_printable_checklist(inp: PlanInput, compounds: pd.DataFrame | None 
         })
     return pd.DataFrame(rows)
 
-def plan_summary(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> dict:
+def _plan_summary_initial(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> dict:
     matrix = generate_step_matrix(inp, compounds, rules); parsed = parse_sequence(inp.sequence); materials = generate_materials(inp, compounds, rules)
     product_mw = 0.0; lookup = compound_lookup(compounds if compounds is not None else load_compounds())
     for token in (parsed.core_tokens or list(parsed.core)) + list(getattr(parsed, "branch_tokens", []) or []) + ([parsed.nterm] if parsed.nterm else []):
@@ -1636,7 +1636,7 @@ def _cleavage_volume_factor(inp: PlanInput) -> float:
     return 0.5 if resin_family(getattr(inp, "resin", "")) == "CTC/Trityl" else 1.0
 
 
-def generate_cleavage_cocktail(inp: PlanInput) -> pd.DataFrame:  # type: ignore[override]
+def generate_cleavage_cocktail(inp: PlanInput) -> pd.DataFrame:
     sug = cleavage_eq_suggestion(inp)
     comps = _selected_cleavage_components(inp)
     if not comps:
@@ -1735,7 +1735,7 @@ def _step_material_row(step: Any, material: str, cls: str, mw: Any = "", density
     }
 
 
-def generate_step_materials(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:
+def _generate_step_materials_core(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:
     """Operator-facing, step-by-step material table.
 
     This is intentionally different from generate_materials(): Selected Materials
@@ -1810,7 +1810,7 @@ def generate_step_materials(inp: PlanInput, compounds: pd.DataFrame | None = Non
 # ======================= END V2.1.7 BENCH-ACCURATE CLEAVAGE + STEP MATERIALS =======================
 
 # ======================= V2.1.7 AUTO CLEAVAGE RECOMMENDATION REPAIR =======================
-def recommend_cleavage_preset(inp: PlanInput | str) -> dict[str, Any]:  # type: ignore[override]
+def recommend_cleavage_preset(inp: PlanInput | str) -> dict[str, Any]:
     seq = inp.sequence if hasattr(inp, "sequence") else str(inp or "")
     resin = inp.resin if hasattr(inp, "resin") else "Amide"
     parsed = parse_sequence(seq)
@@ -1836,7 +1836,7 @@ def recommend_cleavage_preset(inp: PlanInput | str) -> dict[str, Any]:  # type: 
 # ======================= END V2.1.7 AUTO CLEAVAGE RECOMMENDATION REPAIR =======================
 
 # ======================= V2.1.7 SUMMARY CLEAVAGE LABEL REPAIR =======================
-def plan_summary(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> dict:  # type: ignore[override]
+def plan_summary(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> dict:
     matrix = generate_step_matrix(inp, compounds, rules)
     parsed = parse_sequence(inp.sequence)
     materials = generate_materials(inp, compounds, rules)
@@ -1881,8 +1881,8 @@ def plan_summary(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: d
 
 # ======================= V2.1.9 STEP MATERIAL ORDER + LIQUID DISPLAY REPAIR =======================
 # Keep original builders for compatibility while returning ordered/mL-only operator tables.
-_V219_ORIG_GENERATE_STEP_MATERIALS = generate_step_materials
-_V219_ORIG_GENERATE_MATERIALS = generate_materials
+_V219_ORIG_GENERATE_STEP_MATERIALS = _generate_step_materials_core
+_V219_ORIG_GENERATE_MATERIALS = _generate_materials_core
 
 _V219_LIQUID_NAMES = {
     'dic','diea','dipea','dmf','dcm','mc','mc/dcm','nmp','tfa','tis','edt','acoh','acetic acid','tfe','tee',
@@ -1979,10 +1979,10 @@ def _v219_order_step_materials(df: pd.DataFrame, resin_text: str = '') -> pd.Dat
     out = out.sort_values(['_sort_key','_orig_order'], kind='mergesort').drop(columns=['_sort_key','_orig_order'])
     return out.reset_index(drop=True)
 
-def generate_step_materials(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:  # type: ignore[override]
+def _generate_step_materials_v219(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:
     return _v219_order_step_materials(_V219_ORIG_GENERATE_STEP_MATERIALS(inp, compounds, rules), str(getattr(inp, 'resin', '') or ''))
 
-def generate_materials(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:  # type: ignore[override]
+def _generate_materials_v219(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:
     return _v219_apply_liquid_display(_V219_ORIG_GENERATE_MATERIALS(inp, compounds, rules))
 # ======================= END V2.1.9 STEP MATERIAL ORDER + LIQUID DISPLAY REPAIR =======================
 
@@ -1992,8 +1992,8 @@ def generate_materials(inp: PlanInput, compounds: pd.DataFrame | None = None, ru
 # - protected bottle names instead of one-letter AA tokens in totals;
 # - mL-only display fields for liquid/solution reagents such as DIEA and DIC.
 
-_V221_ORIG_GENERATE_STEP_MATERIALS = generate_step_materials
-_V221_ORIG_GENERATE_MATERIALS = generate_materials
+_V221_ORIG_GENERATE_STEP_MATERIALS = _generate_step_materials_v219
+_V221_ORIG_GENERATE_MATERIALS = _generate_materials_v219
 
 _V221_AA_REAGENT_NAMES = {
     "A": "Fmoc-Ala-OH", "R": "Fmoc-Arg(Pbf)-OH", "N": "Fmoc-Asn(Trt)-OH", "D": "Fmoc-Asp(OtBu)-OH",
@@ -2133,10 +2133,10 @@ def _v221_order_step_materials(df: pd.DataFrame, resin_text: str = "") -> pd.Dat
     out = out.sort_values(["_sort_v221", "_orig_order_v221"], kind="mergesort").drop(columns=["_sort_v221", "_orig_order_v221"])
     return out.reset_index(drop=True)
 
-def generate_step_materials(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:  # type: ignore[override]
+def _generate_step_materials_v221(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:
     return _v221_order_step_materials(_V221_ORIG_GENERATE_STEP_MATERIALS(inp, compounds, rules), _v221_resin_display(getattr(inp, "resin", "")))
 
-def generate_materials(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:  # type: ignore[override]
+def _generate_materials_v221(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:
     return _v221_apply_display_rules(_V221_ORIG_GENERATE_MATERIALS(inp, compounds, rules), _v221_resin_display(getattr(inp, "resin", "")))
 # ======================= END V2.2.1 USER-FACING MATERIAL DISPLAY FINAL REPAIR =======================
 
@@ -2274,8 +2274,8 @@ def _v221_is_liquid_display(material: Any, cls: Any = "", state: Any = "", unit:
 # user-facing material outputs.  This is intentionally appended last so older patch-stack
 # helpers cannot override it.
 
-_V222_ORIG_GENERATE_STEP_MATERIALS = generate_step_materials
-_V222_ORIG_GENERATE_MATERIALS = generate_materials
+_V222_ORIG_GENERATE_STEP_MATERIALS = _generate_step_materials_v221
+_V222_ORIG_GENERATE_MATERIALS = _generate_materials_v221
 
 _V222_LIQUID_NAMES = {
     "dic", "diea", "dipea", "dmf", "dcm", "mc", "mc/dcm", "nmp",
@@ -2508,12 +2508,12 @@ def _v222_add_missing_cleavage_totals(inp: PlanInput, df: pd.DataFrame) -> pd.Da
     return out
 
 
-def generate_step_materials(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:  # type: ignore[override]
+def _generate_step_materials_v222(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:
     raw = _V222_ORIG_GENERATE_STEP_MATERIALS(inp, compounds, rules)
     return _v222_order_step_materials(raw, user_resin_label(getattr(inp, "resin", "")))
 
 
-def generate_materials(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:  # type: ignore[override]
+def _generate_materials_v222(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:
     raw = _V222_ORIG_GENERATE_MATERIALS(inp, compounds, rules)
     raw = _v222_add_missing_cleavage_totals(inp, raw)
     return _v222_apply_material_display(raw, user_resin_label(getattr(inp, "resin", "")))
@@ -2548,21 +2548,28 @@ def _v222_phase_rank(row: pd.Series) -> int:  # type: ignore[override]
     return 100
 # ======================= END V2.2.2b FINAL ORDERING GUARD =======================
 
-# ======================= V2.2.3 TRUE MATERIAL DISPLAY PATCH =======================
-# One final, explicit wrapper layer.  User-facing resin label and mL-only liquid
-# formatting live in spps_planner.display so GUI, CLI export, and tests share one path.
-try:
-    _V223_ORIG_GENERATE_STEP_MATERIALS = generate_step_materials
-    _V223_ORIG_GENERATE_MATERIALS = generate_materials
-    from .display import resin_label as _v223_resin_label, ordered_step_materials as _v223_ordered_step_materials, normalize_operator_amounts as _v223_normalize_operator_amounts
+# Canonical material API. Historical transformations above use unique helper
+# names; these public functions are defined once and are never rebound.
+from .display import (
+    normalize_operator_amounts as _normalize_operator_amounts,
+    ordered_step_materials as _ordered_step_materials,
+    resin_label as _resin_label,
+)
 
-    def generate_step_materials(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:  # type: ignore[override]
-        raw = _V223_ORIG_GENERATE_STEP_MATERIALS(inp, compounds, rules)
-        return _v223_ordered_step_materials(raw, _v223_resin_label(getattr(inp, 'resin', '')))
 
-    def generate_materials(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:  # type: ignore[override]
-        raw = _V223_ORIG_GENERATE_MATERIALS(inp, compounds, rules)
-        return _v223_normalize_operator_amounts(raw, _v223_resin_label(getattr(inp, 'resin', '')))
-except Exception:
-    pass
-# ======================= END V2.2.3 TRUE MATERIAL DISPLAY PATCH =======================
+def generate_step_materials(
+    inp: PlanInput,
+    compounds: pd.DataFrame | None = None,
+    rules: dict | None = None,
+) -> pd.DataFrame:
+    raw = _generate_step_materials_v222(inp, compounds, rules)
+    return _ordered_step_materials(raw, _resin_label(getattr(inp, "resin", "")))
+
+
+def generate_materials(
+    inp: PlanInput,
+    compounds: pd.DataFrame | None = None,
+    rules: dict | None = None,
+) -> pd.DataFrame:
+    raw = _generate_materials_v222(inp, compounds, rules)
+    return _normalize_operator_amounts(raw, _resin_label(getattr(inp, "resin", "")))

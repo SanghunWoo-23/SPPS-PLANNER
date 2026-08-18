@@ -1,5 +1,10 @@
 <div align="center">
 
+
+## V4.0.0 Experimental Intelligence
+
+V4.0.0 preserves the V3 planning workflow and adds an evidence-first Experimental Data layer: reviewed resin-loading history, structured cleavage/precipitation history, Excel/ZIP/CSV import, Similar Experiment evidence, a Loading Advisor with supervised Random Forest support after operator verification, and a Cleavage Advisor that exposes historical evidence and confidence instead of inventing optimum conditions. The public build bundles no private experimental records; users import authorized data locally, and imported records are never silently promoted to **Verified**. See `docs/V4_EXPERIMENTAL_ML_KO.md`.
+
 <img src="assets/SPPS_Planner_Icon.png" alt="SPPS Planner icon" width="150">
 
 # SPPS Planner
@@ -10,7 +15,7 @@ Desktop workflow software for planning **solid-phase peptide synthesis (SPPS)**,
 calculating materials, managing multiple peptides, and exporting operator-ready
 records.
 
-[![Release](https://img.shields.io/badge/release-V3.0.0-2563EB?style=for-the-badge)](VERSION)
+[![Release](https://img.shields.io/badge/release-V4.0.0-2563EB?style=for-the-badge)](VERSION)
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](requirements.txt)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white)](#quick-start)
 [![Tests](https://img.shields.io/badge/regression_tests-149%20passed-16A34A?style=for-the-badge)](#verification)
@@ -141,7 +146,7 @@ BUILD_INSTALLER.bat
 Output:
 
 ```text
-installer\output\SPPS_Planner_Setup_V3.0.0.exe
+installer\output\SPPS_Planner_Setup_V4.0.0.exe
 ```
 
 ## Project structure
@@ -150,7 +155,7 @@ installer\output\SPPS_Planner_Setup_V3.0.0.exe
 SPPS-Planner/
 ├─ main_launcher.py              # Application entry point
 ├─ suite_gui/                    # Tkinter UI and workflow controllers
-│  ├─ controller.py              # Direct V3.0.0 runtime controller
+│  ├─ controller.py              # Direct V4.0.0 runtime controller
 │  ├─ classic_base.py            # Static retained Classic UI base
 │  ├─ position_rules.py          # C-terminal eq/repeat rules
 │  ├─ modules/                   # Semantic Plan, operator, and release workflows
@@ -213,7 +218,7 @@ python tools\audit_monkey_patches.py --active-release
 
 ## Version
 
-This repository is the fixed public release **SPPS Planner V3.0.0**.
+This repository is the fixed public release **SPPS Planner V4.0.0**.
 Historical internal version names remain only where required to preserve
 accepted behavior and import compatibility.
 
@@ -226,7 +231,7 @@ license and is not presented as an OSI-approved open-source license.
 
 <div align="center">
 
-**SPPS Planner V3.0.0**  
+**SPPS Planner V4.0.0**  
 Practical peptide-synthesis planning with editable, traceable calculations.
 
 </div>

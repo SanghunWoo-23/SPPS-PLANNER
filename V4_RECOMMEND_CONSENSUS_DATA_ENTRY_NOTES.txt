@@ -1,0 +1,54 @@
+SPPS Planner V4.0.0 — Recommend / Consensus / Easy Data Entry update
+
+Scope
+- Version remains V4.0.0.
+- Existing Planner/Generate/Apply Change workflows are preserved.
+- New recommendation and lab-data workflow is additive.
+
+Visible V4 buttons
+- Recommend Conditions
+- Loading Advice
+- Cleavage Advice
+- Record Lab Data
+
+Lab data window
+- Record Loading
+- Record Coupling
+- Record Cleavage
+- Import Lab Data
+
+Recommendation policy
+1. Repeated successful bottle-level historical condition (HISTORICAL CONSENSUS) first.
+2. If exact compound consensus is unavailable, repeated category condition may be shown only when the full condition repeats at least twice in the same resin family.
+3. A single historical occurrence is not automatically promoted to a recommendation.
+4. Reagent identities/eq values from unrelated experiments are not mixed.
+5. Global Coupling Apply is enabled only when all current coupling units have evidence and agree on one supported condition.
+6. Otherwise per-unit evidence is shown and global Apply remains disabled.
+
+Coupling recommendation coverage
+- Amino acids, including D/non-natural bottle-level entries when present in Plan history
+- Chemical / label units
+- Linkers
+- Tags/presets when represented as Plan units
+- Reagent 1 such as DIC/HBTU/HATU and equivalent
+- Reagent 2 / additive such as HOBt/Oxyma and equivalent
+- Base and equivalent
+- Coupling solvent
+- Coupling time (h)
+- Repeat count
+- Recorded solvent volume basis where available
+
+Data entry
+- Loading result form is prefilled from current Planner loading settings; measured loading remains operator-entered.
+- Coupling result form saves yield/purity/failure/doubling outcome to the active peptide Work Item. Current Plan rows and reagent conditions are retained as the evidence features.
+- Cleavage result form is prefilled from current Planner sequence/scale/eq/time and, when available, current generated TFA/TIS/water volumes.
+- Missing result fields are not fabricated.
+
+Validation
+- pytest (headless): 196 passed / 21 skipped
+- 21 skipped tests require a real Tk DISPLAY; they were not counted as passes.
+- tools/verify_release.py: PASS
+- tools/verify_windows_release.py: PASS
+- tools/audit_monkey_patches.py: Runtime class bindings 0; _build wrappers 0
+- compileall: PASS
+- V4 modified implementation marker audit: no TODO/FIXME/NotImplementedError/dummy data/fake result/temporary placeholder/placeholder implementation

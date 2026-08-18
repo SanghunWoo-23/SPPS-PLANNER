@@ -1,6 +1,6 @@
-# SPPS Planner V3.0.0
+# SPPS Planner V4.0.0
 
-SPPS Planner **V3.0.0 완성형**의 애플리케이션 소스와 필수 데이터입니다.
+SPPS Planner **V4.0.0 완성형**의 애플리케이션 소스와 필수 데이터입니다.
 
 ## 주요 동작
 
@@ -10,7 +10,7 @@ SPPS Planner **V3.0.0 완성형**의 애플리케이션 소스와 필수 데이�
   - `AEKIRKELEKQ`를 입력하면 Plan은 Q부터 시작하며 AA coupling 행은 11개입니다.
 - Cleavage Cocktail preset 선택 목록과 결과의 preset 이름은 resin명이 아니라 실제 조성으로 표시됩니다.
   - 예: `TFA=95; TIS=2.5; Water=2.5`
-- 창 제목, 내부 버전, VERSION 파일, Installer 이름을 `V3.0.0`으로 통일했습니다.
+- 창 제목, 내부 버전, VERSION 파일, Installer 이름을 `V4.0.0`으로 통일했습니다.
 - Windows build 경로와 Installer 출력 이름 불일치를 수정했습니다.
 
 ## 실행
@@ -44,7 +44,7 @@ BUILD_INSTALLER.bat
 결과:
 
 ```text
-installer\output\SPPS_Planner_Setup_V3.0.0.exe
+installer\output\SPPS_Planner_Setup_V4.0.0.exe
 ```
 
 `INSTALL_BUILD_TOOLS_AND_BUILD.bat`도 동일한 Installer 빌드 파일입니다.

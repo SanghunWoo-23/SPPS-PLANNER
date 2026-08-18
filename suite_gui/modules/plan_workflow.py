@@ -23,8 +23,8 @@ from suite_gui import peptide_item_collection
 from suite_gui import state_persistence
 from suite_gui import position_rules
 
-VERSION = "V3.0.0"
-TITLE = "SPPS Planner V3.0.0"
+VERSION = "V4.0.0"
+TITLE = "SPPS Planner V4.0.0"
 
 PLAN_COLUMNS = [
     "No", "Unit name", "MW", "Density(g/mL)", "Unit eq", "Unit mmol", "Unit amount",
@@ -286,6 +286,8 @@ def _build_plan_input(gui, ns: dict[str, Any]):
         short_peptide_coupling_eq=2.0,
         cleavage_preset=str(_var(gui, "cleavage_preset", "") or ""),
         cleavage_components_text=str(_var(gui, "cleavage_components_text", "") or ""),
+        cleavage_time_h=_num(_var(gui, "cleavage_time_h", 0), 0.0),
+        loading_time_h=_num(_var(gui, "loading_time_h", 0), 0.0),
         cleavage_eq_override=_num(_var(gui, "cleavage_eq_override", 0), 0.0),
         apply_resin_loading=bool(_var(gui, "apply_loading_calc", False)),
     )
@@ -1419,6 +1421,24 @@ def _install_loading_controls(gui):
                     continue
                 if "edited only in Selected peptide editor" in text or "edited once in the peptide editor" in text:
                     child.destroy()
+        if not hasattr(gui, "loading_time_h"):
+            gui.loading_time_h = tk.StringVar(value="")
+        existing_time_control = False
+        for child in list(frame.winfo_children()):
+            try:
+                existing_time_control = existing_time_control or str(child.cget("textvariable")) == str(gui.loading_time_h)
+            except Exception:
+                continue
+        if not existing_time_control:
+            used_rows = []
+            for child in list(frame.winfo_children()):
+                try:
+                    used_rows.append(int(child.grid_info().get("row", -1)))
+                except Exception:
+                    continue
+            row = max(used_rows + [-1]) + 1
+            ttk.Label(frame, text="Loading time (h)").grid(row=row, column=0, sticky="w", pady=3)
+            ttk.Entry(frame, textvariable=gui.loading_time_h, width=12).grid(row=row, column=1, sticky="w", pady=3)
         break
 
 def _install_eq_follow_control(gui):
@@ -1476,7 +1496,9 @@ def _install_cleavage(gui):
     ttk.Label(controls, text="Preset / custom name").pack(side="left", padx=(0, 3))
     ttk.Combobox(controls, textvariable=gui.cleavage_preset, values=[""] + v228._cocktail_presets(), state="normal", width=28).pack(side="left", padx=(0, 8))
     ttk.Label(controls, text="Components (example: TFA=95;TIS=2.5;Water=2.5)").pack(side="left", padx=(0, 3))
-    ttk.Entry(controls, textvariable=gui.cleavage_components_text, width=48).pack(side="left", fill="x", expand=True)
+    ttk.Entry(controls, textvariable=gui.cleavage_components_text, width=38).pack(side="left", fill="x", expand=True)
+    ttk.Label(controls, text="Time (h)").pack(side="left", padx=(6, 3))
+    ttk.Entry(controls, textvariable=gui.cleavage_time_h, width=7).pack(side="left", padx=(0, 8))
     ttk.Label(controls, text="Apply with Apply Change").pack(side="left", padx=(8, 0))
     columns = ["component", "role", "recommended_eq", "percent", "percent_basis", "volume_mL", "density_g_mL", "approx_g", "physical_state", "selected_preset", "auto_recommended_preset", "include", "note"]
     tree = ttk.Treeview(frame, columns=columns, show="headings")
@@ -1503,7 +1525,7 @@ def _install_result_tabs(gui, ns):
 def _install_traces(gui):
     names = [
         "pm_project", "pm_peptide", "pm_sequence", "pm_scale", "pm_resin", "pm_loading", "pm_lot", "pm_chemistry", "pm_copies",
-        "apply_loading_calc", "loading_aa_eq", "loading_diea_eq", "cleavage_preset", "cleavage_eq_override", "cleavage_components_text",
+        "apply_loading_calc", "loading_aa_eq", "loading_diea_eq", "loading_time_h", "cleavage_preset", "cleavage_eq_override", "cleavage_components_text", "cleavage_time_h",
     ]
     gui._v229_trace_tokens = []
     for name in names:
@@ -1553,7 +1575,7 @@ def _session_path(gui) -> Path:
     try:
         path = gui._state_file_path()
     except Exception:
-        path = Path.home() / ".spps_planner" / "spps_planner_session_v1.json"
+        path = Path.home() / ".spps_planner_public" / "spps_planner_session_v1.json"
     gui.state_file = path
     return path
 
@@ -1570,7 +1592,7 @@ def _load_items_only(gui) -> None:
     if not items:
         # Keep one empty project slot without loading it into the editor.
         items = [{
-            "project": "Project-001", "peptide": "Peptide-001", "sequence": "", "copies": "1",
+            "project": "", "peptide": "", "sequence": "", "copies": "1",
             "scale": "0.2", "resin": "Rink Amide AM", "loading": "0.8", "lot": "",
             "chemistry": "DIC/HOBt", "status": "Ready", "cleavage_preset": "",
         }]
@@ -1686,7 +1708,7 @@ def _bind_item_actions(gui, ns):
 
 
 def export_outputs(gui, ns):
-    """Export the exact visible V3.0.0 state without replacing manual edits."""
+    """Export the exact visible V4.0.0 state without replacing manual edits."""
     try:
         if not v228._tree_rows(getattr(gui, "pm_selected_plan_tree", None)):
             if not generate(gui, ns):
@@ -1733,12 +1755,12 @@ def export_outputs(gui, ns):
             "resin": item.get("resin", ""), "loading": item.get("loading", ""),
             "lot": item.get("lot", item.get("lot_no", "")), "chemistry": item.get("chemistry", ""),
             "copies": item.get("copies", ""), "apply_loading_calc": item.get("apply_loading_calc", False),
-            "loading_aa_eq": item.get("loading_aa_eq", ""), "loading_diea_eq": item.get("loading_diea_eq", ""),
-            "cleavage_preset": item.get("cleavage_preset", ""),
+            "loading_aa_eq": item.get("loading_aa_eq", ""), "loading_diea_eq": item.get("loading_diea_eq", ""), "loading_time_h": item.get("loading_time_h", ""),
+            "cleavage_time_h": item.get("cleavage_time_h", ""), "cleavage_preset": item.get("cleavage_preset", ""),
             "cleavage_components_text": item.get("cleavage_components_text", ""),
         }])
 
-        xlsx = out / "project_manager_selected_outputs_v3.0.0.xlsx"
+        xlsx = out / "project_manager_selected_outputs_v4.0.0.xlsx"
         with pd.ExcelWriter(xlsx, engine="openpyxl") as writer:
             editor_summary.to_excel(writer, index=False, sheet_name="00_EDITOR_SUMMARY")
             visible_plan.to_excel(writer, index=False, sheet_name="01_SELECTED_PLAN_VISIBLE")
@@ -1762,9 +1784,9 @@ def export_outputs(gui, ns):
         state = {
             "app_version": VERSION, "saved_at": datetime.now().isoformat(timespec="seconds"),
             "active_index": index, "pm_items": list(getattr(gui, "pm_items", []) or []),
-            "visible_selected_plan_source": "current edited TreeView; Apply Change-linked V3.0.0 tables; no regeneration during export",
+            "visible_selected_plan_source": "current edited TreeView; Apply Change-linked V4.0.0 tables; no regeneration during export",
         }
-        (out / "project_manager_state_v3.0.0.json").write_text(
+        (out / "project_manager_state_v4.0.0.json").write_text(
             json.dumps(state, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
         )
         gui.last_outdir = out

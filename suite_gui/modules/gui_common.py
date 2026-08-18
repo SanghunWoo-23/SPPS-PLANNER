@@ -231,11 +231,11 @@ def blank_item(gui, n: int = 1) -> dict[str, Any]:
         "project": f"Project-{int(n):03d}", "peptide": f"Peptide-{int(n):03d}",
         "sequence": "", "copies": "1", "scale": "400", "scale_preset": "Lab STD 400 mmol", "resin": "Rink Amide AM",
         "loading": "0.8", "lot": lot, "lot_no": lot, "chemistry": "DIC/HOBt",
-        "status": "Ready", "loading_aa_eq": "2", "loading_diea_eq": "4",
-        "coupling_eq": "5", "modifier_eq": "3", "coupling_repeats": "1", "modifier_repeats": "1",
+        "status": "Ready", "loading_aa_eq": "2", "loading_diea_eq": "4", "loading_time_h": "",
+        "coupling_eq": "5", "coupling_time_h": "0.5", "modifier_eq": "3", "coupling_repeats": "1", "modifier_repeats": "1",
         "default_reagent": "DIC", "default_catalyst": "HOBt", "default_base": "", "default_coupling_solution_solvent": "DMF",
         "auto_short_peptide_eq": True, "short_peptide_coupling_eq": "2", "step_overrides_text": "",
-        "cleavage_eq_override": "0", "cleavage_preset": "AUTO", "cleavage_components_text": "",
+        "cleavage_eq_override": "0", "cleavage_preset": "AUTO", "cleavage_components_text": "", "cleavage_time_h": "",
     }
 
 
@@ -261,9 +261,11 @@ def save_active(gui) -> None:
         "status": item.get("status", "Ready"),
         "loading_aa_eq": get_var(gui, "loading_aa_eq", item.get("loading_aa_eq", "2")),
         "loading_diea_eq": get_var(gui, "loading_diea_eq", item.get("loading_diea_eq", "4")),
+        "loading_time_h": get_var(gui, "loading_time_h", item.get("loading_time_h", "")),
         "cleavage_eq_override": get_var(gui, "cleavage_eq_override", item.get("cleavage_eq_override", "0")),
         "cleavage_preset": get_var(gui, "cleavage_preset", item.get("cleavage_preset", "AUTO")),
         "coupling_eq": get_var(gui, "coupling_eq", item.get("coupling_eq", "5")),
+        "coupling_time_h": get_var(gui, "coupling_time_h", item.get("coupling_time_h", "0.5")),
         "modifier_eq": get_var(gui, "modifier_eq", item.get("modifier_eq", "3")),
         "coupling_repeats": get_var(gui, "coupling_repeats", item.get("coupling_repeats", "1")),
         "modifier_repeats": get_var(gui, "modifier_repeats", item.get("modifier_repeats", "1")),
@@ -275,6 +277,7 @@ def save_active(gui) -> None:
         "short_peptide_coupling_eq": get_var(gui, "short_peptide_coupling_eq", item.get("short_peptide_coupling_eq", "2")),
         "step_overrides_text": get_text_widget_value(gui, "step_overrides_text_widget", item.get("step_overrides_text", "")),
         "cleavage_components_text": get_var(gui, "cleavage_components_text", item.get("cleavage_components_text", "")),
+        "cleavage_time_h": get_var(gui, "cleavage_time_h", item.get("cleavage_time_h", "")),
     })
     # Never let a blank editor erase a valid item during duplicate/delete/reorder.
     for key in ("project", "peptide", "sequence", "scale", "resin", "loading", "lot", "lot_no", "chemistry", "copies"):
@@ -308,7 +311,8 @@ def load_item_to_editor(gui, idx: int) -> None:
         ("pm_lot", "lot", item.get("lot_no", "")), ("pm_chemistry", "chemistry", "DIC/HOBt"),
         ("pm_copies", "copies", "1"), ("loading_aa_eq", "loading_aa_eq", "2"),
         ("loading_diea_eq", "loading_diea_eq", "4"),
-        ("coupling_eq", "coupling_eq", "5"), ("modifier_eq", "modifier_eq", "3"),
+        ("loading_time_h", "loading_time_h", ""),
+        ("coupling_eq", "coupling_eq", "5"), ("coupling_time_h", "coupling_time_h", "0.5"), ("modifier_eq", "modifier_eq", "3"),
         ("coupling_repeats", "coupling_repeats", "1"), ("modifier_repeats", "modifier_repeats", "1"),
         ("default_reagent", "default_reagent", "DIC"), ("default_catalyst", "default_catalyst", "HOBt"),
         ("default_base", "default_base", ""), ("default_coupling_solution_solvent", "default_coupling_solution_solvent", "DMF"),
@@ -316,6 +320,7 @@ def load_item_to_editor(gui, idx: int) -> None:
         ("cleavage_eq_override", "cleavage_eq_override", "0"),
         ("cleavage_preset", "cleavage_preset", "AUTO"),
         ("cleavage_components_text", "cleavage_components_text", ""),
+        ("cleavage_time_h", "cleavage_time_h", ""),
     ]:
         value = item.get(key, default)
         if attr == "pm_lot" and not value:
@@ -331,7 +336,7 @@ def plan_input(gui):
     idx = active_index(gui)
     items = getattr(gui, "pm_items", []) or []
     item = items[idx] if idx is not None and 0 <= idx < len(items) else {}
-    seq = get_var(gui, "pm_sequence", item.get("sequence", "")) or get_var(gui, "seq", "Ac-EEMQRR-NH2")
+    seq = get_var(gui, "pm_sequence", item.get("sequence", "")) or get_var(gui, "seq", "")
     resin_text = get_var(gui, "pm_resin", item.get("resin", "Rink Amide AM"))
     chem = get_var(gui, "pm_chemistry", item.get("chemistry", "DIC/HOBt"))
     reagent, catalyst, base = parse_chemistry(chem, get_var(gui, "default_reagent", "DIC"), get_var(gui, "default_catalyst", "HOBt"), get_var(gui, "default_base", ""))
@@ -347,6 +352,8 @@ def plan_input(gui):
         default_reaction_solvent=get_var(gui, "default_coupling_solution_solvent", "DMF") or "DMF",
         loading_aa_eq=as_float(get_var(gui, "loading_aa_eq", item.get("loading_aa_eq", "2")), 2.0),
         loading_diea_eq=as_float(get_var(gui, "loading_diea_eq", item.get("loading_diea_eq", "4")), 4.0),
+        loading_time_h=as_float(get_var(gui, "loading_time_h", item.get("loading_time_h", "")), 0.0),
+        cleavage_time_h=as_float(get_var(gui, "cleavage_time_h", item.get("cleavage_time_h", "")), 0.0),
         auto_short_peptide_eq=as_bool(get_var(gui, "auto_short_peptide_eq", item.get("auto_short_peptide_eq", True)), True),
         short_peptide_coupling_eq=as_float(get_var(gui, "short_peptide_coupling_eq", item.get("short_peptide_coupling_eq", "2")), 2.0),
         step_overrides_text=get_text_widget_value(gui, "step_overrides_text_widget", item.get("step_overrides_text", "")),
@@ -375,6 +382,8 @@ def metadata(gui, inp=None) -> dict[str, Any]:
         "resin_loading_mmol_g": inp.resin_loading_mmol_g,
         "loading_aa_eq": inp.loading_aa_eq,
         "loading_diea_eq": inp.loading_diea_eq,
+        "loading_time_h": inp.loading_time_h,
+        "cleavage_time_h": inp.cleavage_time_h,
         "cleavage_eq_override": inp.cleavage_eq_override,
         "cleavage_preset": inp.cleavage_preset,
         "cleavage_components_text": inp.cleavage_components_text,
@@ -473,6 +482,48 @@ def display_columns(df, preferred: list[str], include_unknown: bool = False):
     return out[keep_known]
 
 
+def clear_selected_outputs(gui) -> None:
+    """Clear calculated result views while keeping editor/project state intact.
+
+    An empty sequence is a normal idle editor state, not a failed synthesis.
+    Auto-refresh routes use this helper instead of invoking the core with an
+    empty sequence.
+    """
+    import pandas as pd
+    seen: set[int] = set()
+    for attr in (
+        "pm_selected_plan_tree", "pm_selected_material_tree",
+        "pm_selected_total_tree", "pm_total_tree", "pm_validation_tree",
+        "pm_summary_tree", "pm_cleavage_tree", "progress_tree",
+    ):
+        tree = getattr(gui, attr, None)
+        if tree is None or id(tree) in seen:
+            continue
+        seen.add(id(tree))
+        try:
+            write_tree(tree, pd.DataFrame())
+        except Exception:
+            try:
+                children = list(tree.get_children())
+                if children:
+                    tree.delete(*children)
+            except Exception:
+                continue
+    text = getattr(gui, "pm_selected_check_text", None)
+    if text is not None:
+        try:
+            text.delete("1.0", "end")
+        except Exception:
+            pass
+    for attr, value in (("checklist_progress_var", 0.0), ("checklist_progress_text", "Progress: 0/0 (0.0%)")):
+        var = getattr(gui, attr, None)
+        if hasattr(var, "set"):
+            try:
+                var.set(value)
+            except Exception:
+                pass
+
+
 def core_tables(gui):
     ensure_app_path()
     import pandas as pd
@@ -498,6 +549,10 @@ def core_tables(gui):
 
 
 def refresh_selected_outputs(gui):
+    sequence = str(get_var(gui, "pm_sequence", "") or "").strip()
+    if not sequence:
+        clear_selected_outputs(gui)
+        return {}
     try:
         inp, meta, tables = core_tables(gui)
         if hasattr(gui, "pm_selected_plan_tree"):

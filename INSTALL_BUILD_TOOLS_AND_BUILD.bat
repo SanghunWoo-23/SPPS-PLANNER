@@ -3,7 +3,7 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 
 echo ============================================================
-echo SPPS Planner V3.0.0 - install build tools and build installer
+echo SPPS Planner V4.0.0 - install build tools and build installer
 echo ============================================================
 
 set "PY_CMD="
@@ -41,7 +41,7 @@ if errorlevel 1 goto :fail
 
 echo.
 echo [OK] Complete Windows installer build finished.
-echo %CD%\installer\output\SPPS_Planner_Setup_V3.0.0.exe
+echo %CD%\installer\output\SPPS_Planner_Setup_V4.0.0.exe
 pause
 exit /b 0
 

@@ -118,7 +118,7 @@ class WorkItemWindow:
             label = self.gui.pm_display_name(item)
         except Exception:
             label = "Selected Work Item"
-        return f"{label} — SPPS Planner V3.0.0"
+        return f"{label} — SPPS Planner V4.0.0"
 
     def _build(self) -> None:
         outer = ttk.Frame(self.window, padding=10)

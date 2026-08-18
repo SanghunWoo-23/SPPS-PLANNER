@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from suite_gui import batch_workflow, calculation_context, custom_db_workflow
+from suite_gui import batch_workflow, calculation_context, custom_db_workflow, experimental_workflow
 from suite_gui.v3_menu import install_menu
 from suite_gui import ui_system
 from suite_gui.classic_base import ClassicControllerBase
@@ -24,7 +24,7 @@ from suite_gui.modules import (
 )
 
 
-TITLE = "SPPS Planner V3.0.0"
+TITLE = "SPPS Planner V4.0.0"
 
 
 def build_base_interface(gui: Any) -> None:
@@ -164,6 +164,16 @@ def initialize_batch_manager(gui: Any) -> None:
         except Exception:
             pass
 
+def initialize_experimental_data(gui: Any) -> None:
+    """Create/open the V4 experimental DB without altering planner/project state."""
+    try:
+        experimental_workflow.initialize(gui)
+    except Exception as exc:
+        try:
+            gui._log(f"Experimental DB initialization warning: {exc}\n")
+        except Exception:
+            pass
+
 def build_ui(gui: Any) -> None:
     """Build the complete accepted UI through explicit, testable stages."""
     build_base_interface(gui)
@@ -173,6 +183,16 @@ def build_ui(gui: Any) -> None:
     apply_custom_database_ui(gui)
     bind_direct_workspace_actions(gui)
     initialize_batch_manager(gui)
+    initialize_experimental_data(gui)
+    # Startup policy: keep saved Project Manager entries available, but do not
+    # paint a previous project's Plan/Materials/Checklist/Cleavage into a new
+    # session before the operator explicitly restores that item.
+    try:
+        plan_workflow._clear_editor_and_outputs(gui)
+    except Exception:
+        # Non-GUI pipeline contract tests may pass an inert sentinel object.
+        # A real SPPSGui has already constructed the editor/output widgets here.
+        pass
     ui_system.apply_theme(gui, "Standard")
     ui_system.fit_window(gui)
     ui_system.bind_shortcuts(gui)
@@ -189,4 +209,5 @@ __all__ = [
     "build_base_interface",
     "build_ui",
     "initialize_batch_manager",
+    "initialize_experimental_data",
 ]

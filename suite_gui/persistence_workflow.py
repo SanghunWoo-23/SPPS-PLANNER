@@ -1,4 +1,4 @@
-"""Direct project/session persistence for SPPS Planner V3.0.0."""
+"""Direct project/session persistence for SPPS Planner V4.0.0."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -13,7 +13,7 @@ from suite_gui.modules.release_ui import _normalize_resin
 from suite_gui.session_state import DEFAULT_STATE_FIELDS
 
 
-VERSION = "V3.0.0"
+VERSION = "V4.0.0"
 EXTRA_DEFAULT_FIELDS = (
     "solvent_volume_mode",
     "amide_ml_per_mmol",
@@ -28,6 +28,8 @@ EXTRA_DEFAULT_FIELDS = (
     "use_position_doubling",
     "position_doubling_rules",
     "apply_loading_calc",
+    "loading_time_h",
+    "cleavage_time_h",
     "cleavage_preset",
     "cleavage_eq_override",
     "cleavage_components_text",
@@ -38,7 +40,7 @@ def session_path(gui: Any) -> Path:
     try:
         path = Path(gui._state_file_path())
     except Exception:
-        path = Path.home() / ".spps_planner" / "spps_planner_session_v1.json"
+        path = Path.home() / ".spps_planner_public" / "spps_planner_session_v1.json"
     gui.state_file = path
     return path
 
@@ -257,10 +259,10 @@ def _legacy_item(gui: Any, data: Mapping[str, Any]) -> dict[str, Any]:
 
     return {
         "project": data.get(
-            "project_name", data.get("project", current("pm_project", "Project-001")),
+            "project_name", data.get("project", current("pm_project", "")),
         ),
         "peptide": data.get(
-            "peptide_name", data.get("peptide", current("pm_peptide", "Peptide-001")),
+            "peptide_name", data.get("peptide", current("pm_peptide", "")),
         ),
         "sequence": data.get(
             "sequence", data.get("seq", current("pm_sequence", "")),

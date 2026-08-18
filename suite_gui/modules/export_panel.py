@@ -8,6 +8,17 @@ from .cleavage_panel import refresh_cleavage_panel
 def generate_update(gui, ns: dict | None = None):
     try:
         state.save_active(gui)
+        if not str(state.get_var(gui, "pm_sequence", "") or "").strip():
+            state.clear_selected_outputs(gui)
+            idx = state.active_index(gui)
+            if idx is not None and 0 <= idx < len(getattr(gui, "pm_items", []) or []):
+                gui.pm_items[idx]["status"] = "Ready"
+                state.refresh_list(gui, [idx])
+            try:
+                gui.schedule_autosave()
+            except Exception:
+                pass
+            return {}
         tables = state.refresh_selected_outputs(gui)
         try: refresh_cleavage_panel(gui)
         except Exception: pass

@@ -44,3 +44,11 @@ desktop.ini
 *.tmp
 *.temp
 ~$*
+
+# V4 experimental/runtime data: never commit private lab history
+experimental_v4.sqlite
+*.sqlite
+*.sqlite3
+private_data/
+private_experiments/
+user_experiments/

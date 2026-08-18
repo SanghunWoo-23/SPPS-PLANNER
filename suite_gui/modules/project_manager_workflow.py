@@ -17,8 +17,8 @@ import tkinter as tk
 from tkinter import ttk
 from suite_gui import peptide_item_collection
 
-APP_VERSION = "V3.0.0"
-VERSION_LABEL = "SPPS Planner V3.0.0"
+APP_VERSION = "V4.0.0"
+VERSION_LABEL = "SPPS Planner V4.0.0"
 
 
 def _walk(widget):
@@ -110,7 +110,7 @@ def _empty_editor_outputs(gui):
         for name in (
             "pm_project", "pm_peptide", "pm_sequence", "pm_scale", "pm_resin",
             "pm_loading", "pm_lot", "pm_chemistry", "pm_copies",
-            "cleavage_preset", "cleavage_eq_override", "cleavage_components_text",
+            "loading_time_h", "cleavage_time_h", "cleavage_preset", "cleavage_eq_override", "cleavage_components_text",
         ):
             var = getattr(gui, name, None)
             if var is not None:

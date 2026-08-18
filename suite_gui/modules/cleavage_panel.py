@@ -14,6 +14,7 @@ def ensure_cleavage_vars(gui) -> None:
         ("cleavage_eq_override", "0"),
         ("cleavage_preset", "AUTO"),
         ("cleavage_components_text", ""),
+        ("cleavage_time_h", ""),
     ):
         if not hasattr(gui, attr):
             try: setattr(gui, attr, tk.StringVar(value=default))
@@ -71,9 +72,11 @@ def ensure_cleavage_panel(gui, ns: dict | None = None):
         ttk.Label(ctl, text="Preset").pack(side="left", padx=(0, 2))
         ttk.Combobox(ctl, textvariable=gui.cleavage_preset, values=presets, width=24, state="readonly").pack(side="left", padx=(0, 8))
         ttk.Label(ctl, text="Custom components").pack(side="left", padx=(0, 2))
-        ttk.Entry(ctl, textvariable=gui.cleavage_components_text, width=48).pack(side="left", padx=(0, 8), fill="x", expand=True)
+        ttk.Entry(ctl, textvariable=gui.cleavage_components_text, width=38).pack(side="left", padx=(0, 8), fill="x", expand=True)
+        ttk.Label(ctl, text="Time (h)").pack(side="left", padx=(0, 2))
+        ttk.Entry(ctl, textvariable=gui.cleavage_time_h, width=7).pack(side="left", padx=(0, 8))
         ttk.Button(ctl, text="Apply cleavage", command=lambda _gui=gui: refresh_cleavage_panel(_gui)).pack(side="left")
-        for var in (gui.cleavage_eq_override, gui.cleavage_preset, gui.cleavage_components_text):
+        for var in (gui.cleavage_eq_override, gui.cleavage_preset, gui.cleavage_components_text, gui.cleavage_time_h):
             try: var.trace_add("write", lambda *_args, _gui=gui: _gui.after_idle(lambda: refresh_cleavage_panel(_gui)))
             except Exception: pass
         gui._v2097_cleavage_controls_added = True

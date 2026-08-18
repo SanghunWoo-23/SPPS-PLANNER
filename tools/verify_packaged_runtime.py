@@ -9,7 +9,7 @@ import sys
 def main() -> int:
     path = Path(sys.argv[1])
     data = json.loads(path.read_text(encoding="utf-8"))
-    if data.get("app_version") != "V3.0.0" or not data.get("ok"):
+    if data.get("app_version") != "V4.0.0" or not data.get("ok"):
         raise RuntimeError(f"Packaged runtime self-test failed: {data}")
     failed = [key for key, value in data.get("checks", {}).items() if not value]
     if failed:

@@ -129,9 +129,9 @@ class SPPSGui(tk.Tk):
     # ---------- state / basic helpers ----------
     def _build_variables(self) -> None:
         first = (self.pm_items[0] if getattr(self, "pm_items", None) else {})
-        self.pm_project = tk.StringVar(value=first.get("project", "Project-001"))
-        self.pm_peptide = tk.StringVar(value=first.get("peptide", "Peptide-001"))
-        self.pm_sequence = tk.StringVar(value=first.get("sequence", "Ac-EEMQRR-NH2"))
+        self.pm_project = tk.StringVar(value=first.get("project", ""))
+        self.pm_peptide = tk.StringVar(value=first.get("peptide", ""))
+        self.pm_sequence = tk.StringVar(value=first.get("sequence", ""))
         self.scale_preset = tk.StringVar(value=first.get("scale_preset", "Lab STD 400 mmol"))
         self.pm_scale = tk.StringVar(value=first.get("scale", "400"))
         self.pm_resin = tk.StringVar(value=first.get("resin", "Rink Amide AM"))
@@ -141,6 +141,7 @@ class SPPSGui(tk.Tk):
         self.pm_copies = tk.StringVar(value=first.get("copies", "1"))
         self.loading_aa_eq = tk.StringVar(value=first.get("loading_aa_eq", "2"))
         self.loading_diea_eq = tk.StringVar(value=first.get("loading_diea_eq", "4"))
+        self.loading_time_h = tk.StringVar(value=first.get("loading_time_h", ""))
         self.coupling_eq = tk.StringVar(value=first.get("coupling_eq", "5"))
         self.modifier_eq = tk.StringVar(value=first.get("modifier_eq", "3"))
         self.coupling_repeats = tk.StringVar(value=first.get("coupling_repeats", "1"))
@@ -154,6 +155,7 @@ class SPPSGui(tk.Tk):
         self.cleavage_eq_override = tk.StringVar(value=first.get("cleavage_eq_override", "0"))
         self.cleavage_preset = tk.StringVar(value=first.get("cleavage_preset", "AUTO"))
         self.cleavage_components_text = tk.StringVar(value=first.get("cleavage_components_text", ""))
+        self.cleavage_time_h = tk.StringVar(value=first.get("cleavage_time_h", ""))
         self.project_outdir = tk.StringVar(value=str(user_outputs_dir() / "project_manager_exports"))
         self.gui_mode = tk.StringVar(value=first.get("gui_mode", "Essential"))
         self.show_advanced_item_controls = tk.BooleanVar(value=bool(first.get("show_advanced_item_controls", False)))
@@ -165,9 +167,9 @@ class SPPSGui(tk.Tk):
     def _default_item(self) -> dict[str, Any]:
         lot = self._generate_lot_no()
         return {
-            "project": "Project-001",
-            "peptide": "Peptide-001",
-            "sequence": "Ac-EEMQRR-NH2",
+            "project": "",
+            "peptide": "",
+            "sequence": "",
             "scale": "400",
             "scale_preset": "Lab STD 400 mmol",
             "resin": "Rink Amide AM",
@@ -193,6 +195,7 @@ class SPPSGui(tk.Tk):
             "cleavage_eq_override": "0",
             "cleavage_preset": "AUTO",
             "cleavage_components_text": "",
+            "cleavage_time_h": "",
             "gui_mode": "Essential",
             "show_advanced_item_controls": False,
         }
@@ -331,6 +334,7 @@ class SPPSGui(tk.Tk):
         advanced_fields = [
             ("Loading AA eq", self.loading_aa_eq),
             ("Loading DIEA eq", self.loading_diea_eq),
+            ("Loading time (h)", self.loading_time_h),
             ("AA coupling eq", self.coupling_eq),
             ("Modifier eq", self.modifier_eq),
             ("AA repeat", self.coupling_repeats),
@@ -354,6 +358,8 @@ class SPPSGui(tk.Tk):
         ttk.Combobox(chem, textvariable=self.cleavage_preset, values=self._cleavage_preset_values(), width=28, state="readonly").grid(row=1, column=1, sticky="ew", padx=(6, 0), pady=2)
         ttk.Label(chem, text="Custom").grid(row=2, column=0, sticky="w")
         ttk.Entry(chem, textvariable=self.cleavage_components_text, width=30).grid(row=2, column=1, sticky="ew", padx=(6, 0), pady=2)
+        ttk.Label(chem, text="Time (h)").grid(row=3, column=0, sticky="w")
+        ttk.Entry(chem, textvariable=self.cleavage_time_h, width=12).grid(row=3, column=1, sticky="w", padx=(6, 0), pady=2)
         chem.columnconfigure(1, weight=1)
 
         bottom = ttk.Frame(left)
@@ -501,7 +507,7 @@ class SPPSGui(tk.Tk):
         except Exception:
             pass
         self.bind("<Control-s>", lambda e: (export_panel.export_outputs(self), "break"))
-        for var in (self.cleavage_eq_override, self.cleavage_preset, self.cleavage_components_text):
+        for var in (self.cleavage_eq_override, self.cleavage_preset, self.cleavage_components_text, self.cleavage_time_h):
             try:
                 var.trace_add("write", lambda *_: self.after_idle(lambda: export_panel.generate_update(self)))
             except Exception:

@@ -1,4 +1,4 @@
-"""Direct connected Batch Manager workflow for SPPS Planner V3.0.0."""
+"""Direct connected Batch Manager workflow for SPPS Planner V4.0.0."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -26,7 +26,7 @@ SUMMARY_COLUMNS = [
     "No", "Project", "Peptide name", "LOT No", "Sequence", "Copies",
     "Scale mmol", "Resin", "Loading", "Resin_g", "Chemistry",
 ]
-VERSION = "V3.0.0"
+VERSION = "V4.0.0"
 
 
 def _float(current: Any, default: float = 0.0) -> float:

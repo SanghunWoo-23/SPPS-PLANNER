@@ -9,7 +9,7 @@ from spps_planner.parser import parse_sequence
 
 
 def test_std_totals_and_regular_wash_order():
-    inp = PlanInput(sequence="Ac-EEMQRR-NH2", scale_mmol=0.4)
+    inp = PlanInput(sequence="Ac-AAAAAA-NH2", scale_mmol=0.4)
     m = generate_step_matrix(inp)
     assert round(float(m["dmf_mL"].sum()), 6) == 304.8
     assert round(float(m["piperidine_mL"].sum()), 6) == 11.2
@@ -56,7 +56,7 @@ def test_free_nterm_final_deprotection_is_counted():
 
 
 def test_cterm_resin_conflict_warning_and_hbtu_diea_guard():
-    summary = plan_summary(PlanInput(sequence="Ac-EEMQRR-OH", resin="Amide", scale_mmol=0.4))
+    summary = plan_summary(PlanInput(sequence="Ac-AAAAAA-OH", resin="Amide", scale_mmol=0.4))
     assert "conflicts" in summary["warnings"]
 
     m = generate_step_matrix(PlanInput(sequence="Ac-GHK-NH2", scale_mmol=0.4, default_coupling_reagent="HBTU", default_catalyst="HOBt", default_base=""))
@@ -97,10 +97,12 @@ def test_export_writes_validation_sheet_and_csv(tmp_path):
 
 
 def test_cleavage_cocktail_explicit_function_and_cys_rule():
-    std = generate_cleavage_cocktail(PlanInput(sequence="Ac-EEMQRR-NH2", scale_mmol=0.4))
+    std = generate_cleavage_cocktail(PlanInput(sequence="Ac-AAAAAA-NH2", scale_mmol=0.4))
     total = std[std["component"].eq("Total cocktail")].iloc[0]
     assert float(total["recommended_eq"]) == 30.0
     assert float(total["volume_mL"]) > 0
+    components = {str(row["component"]): float(row["percent"]) for _, row in std.iterrows() if str(row.get("include", "")).upper() == "YES" and str(row["component"]) != "Total cocktail"}
+    assert components == {"TFA": 95.0, "TIS": 2.5, "DW / water": 2.5}
 
     cys = generate_cleavage_cocktail(PlanInput(sequence="Ac-CCCCCC-NH2", scale_mmol=0.4))
     assert float(cys[cys["component"].eq("Total cocktail")].iloc[0]["recommended_eq"]) == 630.0

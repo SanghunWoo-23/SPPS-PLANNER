@@ -6,8 +6,8 @@ from suite_gui import state_persistence
 
 
 def test_project_state_preserves_legacy_keys_and_copies_rows():
-    item = {"project": "Project-001", "sequence": "Ac-EEMQRR-NH2"}
-    row = {"Project": "Project-001", "Scale mmol": "0.2"}
+    item = {"project": "Demo-Project", "sequence": "Ac-AAAAAA-NH2"}
+    row = {"Project": "Demo-Project", "Scale mmol": "0.2"}
     state = state_persistence.project_state(
         app_version="V3.0.0",
         saved_at="2026-07-30T12:00:00",

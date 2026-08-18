@@ -1,0 +1,10 @@
+SPPS Planner V4.0.0 — ML One-Click UX Fix
+
+- Opening Loading ML now synchronizes the active Planner loading condition and runs analysis automatically.
+- Opening Cleavage ML now synchronizes the active Planner cleavage condition and runs analysis automatically.
+- Loading Advisor action renamed to "Apply to Planner + Generate".
+  Applying a supported recommendation updates Loading AA eq / Loading DIEA eq and immediately runs the existing Generate workflow.
+- Cleavage Advisor action renamed to "Apply to Planner + Apply Change".
+  Applying a supported recommendation updates cleavage eq / cocktail composition and immediately runs the existing Apply Change workflow.
+- Success is shown inline in the advisor instead of requiring another informational dialog click.
+- Existing Generate and Apply Change implementations are reused directly; no runtime method replacement or monkey patch was added.

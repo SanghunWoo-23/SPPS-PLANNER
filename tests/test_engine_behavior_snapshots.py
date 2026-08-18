@@ -47,7 +47,7 @@ def _digest(value) -> str:
 
 SCENARIOS = {
     "amide": PlanInput(
-        sequence="Ac-EEMQRR-NH2",
+        sequence="Ac-AAAAAA-NH2",
         scale_mmol=0.4,
         resin="Rink Amide AM",
         resin_loading_mmol_g=0.8,
@@ -86,14 +86,14 @@ GENERATORS = {
 
 EXPECTED = {
     "amide": {
-        "step_matrix": "fa666e80f8d47a2c368cf0ea38edf7deaec6317e01d8d4592fbcb66b344bc7f9",
-        "operations": "43c82c7d77b37fb5ef04c7767ebca609e494b627d80856bfb951f92926c248e6",
-        "reagent_plan": "d0bbedbd9dd8555a41577ed980c9ee0e66ee7faa67d28fcc13d60d47b208928b",
-        "step_materials": "9d8d62b7e020bbee64022a99d27531115bc9ab2c8488d9791e1839c582171e69",
-        "materials": "66f9c1940ca40715e8e64139b8ccfe4a2cc7ade05d06285f19f564e1b2046eac",
-        "cleavage": "e07cf094a1a7a1ff2c172ed9a42e993eef1d9b7187d222c78d5c34e62fd6bff2",
-        "validation": "749bd99884f2501b3c135e277a6042039fafd80a041e9377679092546df4482e",
-        "summary": "35b18af3660f3f6bf088b98e087c71e51c7631681fcd447584b7116a4ec8c917",
+        "step_matrix": "eaba950a330c919ed8575f65e71d26feee782b079d280266da89732ff0a6abc7",
+        "operations": "8bcbf0d6bccd333856c2653969e08fbab355a351de27c429426ed7be6a790603",
+        "reagent_plan": "71961e1b6323e8c4ec9b9ca5af93de7a830fc0dcea4598c6e44da653833c10d5",
+        "step_materials": "b45436b671323c94f8b1a4dd12a6634e6fd324d1c74b5835994a1c6f45e204f7",
+        "materials": "32612c600a5f864ebac999c844e9b12238a122d84207050cc6f82ae5e9961498",
+        "cleavage": "a9f1fc516debf04d93f5e85b6f3b6a528b1f3db76c563304136a4fc09e02a016",
+        "validation": "1a5ba0512c1795213d2534c8a1d8780ee80fb6a254644f5ed686064797b93c1f",
+        "summary": "c2e3257ba12eb034741737267d37663a62279f665afa6d4dfce4d73040513711",
     },
     "ctc": {
         "step_matrix": "59bedf9c7a269812bf70d00816680bf550d21af821a3d97ffe5c765d33556abb",

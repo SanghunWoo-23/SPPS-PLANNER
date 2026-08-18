@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-BUILD_REVISION = "2026-08-04-r15"
+BUILD_REVISION = "2026-08-14-v4-r2"
 BATCH_COLUMNS = [
     "No", "Project", "Peptide name", "Form", "Copies", "N-term",
     "Region 1 seq", "Region 1 eq", "Linker", "Region 2 seq",
@@ -49,10 +49,10 @@ def run() -> dict[str, Any]:
     tables = batch_workflow.calculate(gui)
     aa_items = set(tables["AA stock"]["Item"])
     chemical_items = set(tables["Chemicals"]["Item"])
-    ac_plan = generate_step_reagent_plan(PlanInput(sequence="Ac-EEMQRR-NH2"))
+    ac_plan = generate_step_reagent_plan(PlanInput(sequence="Ac-AAAA-NH2"))
     pal_plan = generate_step_reagent_plan(PlanInput(sequence="Pal-EEMQRR-NH2"))
     checks = {
-        "version": VERSION_NUMBER == "3.0.0",
+        "version": VERSION_NUMBER == "4.0.0",
         "protected_aa_catalog": catalogs.UNIT_VALUES[1] == "Fmoc-Ala-OH",
         "parser_tokens": parsed.core_tokens == ["FITC", "A", "C", "D", "PEG4"],
         "batch_summary": len(tables["Summary"]) == 1,
@@ -65,7 +65,7 @@ def run() -> dict[str, Any]:
             "FITC isothiocyanate",
         } <= chemical_items,
         "terminal_ac_plan": (
-            len(ac_plan) == 7
+            len(ac_plan) == 5
             and str(ac_plan.iloc[-1]["unit"]) == "Ac"
             and "Acetic anhydride" in str(ac_plan.iloc[-1]["protected_reagent"])
         ),
@@ -81,7 +81,7 @@ def run() -> dict[str, Any]:
         }),
     }
     return {
-        "app_version": "V3.0.0",
+        "app_version": "V4.0.0",
         "build_revision": BUILD_REVISION,
         "checks": checks,
         "ok": all(checks.values()),

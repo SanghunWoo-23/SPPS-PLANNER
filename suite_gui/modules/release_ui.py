@@ -1,4 +1,4 @@
-"""SPPS Planner V3.0.0 final release adjustments.
+"""SPPS Planner V4.0.0 final release adjustments.
 
 This final layer is deliberately narrow: it preserves the accepted V2.2.15
 workflow and only normalizes startup, cleavage preset display names, and release
@@ -9,8 +9,8 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-APP_VERSION = "V3.0.0"
-VERSION_LABEL = "SPPS Planner V3.0.0"
+APP_VERSION = "V4.0.0"
+VERSION_LABEL = "SPPS Planner V4.0.0"
 
 
 ACTIVE_RESINS = [
@@ -102,8 +102,8 @@ def _walk(widget):
 
 def _blank_item():
     return {
-        "project": "Project-001",
-        "peptide": "Peptide-001",
+        "project": "",
+        "peptide": "",
         "sequence": "",
         "copies": "1",
         "scale": "0.2",
@@ -114,6 +114,8 @@ def _blank_item():
         "status": "Ready",
         "cleavage_preset": "AUTO",
         "cleavage_components_text": "",
+        "loading_time_h": "",
+        "cleavage_time_h": "",
     }
 
 
@@ -129,7 +131,7 @@ def _ensure_one_start_item(gui):
         try:
             label = gui.pm_display_name(item)
         except Exception:
-            label = "Project-001 | Peptide-001"
+            label = "New project | New peptide"
         gui.pm_list.insert("end", label)
         # Keep the editor/results empty at startup; the item is loaded only when
         # the operator clicks or double-clicks it.

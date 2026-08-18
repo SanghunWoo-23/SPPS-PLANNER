@@ -1,0 +1,27 @@
+SPPS Planner V4.0.0 — Sequence-first condition optimizer update
+
+Key corrections
+- Cleavage Advisor now reads the active Planner sequence directly. Product name is no longer the actionable matching key in the UI workflow.
+- Cleavage eq and cocktail preset are calculated from the existing sequence-aware SPPS engine rules.
+- Cleavage time is recommended from the user's recorded cleavage-time history (robust median, practical 0.5 h increment) and is shown/applied as a first-class Planner field.
+- Cleavage total cocktail volume is recalculated for the current Planner scale and applied through the existing cleavage reserve/Apply Change workflow.
+- Cleavage Apply button shortened to "Apply & Update"; Loading Apply button shortened to "Apply & Generate".
+- Advisor window and main toolbar labels were compacted.
+- Loading Advisor may use one exact resin+AA Parsed row only in the explicit UI confirmation mode when no Verified exact row exists. It never averages unrelated rows into an actionable condition.
+- If the selected loading record has no time, loading time is estimated only from the median of exact resin+AA records with recorded times.
+- Coupling Condition Optimizer continues to transfer only a real operator-reviewed successful historical condition, including reagent/base/catalyst, solvent, molarity and mL/mmol volume-basis fields when those were actually recorded.
+- Existing V3/V4 Generate, Apply Change, View, Checklist, project/session, loading, position rules and doubling workflows remain intact.
+
+Validation
+- pytest: 186 passed, 21 skipped (Tk GUI tests skipped because no DISPLAY is available in this environment)
+- monkey-patch audit: 0 runtime class bindings; 0 _build wrappers
+- verify_release.py: PASS
+- verify_windows_release.py: PASS
+- compileall: PASS
+- Modified V4 files scanned for TODO/FIXME/NotImplementedError/placeholder/dummy/fake result/bare pass: none found
+
+Safety / provenance policy
+- Actionable sequence cleavage values are derived from the existing Planner sequence chemistry rules plus the user's historical time evidence; no product-name median is silently applied.
+- Historical Parsed rows remain visibly labeled.
+- Loading UI Parsed fallback applies one exact historical row only after explicit confirmation; API default remains Verified-only.
+- No arbitrary cross-record cocktail mixing is used.

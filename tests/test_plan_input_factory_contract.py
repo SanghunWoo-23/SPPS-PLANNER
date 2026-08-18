@@ -24,7 +24,7 @@ class _Gui:
 
 def test_editor_factory_preserves_scale_copies_and_dic_hobt_defaults():
     gui = _Gui(
-        pm_sequence="Ac-EEMQRR-NH2",
+        pm_sequence="Ac-AAAAAA-NH2",
         pm_scale="0.2",
         pm_copies="2",
         pm_loading="0.8",
@@ -36,7 +36,7 @@ def test_editor_factory_preserves_scale_copies_and_dic_hobt_defaults():
         gui, "Rink Amide AM", True
     )
 
-    assert plan.sequence == "Ac-EEMQRR-NH2"
+    assert plan.sequence == "Ac-AAAAAA-NH2"
     assert plan.scale_mmol == 0.4
     assert plan.resin_loading_mmol_g == 0.8
     assert plan.default_coupling_reagent == "DIC"

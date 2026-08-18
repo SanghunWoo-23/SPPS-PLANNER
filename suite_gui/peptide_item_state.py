@@ -16,9 +16,12 @@ EDITOR_FIELDS = (
     ("pm_copies", "copies", "1"),
     ("loading_aa_eq", "loading_aa_eq", "2"),
     ("loading_diea_eq", "loading_diea_eq", "4"),
+    ("loading_time_h", "loading_time_h", ""),
+    ("coupling_time_h", "coupling_time_h", "0.5"),
     ("cleavage_preset", "cleavage_preset", ""),
     ("cleavage_eq_override", "cleavage_eq_override", "0"),
     ("cleavage_components_text", "cleavage_components_text", ""),
+    ("cleavage_time_h", "cleavage_time_h", ""),
 )
 
 OUTPUT_TREES = (
@@ -102,8 +105,21 @@ def clear_editor_and_outputs(gui, adapter, set_value):
         set_value(gui, "cleavage_preset", "")
         set_value(gui, "cleavage_eq_override", "0")
         set_value(gui, "cleavage_components_text", "")
+        set_value(gui, "cleavage_time_h", "")
+        set_value(gui, "loading_time_h", "")
+        set_value(gui, "coupling_time_h", "0.5")
         for _, tree_name in OUTPUT_TREES:
             adapter._clear_tree(getattr(gui, tree_name, None))
+        # Checklist must be visually empty at startup as well as logically empty.
+        # Reset progress state so a restored/saved checklist cannot leave stale UI.
+        try:
+            gui.checklist_progress_var.set(0.0)
+        except Exception:
+            pass
+        try:
+            gui.checklist_progress_label.configure(text="Progress: 0/0 (0.0%)")
+        except Exception:
+            pass
         try:
             gui.pm_list.selection_clear(0, "end")
         except Exception:
@@ -140,6 +156,8 @@ def restore_item(
     gui._v229_switching = True
     try:
         for name, key, default in EDITOR_FIELDS:
+            if not hasattr(gui, name):
+                continue
             current = item.get(
                 key,
                 item.get("lot_no", default) if key == "lot" else default,

@@ -24,9 +24,9 @@ class Listbox:
 class SessionHarness(SessionStateMixin):
     def __init__(self, path):
         self.state_file = path
-        self.project_name = Variable("Project-001")
-        self.seq = Variable("Ac-EEMQRR-NH2")
-        self.pm_items = [{"project": "Project-001", "sequence": "Ac-EEMQRR-NH2"}]
+        self.project_name = Variable("Demo-Project")
+        self.seq = Variable("Ac-AAAAAA-NH2")
+        self.pm_items = [{"project": "Demo-Project", "sequence": "Ac-AAAAAA-NH2"}]
         self.pm_list = Listbox()
         self.synced = 0
         self.closed = 0
@@ -36,7 +36,7 @@ class SessionHarness(SessionStateMixin):
         self.synced += 1
 
     def _batch_rows_from_tree(self):
-        return [{"Project": "Project-001", "Scale mmol": "0.2"}]
+        return [{"Project": "Demo-Project", "Scale mmol": "0.2"}]
 
     def _log(self, message):
         self.logs.append(message)
@@ -50,14 +50,14 @@ def test_session_state_keeps_the_accepted_json_shape(tmp_path):
     state = harness._collect_state()
 
     assert harness.synced == 1
-    assert state["app_version"] == "V3.0.0"
+    assert state["app_version"] == "V4.0.0"
     assert state["selected_pm_index"] == 1
     assert state["pm_items"] == harness.pm_items
     assert state["batch_rows"] == [
-        {"Project": "Project-001", "Scale mmol": "0.2"}
+        {"Project": "Demo-Project", "Scale mmol": "0.2"}
     ]
-    assert state["defaults"]["project_name"] == "Project-001"
-    assert state["defaults"]["seq"] == "Ac-EEMQRR-NH2"
+    assert state["defaults"]["project_name"] == "Demo-Project"
+    assert state["defaults"]["seq"] == "Ac-AAAAAA-NH2"
 
 
 def test_session_save_is_atomic_and_close_saves_before_destroy(tmp_path):
@@ -66,7 +66,7 @@ def test_session_save_is_atomic_and_close_saves_before_destroy(tmp_path):
 
     harness.save_autosave_state()
     saved = json.loads(path.read_text(encoding="utf-8"))
-    assert saved["app_version"] == "V3.0.0"
+    assert saved["app_version"] == "V4.0.0"
     assert not path.with_suffix(".tmp").exists()
 
     harness.on_close()

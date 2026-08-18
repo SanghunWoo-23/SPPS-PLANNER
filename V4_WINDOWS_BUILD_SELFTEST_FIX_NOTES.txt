@@ -1,0 +1,6 @@
+SPPS Planner V4.0.0 - Windows build/self-test fix
+
+- Fixed packaged runtime self-test for Ac-AAAA-NH2: expected plan length is 5 (4 Ala coupling rows + N-terminal Ac row), not 7.
+- Build revision updated to 2026-08-14-v4-r2.
+- BUILD_EXE_ONLY.bat now reports the exact failing stage (compile, contract, PyInstaller, EXE contract, packaged self-test, report validation) instead of only a generic final error.
+- Public/private runtime data isolation remains unchanged.

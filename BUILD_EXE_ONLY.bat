@@ -2,7 +2,7 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "APP_VERSION=V3.0.0"
+set "APP_VERSION=V4.0.0"
 set "NO_PAUSE=0"
 if /I "%~1"=="--no-pause" set "NO_PAUSE=1"
 set "PY_CMD="
@@ -30,29 +30,35 @@ echo ============================================================
 if errorlevel 1 goto :fail
 %PY_CMD% -m pip install -r requirements.txt
 if errorlevel 1 goto :fail
+echo [1/6] Compiling source...
 %PY_CMD% -m compileall -q main_launcher.py suite_gui peptiforg_core apps\spps_planner_app\spps_planner
-if errorlevel 1 goto :fail
+if errorlevel 1 goto :fail_compile
+echo [2/6] Verifying Windows release contract...
 %PY_CMD% tools\verify_windows_release.py
-if errorlevel 1 goto :fail
+if errorlevel 1 goto :fail_contract
 
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
+echo [3/6] Building packaged EXE...
 %PY_CMD% -m PyInstaller --clean --noconfirm SPPS_Planner.spec
-if errorlevel 1 goto :fail
+if errorlevel 1 goto :fail_pyinstaller
 
 if not exist "dist\SPPS_Planner\SPPS_Planner.exe" (
   echo [ERROR] PyInstaller completed without the expected EXE.
   goto :fail
 )
+echo [4/6] Verifying packaged EXE contract...
 %PY_CMD% tools\verify_windows_release.py --check-exe
-if errorlevel 1 goto :fail
+if errorlevel 1 goto :fail_exe_contract
 set "SPPS_PLANNER_SELFTEST_OUTPUT=%CD%\dist\SPPS_Planner\runtime_selftest.json"
 if exist "%SPPS_PLANNER_SELFTEST_OUTPUT%" del /q "%SPPS_PLANNER_SELFTEST_OUTPUT%"
+echo [5/6] Running packaged EXE functional self-test...
 "%CD%\dist\SPPS_Planner\SPPS_Planner.exe" --self-test
-if errorlevel 1 goto :fail
+if errorlevel 1 goto :fail_selftest
 if not exist "%SPPS_PLANNER_SELFTEST_OUTPUT%" goto :selftest_missing
+echo [6/6] Verifying packaged self-test report...
 %PY_CMD% tools\verify_packaged_runtime.py "%SPPS_PLANNER_SELFTEST_OUTPUT%"
-if errorlevel 1 goto :fail
+if errorlevel 1 goto :fail_selftest_report
 
 echo.
 echo [OK] EXE created:
@@ -62,6 +68,31 @@ exit /b 0
 
 :missing
 echo [ERROR] A required project file is missing. Extract the complete ZIP first.
+goto :fail
+
+:fail_compile
+echo [ERROR] Source compilation failed.
+goto :fail
+
+:fail_contract
+echo [ERROR] Windows release contract verification failed before packaging.
+goto :fail
+
+:fail_pyinstaller
+echo [ERROR] PyInstaller failed while creating the EXE.
+goto :fail
+
+:fail_exe_contract
+echo [ERROR] The generated EXE failed release-contract verification.
+goto :fail
+
+:fail_selftest
+echo [ERROR] The packaged EXE functional self-test failed.
+echo [INFO] If runtime_selftest.json exists, inspect it for the failed check.
+goto :fail
+
+:fail_selftest_report
+echo [ERROR] The packaged runtime self-test report failed validation.
 goto :fail
 
 :selftest_missing

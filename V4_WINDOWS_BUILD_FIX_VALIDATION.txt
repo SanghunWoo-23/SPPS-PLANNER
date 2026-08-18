@@ -1,0 +1,9 @@
+SPPS Planner V4.0.0 PUBLIC - Windows build fix validation
+- Fixed packaged self-test terminal Ac plan expectation for sanitized synthetic sequence Ac-AAAA-NH2 (5 plan rows).
+- BUILD_EXE_ONLY now reports exact stage failures.
+- BUILD_INSTALLER has no unresolved goto labels and reports final verification failures explicitly.
+- Runtime namespace remains SPPS_Planner_PUBLIC.
+- Public bundled experimental data remains empty/sanitized.
+- Test suite: 202 passed, 21 skipped in headless environment.
+- Source packaged-runtime self-test: PASS (2026-08-14-v4-r2).
+- verify_windows_release.py: PASS.

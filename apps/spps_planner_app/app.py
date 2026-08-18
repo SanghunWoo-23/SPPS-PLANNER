@@ -33,7 +33,7 @@ st.caption(f"Solid phase peptide synthesis calculator. Data: {DATA_VERSION}. Seq
 
 with st.sidebar:
     st.header("Input")
-    seq = st.text_input("Sequence", "Ac-EEMQRR-NH2")
+    seq = st.text_input("Sequence", "")
     resin = st.selectbox("Resin family", ["Amide", "CTC/Trityl"])
     scale = st.number_input("Resin scale (mmol)", min_value=0.0, value=400.0, step=10.0)
     loading = st.number_input("Resin loading rate (mmol/g)", min_value=0.01, value=0.8, step=0.05)

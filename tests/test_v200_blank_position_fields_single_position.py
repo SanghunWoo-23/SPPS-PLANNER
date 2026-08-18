@@ -48,7 +48,7 @@ def test_position_rule_fields_start_blank_and_7_colon_2_applies_only_position_7(
 
         gui.pm_scale.set("1")
         gui.pm_resin.set("Rink Amide AM")
-        gui.pm_sequence.set("Ac-EEMQRR-NH2")
+        gui.pm_sequence.set("Ac-AAAAAA-NH2")
         gui.use_position_doubling.set(True)
 
         # Blank startup rules do not silently apply any old presets.

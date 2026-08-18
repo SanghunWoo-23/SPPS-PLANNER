@@ -11,8 +11,8 @@ import tkinter as tk
 from tkinter import ttk
 from suite_gui import catalogs
 
-APP_VERSION = "V3.0.0"
-VERSION_LABEL = "SPPS Planner V3.0.0"
+APP_VERSION = "V4.0.0"
+VERSION_LABEL = "SPPS Planner V4.0.0"
 
 def _walk(widget):
     try:
@@ -98,12 +98,16 @@ def _ensure_loading_tab(gui):
         gui.loading_aa_eq = tk.StringVar(value="2")
     if not hasattr(gui, "loading_diea_eq"):
         gui.loading_diea_eq = tk.StringVar(value="4")
+    if not hasattr(gui, "loading_time_h"):
+        gui.loading_time_h = tk.StringVar(value="")
     ttk.Checkbutton(frame, text="Use direct resin loading calculation", variable=gui.apply_loading_calc).grid(row=0, column=0, columnspan=3, sticky="w")
     ttk.Label(frame, text="Loading amino acid eq").grid(row=1, column=0, sticky="w", pady=3)
     ttk.Entry(frame, textvariable=gui.loading_aa_eq, width=12).grid(row=1, column=1, sticky="w", pady=3)
     ttk.Label(frame, text="Loading DIEA eq").grid(row=2, column=0, sticky="w", pady=3)
     ttk.Entry(frame, textvariable=gui.loading_diea_eq, width=12).grid(row=2, column=1, sticky="w", pady=3)
-    ttk.Label(frame, text="Resin loading mmol/g is edited only in Selected peptide editor.").grid(row=3, column=0, columnspan=4, sticky="w", pady=(8, 0))
+    ttk.Label(frame, text="Loading time (h)").grid(row=3, column=0, sticky="w", pady=3)
+    ttk.Entry(frame, textvariable=gui.loading_time_h, width=12).grid(row=3, column=1, sticky="w", pady=3)
+    ttk.Label(frame, text="Resin loading mmol/g is edited only in Selected peptide editor.").grid(row=4, column=0, columnspan=4, sticky="w", pady=(8, 0))
 
 
 def _ensure_unit_defaults_alias(gui):

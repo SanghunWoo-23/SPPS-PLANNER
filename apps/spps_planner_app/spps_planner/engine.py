@@ -62,7 +62,7 @@ class Step:
 
 @dataclass
 class PlanInput:
-    sequence: str = "Ac-EEMQRR-NH2"
+    sequence: str = ""
     resin: str = "Amide"
     scale_mmol: float = 400.0
     resin_loading_mmol_g: float = 0.8
@@ -109,6 +109,8 @@ class PlanInput:
     step_overrides_text: str = ""
     loading_aa_eq: float = 2.0
     loading_diea_eq: float = 4.0
+    loading_time_h: float = 0.0
+    cleavage_time_h: float = 0.0
     auto_short_peptide_eq: bool = True
     short_peptide_max_len: int = 5
     short_peptide_coupling_eq: float = 2.0
@@ -510,12 +512,11 @@ def _sequence_key_for_cleavage(seq: str) -> str:
 def cleavage_eq_suggestion(inp: PlanInput) -> dict[str, float | str]:
     """Return the working cleavage-cocktail equivalent rule.
 
-    User-confirmed rules are applied before broad length rules:
-    - GHK = 18 eq
-    - Ac-EEMQRR-NH2 = 30 eq
-    - otherwise default/STD 30 eq, >=15mer 80 eq, >=22mer 100 eq
+    Public-build automatic rules use generic sequence features only:
+    - default/STD 30 eq, >=15mer 80 eq, >=22mer 100 eq
     - each Cys adds +100 eq
-    Manual override wins over all automatic rules.
+    Manual override wins over all automatic rules. Exact sequence-specific
+    conditions belong in the user-local experimental database, not source code.
     """
     parsed = parse_sequence(inp.sequence)
     tokens = list(parsed.core_tokens or []) + list(getattr(parsed, "branch_tokens", []) or [])
@@ -526,14 +527,7 @@ def cleavage_eq_suggestion(inp: PlanInput) -> dict[str, float | str]:
         eq = override
         source = "manual_override"
     else:
-        key = _sequence_key_for_cleavage(inp.sequence)
-        if key in {"GHK", "GHK-NH2", "GHK-CONH2"}:
-            eq = 18.0
-            source = "user_rule_GHK"
-        elif key in {"AC-EEMQRR-NH2", "AC-EEMQRR-CONH2"}:
-            eq = 30.0
-            source = "user_rule_Ac-EEMQRR-NH2"
-        elif n >= 22:
+        if n >= 22:
             eq = 100.0
             source = "length>=22mer"
         elif n >= 15:
@@ -572,59 +566,10 @@ _CLEAVAGE_COMPONENT_INFO = {
 }
 
 
-def _canonical_cleavage_component(name: str) -> str:
-    raw = str(name or "").strip()
-    key = re.sub(r"[^A-Za-z0-9]+", "", raw).upper()
-    aliases = {
-        "H2O": "DW / water", "WATER": "DW / water", "DW": "DW / water", "DIWATER": "DW / water",
-        "TIPS": "TIS", "TRIISOPROPYLSILANE": "TIS",
-        "TES": "Triethylsilane", "TRIETHYLSILANE": "Triethylsilane",
-        "ETHANEDITHIOL": "EDT", "12ETHANEDITHIOL": "EDT",
-        "THIOANISOL": "Thioanisole", "THIOANISOLE": "Thioanisole",
-        "DIMETHYLSULFIDE": "DMS", "DMS": "DMS", "DIMETHYLSULFOXIDE": "DMSO", "DMSO": "DMSO",
-        "PHENOL": "Phenol", "DTT": "DTT", "AMMONIUMIODIDE": "Ammonium iodide", "NH4I": "Ammonium iodide",
-        "ANISOLE": "Anisole", "DMB": "DMB", "DIMETHOXYBENZENE": "DMB", "PCRESOL": "p-Cresol",
-        "TFA": "TFA", "TIS": "TIS",
-    }
-    return aliases.get(key, raw)
 
 
-def cleavage_cocktail_presets() -> pd.DataFrame:
-    """Common Fmoc-SPPS cleavage cocktail presets used as selectable recipes.
-
-    The table is intentionally centralized so CLI, Streamlit, Tk GUI, and export
-    never diverge. Values are practical planning recipes; final bench use still
-    requires the local resin/protection/SOP check.
-    """
-    rows = [
-        {"preset": "AUTO", "components": "<sequence recommendation>", "recommended_for": "Automatically choose a preset from residue composition", "source_note": "Planner rule: Cys/Met/Trp/Tyr and resin family drive recommendation"},
-        {"preset": "DEFAULT_TFA_TIS_WATER", "components": "TFA=95;TIS=2.5;Water=2.5", "recommended_for": "Standard non-sensitive Fmoc/Rink Amide cases", "source_note": "Common 95:2.5:2.5 TFA/TIS/water"},
-        {"preset": "TFA_TIS_WATER_96_2_2", "components": "TFA=96;TIS=2;Water=2", "recommended_for": "Simple standard peptides; compact 96/2/2 option", "source_note": "Common TFA/TIS/H2O 96/2/2 variant"},
-        {"preset": "REDUCING_TFA_TIS_WATER_EDT", "components": "TFA=94;TIS=1;Water=2.5;EDT=2.5", "recommended_for": "Most peptides containing Trp, Cys, or Met", "source_note": "Reducing mix 94/1/2.5/2.5"},
-        {"preset": "CYS_EDT", "components": "TFA=92.5;TIS=2.5;Water=2.5;EDT=2.5", "recommended_for": "Cys/thiol-sensitive peptides; EDT-containing option", "source_note": "TFA/TIS/water + EDT variant"},
-        {"preset": "REAGENT_B", "components": "TFA=88;Phenol=5.8;TIS=2;Water=4.2", "recommended_for": "Trityl/scavenging-heavy but lower-odor option; not sufficient alone for some Cys/Met cases", "source_note": "Reagent B: TFA/phenol/TIS/water"},
-        {"preset": "REAGENT_K", "components": "TFA=82.5;Phenol=5;Water=5;Thioanisole=5;EDT=2.5", "recommended_for": "Sensitive residues such as Cys/Met/Trp/Tyr; broad general cleavage reagent", "source_note": "Reagent K"},
-        {"preset": "REAGENT_L", "components": "TFA=88;TIS=2;DTT=5;Water=5", "recommended_for": "Low-odor/reducing option; Met oxidation-sensitive cases", "source_note": "Reagent L"},
-        {"preset": "REAGENT_R", "components": "TFA=90;Thioanisole=5;Anisole=3;EDT=2", "recommended_for": "Arg(Pmc/Mtr)-type or strong scavenger cases", "source_note": "Reagent R"},
-        {"preset": "REAGENT_H", "components": "TFA=81;Phenol=5;Thioanisole=5;EDT=2.5;Water=3;DMS=2;Ammonium iodide=1.5", "recommended_for": "Methionine oxidation suppression", "source_note": "Reagent H"},
-        {"preset": "REAGENT_I", "components": "TFA=92.5;TIS=2.5;DMB=5", "recommended_for": "Rink amide linker decomposition mitigation", "source_note": "Reagent I"},
-        {"preset": "TFA_WATER_TIS_EDT", "components": "TFA=90;Water=5;TIS=2.5;EDT=2.5", "recommended_for": "Cys-containing alternatives when extra water scavenging is desired", "source_note": "Practical EDT/water/TIS variant"},
-        {"preset": "TFA_THIOANISOLE_EDT_ANISOLE", "components": "TFA=90;Thioanisole=5;EDT=3;Anisole=2", "recommended_for": "Strong cation scavenging; aromatic/thioether-rich sequences", "source_note": "Practical strong-scavenger variant"},
-        {"preset": "TFA_TIS_P_CRESOL_WATER", "components": "TFA=90;TIS=2.5;p-Cresol=5;Water=2.5", "recommended_for": "Tyr/Trp-rich sequences where phenolic scavenger is desired", "source_note": "p-cresol/phenolic scavenger variant"},
-        {"preset": "LOW_TFA_2CTC_TEST", "components": "TFA=1;DCM=99", "recommended_for": "2-CTC test cleavage only; not full global deprotection", "source_note": "2-CTC mild acid test cleavage only; not for full global deprotection. Verify resin/protecting groups."},
-    ]
-    return pd.DataFrame(rows)
 
 
-def _preset_components(name: str) -> dict[str, float]:
-    key = re.sub(r"[^A-Za-z0-9]+", "_", str(name or "").strip().upper()).strip("_")
-    if not key or key == "AUTO":
-        key = "DEFAULT_TFA_TIS_WATER"
-    presets = cleavage_cocktail_presets()
-    for _, row in presets.iterrows():
-        if re.sub(r"[^A-Za-z0-9]+", "_", str(row.get("preset", "")).upper()).strip("_") == key:
-            return _parse_cleavage_components_text(str(row.get("components", "")))
-    return _parse_cleavage_components_text(str(name or "")) or _parse_cleavage_components_text("TFA=95;TIS=2.5;Water=2.5")
 
 
 def _parse_cleavage_components_text(text: str) -> dict[str, float]:
@@ -936,7 +881,7 @@ def _default_step_reagents(phase: str, unit: str, inp: PlanInput, lookup: dict[s
         # 2-CTC/trityl loading is performed under DCM conditions.
         # DIEA/DIPEA is a base, not a coupling reagent, so do not duplicate it
         # as both reagent and base.
-        return {"coupling_reagent": "", "catalyst": "", "additive": "", "base": inp.default_base or "DIEA", "reaction_solvent": "DCM", "reagent_eq": float(getattr(inp, "loading_aa_eq", 2.0) or 2.0), "coupling_repeat": 1, "coupling_repeat_source": "trityl_loading_1x", "reagent_eq_source": "trityl_loading_user_ratio", "note": f"2-CTC/Trityl loading stoichiometry: resin:AA:DIEA = 1:{float(getattr(inp, 'loading_aa_eq', 2.0) or 2.0):g}:{float(getattr(inp, 'loading_diea_eq', 4.0) or 4.0):g}"}
+        return {"coupling_reagent": "", "catalyst": "", "additive": "", "base": inp.default_base or "DIEA", "reaction_solvent": "DCM", "reagent_eq": float(getattr(inp, "loading_aa_eq", 2.0) or 2.0), "coupling_repeat": 1, "coupling_repeat_source": "trityl_loading_1x", "reagent_eq_source": "trityl_loading_user_ratio", "note": f"2-CTC/Trityl loading stoichiometry: resin:AA:DIEA = 1:{float(getattr(inp, 'loading_aa_eq', 2.0) or 2.0):g}:{float(getattr(inp, 'loading_diea_eq', 4.0) or 4.0):g}" + (f"; time={float(getattr(inp, 'loading_time_h', 0.0) or 0.0):g} h" if float(getattr(inp, 'loading_time_h', 0.0) or 0.0) > 0 else "")}
     if phase == "Loading":
         return {"coupling_reagent": inp.default_coupling_reagent or "DIC", "catalyst": inp.default_catalyst or "HOBt", "additive": "", "base": inp.default_base or "", "reaction_solvent": inp.default_reaction_solvent or "DMF", "reagent_eq": inp.coupling_eq, "coupling_repeat": 1, "coupling_repeat_source": "loading_default", "reagent_eq_source": getattr(inp, "_coupling_eq_source", "global_loading")}
     if phase == "Last / N-term cap":
@@ -1214,7 +1159,6 @@ def generate_step_matrix(inp: PlanInput, compounds: pd.DataFrame | None = None, 
 
     # v3.0.0 hotfix: the editable Plan table must show synthesis units from the
     # user-entered peptide notation only.  Fmoc removal is an operation/checklist
-    # event, not a synthetic unit row.  Therefore Ac-EEMQRR-NH2 ends with Ac,
     # not an extra "Fmoc removal" row.
     if parsed.nterm:
         token = parsed.nterm
@@ -1564,7 +1508,6 @@ def _plan_summary_initial(inp: PlanInput, compounds: pd.DataFrame | None = None,
 # lab rule uses scale/2 * eq mL total cocktail; for amide/Rink plans it uses
 # scale * eq mL total cocktail.  Example checks:
 #   GHK, 1000 mmol, 2-CTC, 18 eq -> 9000 mL total = 8550 mL TFA + 450 mL water for 95/5
-#   Ac-EEMQRR-NH2, 500 mmol, Amide, 30 eq -> 15000 mL total = 14250 mL TFA + 375 mL TIS + 375 mL water.
 
 _CLEAVAGE_COMPONENT_INFO.update({
     "AcOH": {"role": "mild acid", "density": 1.049, "state": "liquid"},
@@ -1576,7 +1519,7 @@ _CLEAVAGE_COMPONENT_INFO.update({
 })
 
 
-def _canonical_cleavage_component(name: str) -> str:  # type: ignore[override]
+def _canonical_cleavage_component(name: str) -> str:
     raw = str(name or "").strip()
     key = re.sub(r"[^A-Za-z0-9]+", "", raw).upper()
     aliases = {
@@ -1596,7 +1539,7 @@ def _canonical_cleavage_component(name: str) -> str:  # type: ignore[override]
     return aliases.get(key, raw)
 
 
-def cleavage_cocktail_presets() -> pd.DataFrame:  # type: ignore[override]
+def cleavage_cocktail_presets() -> pd.DataFrame:
     rows = [
         {"preset": "AUTO", "components": "<sequence recommendation>", "recommended_for": "Automatically choose a preset from residue composition", "source_note": "Planner rule: Cys/Met/Trp/Tyr and resin family drive recommendation"},
         {"preset": "DEFAULT_TFA_WATER", "components": "TFA=95;Water=5", "recommended_for": "Simple short peptides and GHK-style basic cleavage planning", "source_note": "User-confirmed 95/5 TFA/water option"},
@@ -1621,7 +1564,7 @@ def cleavage_cocktail_presets() -> pd.DataFrame:  # type: ignore[override]
     return pd.DataFrame(rows)
 
 
-def _preset_components(name: str) -> dict[str, float]:  # type: ignore[override]
+def _preset_components(name: str) -> dict[str, float]:
     key = re.sub(r"[^A-Za-z0-9]+", "_", str(name or "").strip().upper()).strip("_")
     if not key or key == "AUTO":
         key = "DEFAULT_TFA_TIS_WATER"
@@ -1690,13 +1633,13 @@ def generate_cleavage_cocktail(inp: PlanInput) -> pd.DataFrame:
             "selected_preset": selected_preset,
             "auto_recommended_preset": rec.get("preset", ""),
             "include": "YES",
-            "note": (f"Bench volume basis: scale_mmol x eq x resin_factor={factor:g}; source={sug.get('source')}; length={sug.get('length_tokens')}; Cys={sug.get('cys_count')}." if name == "TFA" else "Included by selected/custom cleavage cocktail preset."),
+            "note": (f"Bench volume basis: scale_mmol x eq x resin_factor={factor:g}; source={sug.get('source')}; length={sug.get('length_tokens')}; Cys={sug.get('cys_count')}." + (f" Cleavage time={float(getattr(inp, 'cleavage_time_h', 0.0) or 0.0):g} h." if float(getattr(inp, 'cleavage_time_h', 0.0) or 0.0) > 0 else "") if name == "TFA" else "Included by selected/custom cleavage cocktail preset."),
         })
     rows.append({
         "component": "Total cocktail", "role": "total", "recommended_eq": eq, "percent": 100.0,
         "percent_basis": f"scale_mmol x eq x resin_factor({factor:g})", "volume_mL": round(total_mL, 6), "density_g_mL": "", "approx_g": "", "physical_state": "mixture",
         "selected_preset": selected_preset, "auto_recommended_preset": rec.get("preset", ""), "include": "YES",
-        "note": f"Preset={selected_preset}; requested={getattr(inp, 'cleavage_preset', 'AUTO') or 'AUTO'}; custom={bool(str(getattr(inp, 'cleavage_components_text', '') or '').strip())}. Use SOP/protecting-group check before bench use.",
+        "note": f"Preset={selected_preset}; requested={getattr(inp, 'cleavage_preset', 'AUTO') or 'AUTO'}; custom={bool(str(getattr(inp, 'cleavage_components_text', '') or '').strip())}." + (f" Cleavage time={float(getattr(inp, 'cleavage_time_h', 0.0) or 0.0):g} h." if float(getattr(inp, 'cleavage_time_h', 0.0) or 0.0) > 0 else "") + " Use SOP/protecting-group check before bench use.",
     })
     if int(float(sug.get("cys_count", 0) or 0)) > 0:
         rows.append({"component": "Cys warning", "role": "manual check", "recommended_eq": "", "percent": "", "percent_basis": "", "volume_mL": "", "density_g_mL": "", "approx_g": "", "physical_state": "", "selected_preset": selected_preset, "auto_recommended_preset": rec.get("preset", ""), "include": "INFO", "note": "Cys detected: planner adds +100 eq per Cys. EDT/thioanisole/TIS/water selection should be confirmed by lab SOP."})
@@ -1815,13 +1758,8 @@ def recommend_cleavage_preset(inp: PlanInput | str) -> dict[str, Any]:
     resin = inp.resin if hasattr(inp, "resin") else "Amide"
     parsed = parse_sequence(seq)
     tokens = list(parsed.core_tokens or []) + list(getattr(parsed, "branch_tokens", []) or [])
-    key = _sequence_key_for_cleavage(seq)
     aas = [str(t).replace("d", "").upper() for t in tokens]
     counts = {aa: aas.count(aa) for aa in sorted(set(aas))}
-    if key in {"GHK", "GHK-NH2", "GHK-CONH2"}:
-        return {"preset": "DEFAULT_TFA_WATER", "reason": "User-confirmed GHK rule: 18 eq with TFA/water 95/5."}
-    if key in {"AC-EEMQRR-NH2", "AC-EEMQRR-CONH2"}:
-        return {"preset": "DEFAULT_TFA_TIS_WATER", "reason": "User-confirmed Ac-EEMQRR-NH2 rule: 30 eq with TFA/TIS/water 95/2.5/2.5."}
     if counts.get("C", 0) and any(counts.get(x, 0) for x in ("M", "W", "Y")):
         return {"preset": "REAGENT_K", "reason": "Cys plus Met/Trp/Tyr detected; broad sensitive-residue scavenger mix recommended."}
     if counts.get("C", 0):
@@ -2019,21 +1957,6 @@ def _v221_resin_display(resin: Any) -> str:
         return "2-CTC"
     return raw or "Rink Amide AM"
 
-def _v221_is_liquid_display(material: Any, cls: Any = "", state: Any = "", unit: Any = "") -> bool:
-    s = str(material or "").strip().lower()
-    base = s.split(" -")[0].strip()
-    cls_l = str(cls or "").strip().lower()
-    state_l = str(state or "").strip().lower()
-    unit_l = str(unit or "").strip().lower()
-    if unit_l == "ml" or state_l in {"liquid", "solution", "mixture"}:
-        return True
-    if base in _V221_LIQUID_NAMES or s in _V221_LIQUID_NAMES:
-        return True
-    if base in {"dic", "diea"}:  # user-confirmed repeated rule: show mL only
-        return True
-    if "solvent" in cls_l or "solution" in cls_l or "cleavage" in cls_l and base not in {"resin"}:
-        return True
-    return False
 
 def _v221_float(v: Any, default: float = 0.0) -> float:
     try:
@@ -2043,85 +1966,7 @@ def _v221_float(v: Any, default: float = 0.0) -> float:
     except Exception:
         return default
 
-def _v221_apply_display_rules(df: pd.DataFrame, resin_text: str = "") -> pd.DataFrame:
-    if df is None or getattr(df, "empty", True):
-        return df
-    out = df.copy().astype(object).where(pd.notna(df), "")
-    resin_disp = _v221_resin_display(resin_text or getattr(df, "resin", ""))
-    for idx, r in out.iterrows():
-        mat = str(r.get("material", r.get("component", "")) or "").strip()
-        cls = str(r.get("class", r.get("role", "")) or "").strip()
-        state = str(r.get("physical_state", "") or "").strip()
-        unit = str(r.get("unit", "") or "").strip()
-        reagent = str(r.get("reagent", "") or "").strip()
-        # Resin display repair.
-        if str(r.get("step", "")).strip().lower() == "resin" or mat.lower() == "resin" or cls == "CTC/Trityl":
-            if "material" in out.columns:
-                out.at[idx, "material"] = resin_disp
-            if "reagent" in out.columns:
-                out.at[idx, "reagent"] = resin_disp
-            if "class" in out.columns and cls == "CTC/Trityl":
-                out.at[idx, "class"] = "Resin"
-            continue
-        # One-letter AA total row repair.
-        if mat in _V221_AA_REAGENT_NAMES and str(cls).upper() == "AA":
-            out.at[idx, "material"] = _V221_AA_REAGENT_NAMES[mat]
-            mat = _V221_AA_REAGENT_NAMES[mat]
-            if "class" in out.columns:
-                out.at[idx, "class"] = "AA/Chemical"
-        is_liq = _v221_is_liquid_display(mat, cls, state, unit) or _v221_is_liquid_display(reagent, cls, state, unit)
-        if not is_liq:
-            continue
-        density = _v221_float(r.get("density_g_ML", r.get("density_g_mL", r.get("Density(g/mL)", ""))), 0.0)
-        g = _v221_float(r.get("planned_g", ""), 0.0)
-        ml = _v221_float(r.get("planned_mL", r.get("volume_mL", "")), 0.0)
-        if ml <= 0 and g > 0 and density > 0:
-            ml = g / density
-            if "planned_mL" in out.columns:
-                out.at[idx, "planned_mL"] = ml
-            if "volume_mL" in out.columns:
-                out.at[idx, "volume_mL"] = ml
-        for col in ("planned_g", "planned_mg", "approx_g"):
-            if col in out.columns:
-                out.at[idx, col] = ""
-        if "unit" in out.columns:
-            out.at[idx, "unit"] = "mL"
-    return out
 
-def _v221_step_sort_key(row: pd.Series) -> tuple[float, int]:
-    s = str(row.get("step", "")).strip().lower()
-    if s == "resin":
-        base = -1000
-    elif s == "cleavage":
-        base = 100000
-    else:
-        try:
-            base = int(float(s)) * 100
-        except Exception:
-            base = 90000
-    phase = str(row.get("phase", "")).strip().lower()
-    src = str(row.get("source", "")).strip().lower()
-    cls = str(row.get("class", "")).strip().lower()
-    if s == "resin": rank = 0
-    elif "swell" in phase: rank = 1
-    elif "loading" in phase and ("aa" in cls or "unit" in src): rank = 10
-    elif "loading" in phase and ("base" in cls or "aux" in src): rank = 11
-    elif "synthesis" in phase or "reaction" in phase: rank = 12
-    elif "deprotection" in phase and "piperidine" in str(row.get("material", "")).lower(): rank = 20
-    elif "deprotection" in phase: rank = 21
-    elif "dmf wash" in phase: rank = 30
-    elif "regular aa" in phase or "coupling" in phase:
-        if "aa" in cls or "unit" in src: rank = 40
-        elif "coupling reagent" in cls: rank = 41
-        elif "catalyst" in cls: rank = 42
-        elif "base" in cls: rank = 43
-        elif "solvent" in cls: rank = 44
-        else: rank = 45
-    elif "post" in phase: rank = 50
-    elif "final" in phase: rank = 60
-    elif "cleavage" in phase: rank = 1000
-    else: rank = 100
-    return (base + rank, 0)
 
 def _v221_order_step_materials(df: pd.DataFrame, resin_text: str = "") -> pd.DataFrame:
     out = _v221_apply_display_rules(df, resin_text)
@@ -2141,45 +1986,10 @@ def _generate_materials_v221(inp: PlanInput, compounds: pd.DataFrame | None = No
 # ======================= END V2.2.1 USER-FACING MATERIAL DISPLAY FINAL REPAIR =======================
 
 # V2.2.1b ordering correction: synthesis/reaction solvent belongs after coupling reagents, not before deprotection.
-def _v221_step_sort_key(row: pd.Series) -> tuple[float, int]:  # type: ignore[override]
-    s = str(row.get("step", "")).strip().lower()
-    if s == "resin":
-        base = -1000
-    elif s == "cleavage":
-        base = 100000
-    else:
-        try:
-            base = int(float(s)) * 100
-        except Exception:
-            base = 90000
-    phase = str(row.get("phase", "")).strip().lower()
-    src = str(row.get("source", "")).strip().lower()
-    cls = str(row.get("class", "")).strip().lower()
-    mat = str(row.get("material", "")).strip().lower()
-    if s == "resin": rank = 0
-    elif "swell" in phase: rank = 1
-    elif "loading" in phase and ("aa" in cls or "unit" in src): rank = 10
-    elif "loading" in phase and ("base" in cls or "aux" in src): rank = 11
-    elif "deprotection" in phase and "piperidine" in mat: rank = 20
-    elif "deprotection" in phase: rank = 21
-    elif "dmf wash" in phase: rank = 30
-    elif "regular aa" in phase or "coupling" in phase:
-        if "aa" in cls or "unit" in src: rank = 40
-        elif "coupling reagent" in cls: rank = 41
-        elif "catalyst" in cls: rank = 42
-        elif "base" in cls: rank = 43
-        elif "solvent" in cls: rank = 44
-        else: rank = 45
-    elif "synthesis" in phase or "reaction" in phase: rank = 46
-    elif "post" in phase: rank = 50
-    elif "final" in phase: rank = 60
-    elif "cleavage" in phase: rank = 1000
-    else: rank = 100
-    return (base + rank, 0)
 # ======================= END V2.2.1b ORDERING CORRECTION =======================
 
 # V2.2.1c: Post DMF wash must stay after coupling/reaction, not inside generic DMF wash bucket.
-def _v221_step_sort_key(row: pd.Series) -> tuple[float, int]:  # type: ignore[override]
+def _v221_step_sort_key(row: pd.Series) -> tuple[float, int]:
     s = str(row.get("step", "")).strip().lower()
     if s == "resin": base = -1000
     elif s == "cleavage": base = 100000
@@ -2213,7 +2023,7 @@ def _v221_step_sort_key(row: pd.Series) -> tuple[float, int]:  # type: ignore[ov
 # ======================= END V2.2.1c ORDERING CORRECTION =======================
 
 # V2.2.1d: keep internal numeric planned_g=0.0 for regression/backward compatibility.
-def _v221_apply_display_rules(df: pd.DataFrame, resin_text: str = "") -> pd.DataFrame:  # type: ignore[override]
+def _v221_apply_display_rules(df: pd.DataFrame, resin_text: str = "") -> pd.DataFrame:
     if df is None or getattr(df, "empty", True):
         return df
     out = df.copy().astype(object).where(pd.notna(df), "")
@@ -2249,7 +2059,7 @@ def _v221_apply_display_rules(df: pd.DataFrame, resin_text: str = "") -> pd.Data
 # ======================= END V2.2.1d ENGINE NUMERIC COMPATIBILITY =======================
 
 # V2.2.1e: cleavage solids such as phenol remain grams; only explicit liquid components are mL-only.
-def _v221_is_liquid_display(material: Any, cls: Any = "", state: Any = "", unit: Any = "") -> bool:  # type: ignore[override]
+def _v221_is_liquid_display(material: Any, cls: Any = "", state: Any = "", unit: Any = "") -> bool:
     s = str(material or "").strip().lower()
     base = s.split(" -")[0].strip()
     cls_l = str(cls or "").strip().lower()
@@ -2397,47 +2207,6 @@ def _v222_apply_material_display(df: pd.DataFrame, resin_label: str = "") -> pd.
     return out
 
 
-def _v222_phase_rank(row: pd.Series) -> int:
-    s = str(row.get("step", "") or "").strip().lower()
-    phase = str(row.get("phase", "") or "").strip().lower()
-    src = str(row.get("source", "") or "").strip().lower()
-    cls = str(row.get("class", "") or "").strip().lower()
-    mat = str(row.get("material", "") or "").strip().lower()
-    if s == "resin":
-        return 0
-    if "swell" in phase:
-        return 1
-    if "loading" in phase and ("aa" in cls or "unit" in src):
-        return 10
-    if "loading" in phase and ("base" in cls or "aux" in src):
-        return 11
-    if "deprotection" in phase and "piperidine" in mat:
-        return 20
-    if "deprotection" in phase:
-        return 21
-    if "dmf wash" in phase:
-        return 30
-    if "regular aa" in phase or "coupling" in phase:
-        if "aa" in cls or "unit" in src:
-            return 40
-        if "coupling reagent" in cls:
-            return 41
-        if "catalyst" in cls:
-            return 42
-        if "base" in cls:
-            return 43
-        if "solvent" in cls:
-            return 44
-        return 45
-    if "synthesis" in phase or "reaction" in phase:
-        return 46
-    if "post" in phase:
-        return 50
-    if "final" in phase:
-        return 60
-    if "cleavage" in phase:
-        return 1000
-    return 100
 
 
 def _v222_step_order(row: pd.Series) -> tuple[int, int]:
@@ -2521,7 +2290,7 @@ def _generate_materials_v222(inp: PlanInput, compounds: pd.DataFrame | None = No
 
 # V2.2.2b: final ordering guard.  "Post DMF wash" must be after coupling,
 # not caught by the generic "DMF wash" branch.
-def _v222_phase_rank(row: pd.Series) -> int:  # type: ignore[override]
+def _v222_phase_rank(row: pd.Series) -> int:
     s = str(row.get("step", "") or "").strip().lower()
     phase = str(row.get("phase", "") or "").strip().lower()
     src = str(row.get("source", "") or "").strip().lower()

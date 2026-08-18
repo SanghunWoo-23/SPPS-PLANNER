@@ -1,0 +1,7 @@
+SPPS Planner V4.0.0 - PUBLIC / GITHUB DATA-SANITIZED BUILD
+
+No bundled private experimental history or private product-to-sequence mapping is included.
+Users add authorized data locally with Record Lab Data / Import Lab Data.
+
+This is a data-sanitized technical build, not a legal determination that publication is permitted.
+Review employment, NDA, IP, licensing, and company policies before publishing source code.

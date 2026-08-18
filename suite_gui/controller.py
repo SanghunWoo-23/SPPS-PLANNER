@@ -21,6 +21,7 @@ from suite_gui import (
     data_workflow,
     export_workflow,
     execution_workflow,
+    experimental_workflow,
     ml_workflow,
     persistence_workflow,
     project_workflow,
@@ -34,7 +35,7 @@ from suite_gui.modules.release_ui import ACTIVE_RESINS
 class SPPSGui(ClassicControllerBase):
     """Canonical SPPS Planner V3.0.0 controller with a static method surface."""
 
-    TITLE = "SPPS Planner V3.0.0"
+    TITLE = "SPPS Planner V4.0.0"
     RESIN_VALUES = list(ACTIVE_RESINS)
 
     def _build(self) -> Any:
@@ -245,6 +246,36 @@ class SPPSGui(ClassicControllerBase):
 
     def detect_ml_anomalies(self) -> Any:
         return ml_workflow.detect_anomalies(self)
+
+    def open_experimental_data(self) -> Any:
+        return experimental_workflow.open_window(self)
+
+    def open_loading_advisor(self) -> Any:
+        return experimental_workflow.open_advisor(self, "loading")
+
+    def open_cleavage_advisor(self) -> Any:
+        return experimental_workflow.open_advisor(self, "cleavage")
+
+    def open_condition_optimizer(self) -> Any:
+        return experimental_workflow.open_condition_optimizer(self)
+
+    def import_experimental_data(self, path: Any) -> Any:
+        return experimental_workflow.import_file(self, path)
+
+    def experimental_loading_records(self, statuses: Any = None) -> Any:
+        return experimental_workflow.loading_records(self, statuses)
+
+    def experimental_cleavage_records(self, statuses: Any = None) -> Any:
+        return experimental_workflow.cleavage_records(self, statuses)
+
+    def loading_advisor(self, **query: Any) -> Any:
+        return experimental_workflow.advise_loading(self, **query)
+
+    def cleavage_advisor(self, **query: Any) -> Any:
+        return experimental_workflow.advise_cleavage(self, **query)
+
+    def coupling_advisor(self) -> Any:
+        return experimental_workflow.advise_coupling(self)
 
     def evaluate_synthesis_risk(self) -> Any:
         return risk_workflow.evaluate(self)

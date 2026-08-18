@@ -20,6 +20,8 @@ def blank_item(number: int) -> dict[str, Any]:
         "lot": "",
         "chemistry": "DIC/HOBt",
         "status": "Ready",
+        "loading_time_h": "",
+        "cleavage_time_h": "",
         "cleavage_preset": "",
     }
 

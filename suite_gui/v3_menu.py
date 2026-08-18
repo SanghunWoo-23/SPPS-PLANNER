@@ -15,20 +15,34 @@ def _about(gui: Any) -> None:
     from suite_gui.runtime_selftest import BUILD_REVISION
     messagebox.showinfo(
         "About SPPS Planner",
-        "SPPS Planner V3.0.0\n\n"
+        "SPPS Planner V4.0.0\n\n"
         f"Build revision: {BUILD_REVISION}\n"
         "Modern/Classic hybrid workspace\n"
-        "Visible Plan → Apply Change → linked Materials/Checklist/Total/Export",
+        "V3 planning workflow preserved + V4 Experimental Data / ML Advisors",
         parent=gui,
     )
 
 
 def _select_result_tab(gui: Any, label: str) -> None:
+    """Select a result tab even after the V3 label-cleanup pass renames it.
+
+    V3 intentionally removes the user-facing ``Selected`` prefix, while the
+    menu historically retained the old names.  Match both canonical labels so
+    View commands never become silent no-ops.
+    """
     notebook = getattr(gui, "pm_results_notebook", None)
     if notebook is None:
         return
+    aliases = {
+        "Selected Plan": {"Selected Plan", "Plan"},
+        "Selected Materials": {"Selected Materials", "Materials"},
+        "Selected Total Materials": {"Selected Total Materials", "Total Materials"},
+        "Selected Checklist": {"Selected Checklist", "Checklist"},
+        "Cleavage Cocktail": {"Cleavage Cocktail", "Selected Cleavage Cocktail"},
+    }
+    wanted = aliases.get(label, {label})
     for tab in notebook.tabs():
-        if str(notebook.tab(tab, "text")) == label:
+        if str(notebook.tab(tab, "text")) in wanted:
             notebook.select(tab)
             return
 
@@ -152,6 +166,8 @@ def install_menu(gui: Any) -> tk.Menu:
         command=lambda: _open_work_item_tab(gui, "Outcome / ML"),
     )
     data_menu.add_command(label="Build Reviewed Dataset", command=_command(gui, "build_ml_dataset"))
+    data_menu.add_separator()
+    data_menu.add_command(label="Experimental Data / ML Advisors...", command=_command(gui, "open_experimental_data"))
     data_menu.add_separator()
     data_menu.add_command(label="Custom Material DB", command=_command(gui, "restore_custom_db_tab"))
     data_menu.add_command(label="Refresh ML Data", command=_command(gui, "refresh_ml_data"))

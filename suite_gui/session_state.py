@@ -22,7 +22,7 @@ DEFAULT_STATE_FIELDS = (
     "default_loading_dissolve_solvent", "outdir", "batch_solution_conc",
     "batch_coupling_eq", "batch_actual_round_ml", "batch_actual_extra_ml",
     "batch_default_scale", "batch_default_resin", "batch_default_loading",
-    "loading_aa_eq", "loading_diea_eq", "batch_hbtu_eq", "batch_hbtu_conc",
+    "loading_aa_eq", "loading_diea_eq", "loading_time_h", "cleavage_time_h", "batch_hbtu_eq", "batch_hbtu_conc",
     "batch_hbtu_mw", "batch_nmp_density", "solvent_volume_mode",
     "amide_ml_per_mmol", "ctc_ml_per_mmol", "solvent_molarity_m",
 )
@@ -39,10 +39,10 @@ class SessionStateMixin:
                     or os.environ.get("APPDATA")
                     or Path.home()
                 )
-                / "SPPS Planner"
+                / "SPPS Planner Public"
             )
         else:
-            base = Path.home() / ".spps_planner"
+            base = Path.home() / ".spps_planner_public"
         base.mkdir(parents=True, exist_ok=True)
         return base / "spps_planner_session_v1.json"
 
@@ -81,7 +81,7 @@ class SessionStateMixin:
             except Exception:
                 pass
         return state_persistence.project_state(
-            app_version="V3.0.0",
+            app_version="V4.0.0",
             saved_at=datetime.now().isoformat(timespec="seconds"),
             selected_pm_index=selected_pm,
             pm_items=getattr(self, "pm_items", []),

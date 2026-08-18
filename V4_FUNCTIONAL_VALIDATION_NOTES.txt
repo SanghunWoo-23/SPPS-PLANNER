@@ -1,0 +1,36 @@
+SPPS Planner V4.0.0 - Functional Validation / ML Apply Safety
+Date: 2026-08-11
+
+Scope
+- Existing V3 regression suite
+- V4 Experimental Data import/database
+- Loading Advisor / Cleavage Advisor
+- View menu contract
+- Generate / Apply Change integration
+- Release and Windows build contracts
+- Monkey-patch audit
+
+Findings corrected during this validation
+1. Parsed seed observations could previously become actionable when no Verified exact record existed.
+   Fix: Parsed records are evidence only. Apply requires a Verified exact record.
+2. A cleavage record containing additional/unknown components (for example DCM/MC) could be reduced to TFA/TIS/H2O percentages and lose the extra component.
+   Fix: Apply is disabled unless the Verified source record has a complete TFA/TIS/H2O composition and no additional/unknown component.
+3. Advisor fields could be edited after analysis and then Apply could use stale cached advice.
+   Fix: both Apply paths recompute the advisor immediately before selecting the actionable record.
+4. Loading recommendation could be applied even when direct 2-CTC/Trityl loading calculation was not enabled, making the change irrelevant/misleading.
+   Fix: Loading Apply is disabled unless the Planner direct resin-loading mode is active.
+5. Two bare silent `pass` exception handlers existed in the V4 advisor path.
+   Fix: removed silent pass behavior and retain diagnostic state/logging.
+
+Validation result
+- pytest: 179 passed, 21 skipped with DISPLAY intentionally unset.
+- 21 skipped tests are Tk GUI tests requiring a real DISPLAY and were not treated as passes.
+- tools/verify_release.py: PASS
+- tools/verify_windows_release.py: PASS
+- tools/audit_monkey_patches.py: Runtime class bindings 0; _build wrappers 0
+- Python compileall: PASS
+
+Known functional limitation (not hidden)
+- Cleavage time is currently historical/reference evidence only because the existing Planner has no first-class cleavage-time state used by Apply Change. ML Apply can safely apply a verified cleavage equivalent and complete verified cocktail, but it does not apply time yet.
+- The historical monthly free-form workbooks remain registered but are not guessed into structured training rows.
+- Seed records are intentionally Parsed by default and therefore do not become actionable until an operator verifies them.

@@ -1,0 +1,35 @@
+SPPS Planner V4.0.0 — Recommend Engine Trial
+
+Version remains V4.0.0. This is not a version bump.
+
+Added
+- Condition Optimizer now uses a distinct Recommend path rather than simply reusing the historical Apply advisors.
+- Loading Recommend:
+  * exact resin + exact amino-acid history only
+  * groups only conditions actually used at the bench
+  * with a target loading, selects the least-reagent recorded condition whose observed group median reached the target
+  * does not interpolate AA eq, base eq, time, or solvent
+  * if the target was never demonstrated, shows the best observed condition but blocks Apply
+  * Parsed-only support is explicitly marked provisional
+- Cleavage Recommend:
+  * current Planner sequence is primary
+  * product names are used only when a product↔sequence mapping supports the current sequence
+  * cocktail, eq, and time stay together as one coherent recorded condition
+  * never mixes cocktail components from separate experiments
+  * repeated conditions and available precipitation/separation/filter outcomes are used to rank sequence-matched records
+  * if no sequence-matched lab condition exists, falls back explicitly to the existing sequence chemistry rule
+  * Ether ratio is displayed as advice only because the current Planner has no first-class ether-ratio apply field
+- Coupling recommendation remains conservative:
+  * only an operator-reviewed successful historical work item can be transferred
+  * no synthetic coupling optimum is invented when outcome data are insufficient
+
+Safety / validation
+- Existing Load ML / Clv ML evidence workflows remain available and separate from Recommend.
+- Recommend Apply requires explicit confirmation.
+- No runtime class/function replacement added.
+- No placeholder/TODO/NotImplementedError/dummy/fake implementation added in the V4 touched modules.
+- Full test suite: 193 passed, 21 skipped (Tk GUI tests requiring a graphical DISPLAY).
+- Windows release verification: PASS.
+- Release verification: PASS.
+- compileall: PASS.
+- monkey-patch audit: Runtime class bindings 0; _build wrappers 0.

@@ -18,7 +18,7 @@ import pandas as pd
 from suite_gui.gui_primitives import EditableTree, StaticValue as _StaticValue, bind_combobox_first_letter_jump, const_var as _v225_const_var, open_path
 from suite_gui import catalogs as _catalogs
 from suite_gui.session_state import SessionStateMixin
-APP_VERSION = 'V3.0.0'
+APP_VERSION = 'V4.0.0'
 APP = ROOT / 'apps' / 'spps_planner_app'
 if str(APP) not in sys.path:
     sys.path.insert(0, str(APP))
@@ -53,8 +53,21 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         self._row_meta_by_no = {}
         self._build()
         self.bind_all_combobox_typeahead()
-        self.rebuild_table()
-        self.after(300, self.refresh_outputs_from_tree)
+        # Startup must not invoke the synthesis core before the operator has
+        # entered a sequence.  Empty editor fields are a valid idle state.
+        startup_sequence = ""
+        for attr in ("pm_sequence", "seq"):
+            try:
+                value = getattr(self, attr, None)
+                text = value.get() if hasattr(value, "get") else value
+                if str(text or "").strip():
+                    startup_sequence = str(text).strip()
+                    break
+            except Exception:
+                continue
+        if startup_sequence:
+            self.rebuild_table()
+            self.after(300, self.refresh_outputs_from_tree)
 
     def _build(self):
         style = ttk.Style(self)
@@ -63,9 +76,9 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         style.configure('TNotebook.Tab', padding=(24, 10), font=('Segoe UI', 11, 'bold'))
         main = ttk.Frame(self, padding=10)
         main.pack(fill='both', expand=True)
-        ttk.Label(main, text='SPPS Planner V3.0.0 - Modern / Classic Hybrid', font=('Segoe UI', 18, 'bold')).pack(anchor='w')
+        ttk.Label(main, text='SPPS Planner V4.0.0 - Modern / Classic Hybrid', font=('Segoe UI', 18, 'bold')).pack(anchor='w')
         self.project_name = tk.StringVar(value='')
-        self.seq = tk.StringVar(value='Ac-EEMQRR-NH2')
+        self.seq = tk.StringVar(value='')
         self.lot_no = tk.StringVar(value=self._generate_lot_no())
         project_bar = ttk.Labelframe(main, text='Project', padding=8)
         project_bar.pack(fill='x', pady=(0, 8))
@@ -89,6 +102,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         self.coupling_eq = tk.StringVar(value='5')
         self.modifier_eq = tk.DoubleVar(value=3.0)
         self.coupling_repeats = tk.IntVar(value=1)
+        self.coupling_time_h = tk.StringVar(value='0.5')
         self.modifier_repeats = tk.IntVar(value=1)
         self.default_reagent = tk.StringVar(value='DIC')
         self.default_reagent_eq = tk.DoubleVar(value=5.0)
@@ -198,9 +212,11 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         add_card_field(unit_card, 'Default unit eq', ttk.Entry(unit_card, textvariable=self.coupling_eq), 0, 0)
         ttk.Label(unit_card, text='eq', width=8).grid(row=0, column=2, sticky='w')
         add_card_field(unit_card, 'Default unit repeat', ttk.Spinbox(unit_card, from_=1, to=20, textvariable=self.coupling_repeats), 1, 0)
+        add_card_field(unit_card, 'Coupling time', ttk.Entry(unit_card, textvariable=self.coupling_time_h), 2, 0)
+        ttk.Label(unit_card, text='h', width=8).grid(row=2, column=2, sticky='w')
         add_card_field(unit_card, 'Modifier / label eq', ttk.Entry(unit_card, textvariable=self.modifier_eq), 2, 0)
         ttk.Label(unit_card, text='eq', width=8).grid(row=2, column=2, sticky='w')
-        add_card_field(unit_card, 'Modifier repeat', ttk.Spinbox(unit_card, from_=1, to=20, textvariable=self.modifier_repeats), 3, 0)
+        add_card_field(unit_card, 'Modifier repeat', ttk.Spinbox(unit_card, from_=1, to=20, textvariable=self.modifier_repeats), 4, 0)
         add_card_field(reagent1_card, 'Reagent 1', ttk.Combobox(reagent1_card, textvariable=self.default_reagent, values=self.REAGENT_VALUES, state='normal', width=26), 0, 0)
         add_card_field(reagent1_card, 'Equivalent', ttk.Entry(reagent1_card, textvariable=self.default_reagent_eq), 1, 0)
         ttk.Label(reagent1_card, text='eq', width=8).grid(row=1, column=2, sticky='w')
@@ -705,9 +721,9 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         edit.grid(row=0, column=0, sticky='ew', padx=4, pady=(0, 4))
         for i in range(10):
             edit.columnconfigure(i, weight=1)
-        self.pm_project = tk.StringVar(value='Project-001')
-        self.pm_peptide = tk.StringVar(value='Peptide-001')
-        self.pm_sequence = tk.StringVar(value='Ac-EEMQRR-NH2')
+        self.pm_project = tk.StringVar(value='')
+        self.pm_peptide = tk.StringVar(value='')
+        self.pm_sequence = tk.StringVar(value='')
         self.pm_scale = tk.StringVar(value='0.2')
         self.pm_resin = tk.StringVar(value='Rink Amide AM')
         self.pm_loading = tk.StringVar(value='0.8')
@@ -786,7 +802,6 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         paned.add(right, minsize=700)
         self.after_idle(lambda: self._set_pm_sash_default())
         self.pm_items = []
-        self.pm_add_peptide({'project': 'Project-001', 'peptide': 'Peptide-001', 'sequence': 'Ac-EEMQRR-NH2', 'copies': '1', 'scale': '0.2', 'resin': 'Rink Amide AM', 'loading': '0.8', 'lot': self._generate_lot_no(), 'chemistry': 'DIC/HOBt', 'status': 'Ready'})
 
     def _build_pm_setup_panel(self, parent):
         """Compact setup panel placed under the selected peptide editor.
@@ -1205,7 +1220,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
             return
         no = len(self.batch_tree.get_children()) + 1
         lot = values.get('LOT No') or f"SPPS-{datetime.now().strftime('%y%m%d')}-{no:02d}"
-        row = {'No': no, 'Project': values.get('Project', ''), 'Peptide name': values.get('Peptide name', ''), 'Form': values.get('Form', 'linear'), 'Copies': values.get('Copies', '1'), 'N-term': values.get('N-term', 'Ac' if self._sequence_has_nterm_ac(values.get('Region 1 seq', '')) else ''), 'Region 1 seq': values.get('Region 1 seq', 'Ac-EEMQRR-NH2'), 'Region 1 eq': values.get('Region 1 eq', '1'), 'Linker': values.get('Linker', ''), 'Region 2 seq': values.get('Region 2 seq', ''), 'Region 2 eq': values.get('Region 2 eq', ''), 'Tag': values.get('Tag', ''), 'Label': values.get('Label', ''), 'C-term': values.get('C-term', 'NH2'), 'Chemistry': values.get('Chemistry', 'DIC/HOBt'), 'Scale mmol': values.get('Scale mmol', getattr(self, 'batch_default_scale', _v225_const_var('0.2')).get()), 'AA conc M': values.get('AA conc M', getattr(self, 'batch_solution_conc', _v225_const_var('0.25')).get()), 'AA coupling eq': values.get('AA coupling eq', getattr(self, 'batch_coupling_eq', _v225_const_var('10')).get()), 'Resin': values.get('Resin', getattr(self, 'batch_default_resin', _v225_const_var('Rink Amide AM')).get()), 'Loading': values.get('Loading', getattr(self, 'batch_default_loading', _v225_const_var('0.8')).get()), 'LOT No': lot, 'Status': values.get('Status', 'Ready')}
+        row = {'No': no, 'Project': values.get('Project', ''), 'Peptide name': values.get('Peptide name', ''), 'Form': values.get('Form', 'linear'), 'Copies': values.get('Copies', '1'), 'N-term': values.get('N-term', 'Ac' if self._sequence_has_nterm_ac(values.get('Region 1 seq', '')) else ''), 'Region 1 seq': values.get('Region 1 seq', ''), 'Region 1 eq': values.get('Region 1 eq', '1'), 'Linker': values.get('Linker', ''), 'Region 2 seq': values.get('Region 2 seq', ''), 'Region 2 eq': values.get('Region 2 eq', ''), 'Tag': values.get('Tag', ''), 'Label': values.get('Label', ''), 'C-term': values.get('C-term', 'NH2'), 'Chemistry': values.get('Chemistry', 'DIC/HOBt'), 'Scale mmol': values.get('Scale mmol', getattr(self, 'batch_default_scale', _v225_const_var('0.2')).get()), 'AA conc M': values.get('AA conc M', getattr(self, 'batch_solution_conc', _v225_const_var('0.25')).get()), 'AA coupling eq': values.get('AA coupling eq', getattr(self, 'batch_coupling_eq', _v225_const_var('10')).get()), 'Resin': values.get('Resin', getattr(self, 'batch_default_resin', _v225_const_var('Rink Amide AM')).get()), 'Loading': values.get('Loading', getattr(self, 'batch_default_loading', _v225_const_var('0.8')).get()), 'LOT No': lot, 'Status': values.get('Status', 'Ready')}
         self.batch_tree.insert('', 'end', values=[row[c] for c in self.batch_columns])
         self.refresh_batch_workspace_preview()
         self.schedule_autosave()
@@ -3920,7 +3935,7 @@ def _v26_bind_setup_live_update(self):
     if getattr(self, '_v26_setup_bound', False):
         return
     self._v26_setup_bound = True
-    vars_to_watch = ['coupling_eq', 'coupling_repeats', 'modifier_eq', 'modifier_repeats', 'solvent_volume_mode', 'amide_ml_per_mmol', 'ctc_ml_per_mmol', 'solvent_molarity_m', 'default_reagent', 'default_reagent_eq', 'default_reagent_count', 'default_catalyst', 'default_catalyst_eq', 'default_catalyst_count', 'default_base', 'default_base_eq', 'default_base_count', 'default_coupling_solution_solvent', 'default_solvent1', 'default_solvent1_count', 'default_solvent2', 'default_solvent2_count', 'default_loading_dissolve_solvent', 'final_meoh_count', 'default_depro', 'default_depro_ratio', 'default_depro_count', 'batch_solution_conc', 'batch_coupling_eq', 'batch_actual_round_ml', 'batch_actual_extra_ml', 'batch_hbtu_eq', 'batch_hbtu_conc', 'batch_hbtu_mw', 'batch_nmp_density']
+    vars_to_watch = ['coupling_eq', 'coupling_time_h', 'coupling_repeats', 'modifier_eq', 'modifier_repeats', 'solvent_volume_mode', 'amide_ml_per_mmol', 'ctc_ml_per_mmol', 'solvent_molarity_m', 'default_reagent', 'default_reagent_eq', 'default_reagent_count', 'default_catalyst', 'default_catalyst_eq', 'default_catalyst_count', 'default_base', 'default_base_eq', 'default_base_count', 'default_coupling_solution_solvent', 'default_solvent1', 'default_solvent1_count', 'default_solvent2', 'default_solvent2_count', 'default_loading_dissolve_solvent', 'final_meoh_count', 'default_depro', 'default_depro_ratio', 'default_depro_count', 'batch_solution_conc', 'batch_coupling_eq', 'batch_actual_round_ml', 'batch_actual_extra_ml', 'batch_hbtu_eq', 'batch_hbtu_conc', 'batch_hbtu_mw', 'batch_nmp_density']
 
     def _changed(*_):
         try:

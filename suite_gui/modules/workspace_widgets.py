@@ -22,8 +22,8 @@ from tkinter import ttk, messagebox
 import pandas as pd
 from suite_gui import state_persistence
 
-VERSION = "V3.0.0"
-TITLE = "SPPS Planner V3.0.0"
+VERSION = "V4.0.0"
+TITLE = "SPPS Planner V4.0.0"
 
 PLAN_COLUMNS = [
     "No", "Unit name", "MW", "Density(g/mL)", "Unit mmol", "Unit amount",
@@ -227,9 +227,11 @@ def _editor_payload(gui):
         "apply_loading_calc": flag("apply_loading_calc", False),
         "loading_aa_eq": value("loading_aa_eq", "2"),
         "loading_diea_eq": value("loading_diea_eq", "4"),
+        "loading_time_h": value("loading_time_h", ""),
         "cleavage_preset": value("cleavage_preset", "AUTO"),
         "cleavage_eq_override": value("cleavage_eq_override", "0"),
         "cleavage_components_text": value("cleavage_components_text", ""),
+        "cleavage_time_h": value("cleavage_time_h", ""),
         "branch_point": value("branch_point", ""),
         "branch_arm_sequence": value("branch_arm_sequence", ""),
         "branch_pg": value("branch_pg", ""),
@@ -311,9 +313,11 @@ def restore_item(gui, index, ns):
         _set_bool(gui, "apply_loading_calc", item.get("apply_loading_calc", False))
         _set_var(gui, "loading_aa_eq", item.get("loading_aa_eq", "2"))
         _set_var(gui, "loading_diea_eq", item.get("loading_diea_eq", "4"))
+        _set_var(gui, "loading_time_h", item.get("loading_time_h", ""))
         _set_var(gui, "cleavage_preset", item.get("cleavage_preset", "AUTO"))
         _set_var(gui, "cleavage_eq_override", item.get("cleavage_eq_override", "0"))
         _set_var(gui, "cleavage_components_text", item.get("cleavage_components_text", ""))
+        _set_var(gui, "cleavage_time_h", item.get("cleavage_time_h", ""))
         _set_var(gui, "branch_point", item.get("branch_point", ""))
         _set_var(gui, "branch_arm_sequence", item.get("branch_arm_sequence", ""))
         _set_var(gui, "branch_pg", item.get("branch_pg", ""))
@@ -766,6 +770,12 @@ def _install_cleavage(gui, notebook):
             pass
     frame.rowconfigure(1, weight=1)
     frame.columnconfigure(0, weight=1)
+    if not hasattr(gui, "loading_time_h"):
+        gui.loading_time_h = tk.StringVar(value="")
+    if not hasattr(gui, "cleavage_time_h"):
+        gui.cleavage_time_h = tk.StringVar(value="")
+    if not hasattr(gui, "cleavage_reserve_mL"):
+        gui.cleavage_reserve_mL = tk.StringVar(value="0")
     if not hasattr(gui, "cleavage_eq_override"):
         gui.cleavage_eq_override = tk.StringVar(value="0")
     if not hasattr(gui, "cleavage_preset"):
@@ -785,6 +795,10 @@ def _install_cleavage(gui, notebook):
     combo.pack(side="left", padx=(0, 8))
     ttk.Label(controls, text="Custom components").pack(side="left", padx=(0, 3))
     ttk.Entry(controls, textvariable=gui.cleavage_components_text, width=42).pack(side="left", padx=(0, 8), fill="x", expand=True)
+    ttk.Label(controls, text="Time (h)").pack(side="left", padx=(2, 3))
+    ttk.Entry(controls, textvariable=gui.cleavage_time_h, width=7).pack(side="left", padx=(0, 8))
+    ttk.Label(controls, text="Min total (mL)").pack(side="left", padx=(2, 3))
+    ttk.Entry(controls, textvariable=gui.cleavage_reserve_mL, width=9).pack(side="left", padx=(0, 8))
     ttk.Button(controls, text="Apply cleavage", command=lambda: refresh_cleavage(gui, gui._v228_ns)).pack(side="left")
 
     tree = ttk.Treeview(frame, columns=["component", "role", "recommended_eq", "percent", "percent_basis", "volume_mL", "density_g_mL", "approx_g", "physical_state", "selected_preset", "auto_recommended_preset", "include", "note"], show="headings")
@@ -993,8 +1007,8 @@ def _install_editor_traces(gui):
     names = [
         "pm_project", "pm_peptide", "pm_sequence", "pm_scale", "pm_resin",
         "pm_loading", "pm_lot", "pm_chemistry", "pm_copies",
-        "apply_loading_calc", "loading_aa_eq", "loading_diea_eq",
-        "cleavage_preset", "cleavage_eq_override", "cleavage_components_text",
+        "apply_loading_calc", "loading_aa_eq", "loading_diea_eq", "loading_time_h",
+        "cleavage_preset", "cleavage_eq_override", "cleavage_components_text", "cleavage_time_h", "cleavage_reserve_mL",
         "branch_point", "branch_arm_sequence", "branch_pg", "branch_depro_condition",
         "step_overrides_text",
     ]
@@ -1051,6 +1065,12 @@ def _install_action_buttons(gui, ns):
         pass
     ttk.Button(parent, text="Generate", command=lambda: generate(gui, ns)).pack(side="left", padx=3)
     ttk.Button(parent, text="Apply Change", command=lambda: apply_change(gui, ns)).pack(side="left", padx=3)
+    # Experimental / ML (V4): V4 advisors are next to the actual planner actions. They read the active
+    # item and can write recommendations back only after explicit Apply.
+    ttk.Button(parent, text="Recommend Conditions", command=gui.open_condition_optimizer).pack(side="left", padx=(9, 3))
+    ttk.Button(parent, text="Loading Advice", command=gui.open_loading_advisor).pack(side="left", padx=3)
+    ttk.Button(parent, text="Cleavage Advice", command=gui.open_cleavage_advisor).pack(side="left", padx=3)
+    ttk.Button(parent, text="Record Lab Data", command=gui.open_experimental_data).pack(side="left", padx=3)
     save_button.pack(side="left", padx=3)
 
 
@@ -1300,6 +1320,8 @@ def export_outputs(gui, ns):
             "apply_loading_calc": item.get("apply_loading_calc", False),
             "loading_aa_eq": item.get("loading_aa_eq", ""),
             "loading_diea_eq": item.get("loading_diea_eq", ""),
+            "loading_time_h": item.get("loading_time_h", ""),
+            "cleavage_time_h": item.get("cleavage_time_h", ""),
             "cleavage_preset": item.get("cleavage_preset", ""),
         }])
 

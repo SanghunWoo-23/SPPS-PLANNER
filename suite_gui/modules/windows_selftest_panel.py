@@ -125,7 +125,6 @@ def build_selftest_tab(gui, notebook):
     nb=ttk.Notebook(frame); nb.grid(row=1,column=0,sticky='nsew')
     gui.selftest_tree=gui._add_tree_tab(nb,'Code Self-Test')
     manual=ttk.Frame(nb); manual.rowconfigure(0,weight=1); manual.rowconfigure(1,weight=0); manual.columnconfigure(0,weight=1); nb.add(manual,text='Manual QA Record')
-    gui.selftest_manual_tree=gui._add_tree_tab(ttk.Notebook(manual), 'dummy') if False else None
     # Build a tree directly so the tab stays simple and selectable.
     tree=ttk.Treeview(manual, columns=['id','check','status','detail','note'], show='headings', selectmode='extended')
     for c,w in [('id',55),('check',180),('status',90),('detail',620),('note',280)]:

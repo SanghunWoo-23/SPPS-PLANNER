@@ -1,0 +1,16 @@
+SPPS Planner V4.0.0 - Controlled ML Apply Fix
+
+Root cause fixed:
+- Loading Apply previously chose a condition around a similarity prediction without a target objective.
+- Cleavage Apply previously combined medians of TFA/TIS/H2O absolute volumes from multiple records/scales, then converted those mixed medians to a cocktail. This could produce arbitrary Planner changes.
+
+New policy:
+1. Loading Apply requires an explicit target loading (auto-synced from the Planner loading field).
+2. Loading Apply can only use one real exact resin + amino-acid historical record, chosen by closeness to target loading.
+3. Cleavage Apply can only use one real exact-product historical record.
+4. Cross-product or broader similarity records remain evidence only and cannot be applied.
+5. TFA/TIS/H2O are taken from the SAME historical cleavage record; cross-record median mixing is forbidden.
+6. Before any Planner value is changed, a Current -> Proposed confirmation dialog is shown with source status/record information.
+7. Cancel leaves the Planner unchanged.
+8. Existing Generate and Apply Change workflows remain the only recalculation paths.
+9. Parsed records remain visibly marked and require explicit operator confirmation.

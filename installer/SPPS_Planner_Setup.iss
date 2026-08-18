@@ -1,5 +1,5 @@
 #define MyAppName "SPPS Planner"
-#define MyAppVersion "3.0.0"
+#define MyAppVersion "4.0.0"
 #define MyAppPublisher "Pepforge Project"
 #define MyAppExeName "SPPS_Planner.exe"
 
@@ -13,7 +13,7 @@ DefaultDirName={localappdata}\Programs\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=output
-OutputBaseFilename=SPPS_Planner_Setup_V3.0.0
+OutputBaseFilename=SPPS_Planner_Setup_V4.0.0
 SetupIconFile=..\assets\SPPS_Planner_Icon.ico
 Compression=lzma2
 SolidCompression=yes
@@ -23,7 +23,7 @@ CloseApplications=yes
 RestartIfNeededByRun=no
 UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
-VersionInfoVersion=3.0.0.0
+VersionInfoVersion=4.0.0.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} Installer
 VersionInfoProductName={#MyAppName}

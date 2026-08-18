@@ -1,4 +1,4 @@
-"""Static and optional binary checks for the Windows V3.0.0 release."""
+"""Static and optional binary checks for the Windows V4.0.0 release."""
 from __future__ import annotations
 
 import argparse
@@ -24,8 +24,8 @@ from spps_planner.database import (
     validate_compounds_dataframe,
 )
 
-VERSION = "V3.0.0"
-NUMBER = "3.0.0"
+VERSION = "V4.0.0"
+NUMBER = "4.0.0"
 FORBIDDEN_IMPORTS = {
     "suite_gui.legacy_controller", "suite_gui.release_composition",
     "suite_gui.modules.classic_workflow", "suite_gui.modules.workbench_workflow",
@@ -51,8 +51,8 @@ def verify_identity() -> None:
     _require(f'#define MyAppVersion "{NUMBER}"' in installer, "Installer AppVersion mismatch")
     _require(f"VersionInfoVersion={NUMBER}.0" in installer, "Installer file metadata mismatch")
     version_info = _read("installer/version_info.txt")
-    _require("filevers=(3, 0, 0, 0)" in version_info, "EXE file version mismatch")
-    _require("prodvers=(3, 0, 0, 0)" in version_info, "EXE product version mismatch")
+    _require("filevers=(4, 0, 0, 0)" in version_info, "EXE file version mismatch")
+    _require("prodvers=(4, 0, 0, 0)" in version_info, "EXE product version mismatch")
     stale = []
     version_names = {"APP_VERSION", "VERSION", "VERSION_NUMBER", "VERSION_LABEL", "TITLE"}
     for path in sorted((ROOT / "suite_gui").rglob("*.py")):
@@ -66,7 +66,7 @@ def verify_identity() -> None:
                 continue
             if any(isinstance(target, ast.Name) and target.id in version_names for target in targets):
                 text = value.value
-                if re.search(r"V?\d+\.\d+\.\d+", text) and "3.0.0" not in text:
+                if re.search(r"V?\d+\.\d+\.\d+", text) and "4.0.0" not in text:
                     stale.append(f"{path.relative_to(ROOT)}:{node.lineno}={text}")
     _require(not stale, "Stale runtime version constants remain: " + "; ".join(stale))
 
@@ -200,7 +200,7 @@ def verify_all(*, check_exe: bool = False, check_installer: bool = False) -> Non
     if check_exe:
         _verify_pe(ROOT / "dist" / "SPPS_Planner" / "SPPS_Planner.exe", "Portable EXE")
     if check_installer:
-        _verify_pe(ROOT / "installer" / "output" / "SPPS_Planner_Setup_V3.0.0.exe", "Installer")
+        _verify_pe(ROOT / "installer" / "output" / "SPPS_Planner_Setup_V4.0.0.exe", "Installer")
 
 
 def main() -> int:
@@ -209,7 +209,7 @@ def main() -> int:
     parser.add_argument("--check-installer", action="store_true")
     args = parser.parse_args()
     verify_all(check_exe=args.check_exe, check_installer=args.check_installer)
-    print("[OK] SPPS Planner V3.0.0 Windows release contract passed")
+    print("[OK] SPPS Planner V4.0.0 Windows release contract passed")
     return 0
 
 

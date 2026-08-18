@@ -1,5 +1,10 @@
 <div align="center">
 
+
+## V4.0.0 Experimental Intelligence
+
+V4.0.0은 V3의 기존 Plan / Materials / Checklist / Total Materials / Apply Change / Project·Session / Batch / catalog 흐름을 유지하면서, 실제 실험 기록을 별도 Experimental DB로 축적하는 계층을 추가했습니다. Resin Loading History, Cleavage/Precipitation History, Excel·ZIP·CSV import, 유사 실험 근거 표시, operator 검증 이후 학습 가능한 Loading Advisor, 근거와 confidence를 표시하는 Cleavage Advisor가 포함됩니다. 사용자 제공 seed 데이터는 최초에 **Parsed**로만 들어가며 자동으로 **Verified** 처리하지 않습니다. 자세한 내용은 `docs/V4_EXPERIMENTAL_ML_KO.md`를 참고하십시오.
+
 <img src="assets/SPPS_Planner_Icon.png" alt="SPPS Planner 아이콘" width="150">
 
 # SPPS Planner
@@ -9,7 +14,7 @@
 **고체상 펩타이드 합성(SPPS)** 계획, 재료량 계산, 다중 펩타이드 관리,
 작업자용 기록 출력을 하나로 연결한 데스크톱 프로그램입니다.
 
-[![Release](https://img.shields.io/badge/release-V3.0.0-2563EB?style=for-the-badge)](VERSION)
+[![Release](https://img.shields.io/badge/release-V4.0.0-2563EB?style=for-the-badge)](VERSION)
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](requirements.txt)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white)](#빠른-시작)
 [![Tests](https://img.shields.io/badge/regression_tests-149%20passed-16A34A?style=for-the-badge)](#검증)
@@ -149,7 +154,7 @@ BUILD_INSTALLER.bat
 결과:
 
 ```text
-installer\output\SPPS_Planner_Setup_V3.0.0.exe
+installer\output\SPPS_Planner_Setup_V4.0.0.exe
 ```
 
 ## 저장소 구조
@@ -160,7 +165,7 @@ SPPS-Planner/
 ├─ suite_gui/                    # Tkinter 화면과 작업 흐름
 │  ├─ modules/                   # Plan, 작업자, 최종 릴리스 흐름
 │  ├─ release.py                 # 공식 GUI 진입점
-│  ├─ controller.py              # 직접 정의된 V3.0.0 실행 Controller
+│  ├─ controller.py              # 직접 정의된 V4.0.0 실행 Controller
 │  ├─ classic_base.py            # 정적으로 고정한 기존 Classic UI 기반
 │  ├─ position_rules.py          # C-term eq/repeat 위치 규칙
 │  └─ release_contract.py        # 최종 실행 함수 검사
@@ -220,7 +225,7 @@ python tools\audit_monkey_patches.py --active-release
 
 ## 버전
 
-이 저장소의 공개 버전은 **SPPS Planner V3.0.0**으로 고정되어 있습니다.
+이 저장소의 공개 버전은 **SPPS Planner V4.0.0**으로 고정되어 있습니다.
 과거 내부 버전명은 검증된 동작과 이전 import 호환을 유지하는 곳에만
 남아 있습니다.
 
@@ -233,7 +238,7 @@ license이며 OSI 승인 오픈소스 라이선스로 표기하지 않습니다.
 
 <div align="center">
 
-**SPPS Planner V3.0.0**  
+**SPPS Planner V4.0.0**  
 직접 편집하고 추적할 수 있는 실무형 펩타이드 합성 계획.
 
 </div>

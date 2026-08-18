@@ -116,7 +116,7 @@ def test_session_round_trip_preserves_items_defaults_and_custom_db(
 
     assert persistence_workflow.save_autosave_state(source) == path
     saved = persistence_workflow.state_persistence.read_json_object(path)
-    assert saved["app_version"] == "V3.0.0"
+    assert saved["app_version"] == "V4.0.0"
     assert saved["pm_items"][0]["sequence"] == "GHK"
     assert saved["defaults"]["coupling_eq"] == "5"
     assert saved["defaults"]["position_doubling_rules"] == "7:2"
@@ -145,7 +145,7 @@ def test_session_round_trip_preserves_items_defaults_and_custom_db(
 def test_project_loader_migrates_removed_ctc_alias(monkeypatch, tmp_path):
     path = tmp_path / "project_manager_state.json"
     persistence_workflow.state_persistence.atomic_write_json(path, {
-        "app_version": "V3.0.0",
+        "app_version": "V4.0.0",
         "selected_pm_index": 0,
         "pm_items": [{
             "project": "Old",
@@ -189,7 +189,7 @@ def test_project_save_detects_external_conflict_and_save_as_preserves_both(monke
 def test_project_load_recovers_last_good_backup(monkeypatch, tmp_path):
     path = tmp_path / "project_manager_state.json"
     valid = {
-        "app_version": "V3.0.0", "project_id": "p-recover", "project_revision": 3,
+        "app_version": "V4.0.0", "project_id": "p-recover", "project_revision": 3,
         "selected_pm_index": 0, "defaults": {},
         "pm_items": [{"project": "Recovered", "peptide": "Pep", "sequence": "GHK", "resin": "Rink Amide AM"}],
     }

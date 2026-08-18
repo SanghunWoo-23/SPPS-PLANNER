@@ -220,7 +220,7 @@ def test_ac_is_visible_in_project_plan_and_batch_chemical_preparation():
 
     gui = type("Gui", (), {})()
     gui.custom_materials = {}
-    gui.pm_sequence = _Var("Ac-EEMQRR-NH2")
+    gui.pm_sequence = _Var("Ac-AAAAAA-NH2")
     gui.use_position_aa_eq = _Var(True)
     gui.use_position_doubling = _Var(True)
     gui.position_aa_eq_rules = _Var("")
@@ -230,7 +230,7 @@ def test_ac_is_visible_in_project_plan_and_batch_chemical_preparation():
 
     plan_rows = plan_workflow._generated_plan_rows(
         gui, {}, PlanInput(
-            sequence="Ac-EEMQRR-NH2", scale_mmol=0.5,
+            sequence="Ac-AAAAAA-NH2", scale_mmol=0.5,
             resin="Rink Amide AM", resin_loading_mmol_g=0.68,
         ),
     )
@@ -240,7 +240,7 @@ def test_ac_is_visible_in_project_plan_and_batch_chemical_preparation():
     )
 
     gui.pm_items = [{
-        "project": "P", "peptide": "Pep", "sequence": "Ac-EEMQRR-NH2",
+        "project": "P", "peptide": "Pep", "sequence": "Ac-AAAAAA-NH2",
         "copies": "1", "scale": "0.5", "resin": "Rink Amide AM",
         "loading": "0.68", "chemistry": "DIC/HOBt",
     }]
@@ -255,7 +255,7 @@ def test_ac_is_visible_in_project_plan_and_batch_chemical_preparation():
 def test_classic_batch_dashboard_schema_is_fully_populated_and_separated():
     gui = type("Gui", (), {})()
     gui.pm_items = [{
-        "project": "P", "peptide": "Pep", "sequence": "Ac-EEMQRR-NH2",
+        "project": "P", "peptide": "Pep", "sequence": "Ac-AAAAAA-NH2",
         "copies": "1", "scale": "0.5", "resin": "Rink Amide AM",
         "loading": "0.68", "chemistry": "DIC/HOBt",
     }]

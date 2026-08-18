@@ -127,6 +127,7 @@ def _shared_conditions(gui):
         "solvent_molarity_m": number(gui, "solvent_molarity_m", 0.2),
         "loading_aa_eq": number(gui, "loading_aa_eq", 2.0),
         "loading_diea_eq": number(gui, "loading_diea_eq", 4.0),
+        "cleavage_reserve_mL": max(0.0, number(gui, "cleavage_reserve_mL", 0.0)),
         "short_peptide_coupling_eq": number(
             gui, "short_peptide_coupling_eq", 2.0
         ),
@@ -137,8 +138,8 @@ def build_editor_plan_input(gui, resin, reagent_eq_follows=None):
     total_scale, _, _ = safe_scale(gui)
     reagent, catalyst, base, solvent, coupling_eq = chemistry(gui)
     sequence = str(
-        value(gui, "pm_sequence", "Ac-EEMQRR-NH2") or ""
-    ).strip() or "Ac-EEMQRR-NH2"
+        value(gui, "pm_sequence", "") or ""
+    ).strip()
     if reagent_eq_follows is None:
         reagent_eq_follows = bool(value(gui, "reagent_range_mode", False))
     return PlanInput(
@@ -178,6 +179,8 @@ def build_editor_plan_input(gui, resin, reagent_eq_follows=None):
         cleavage_components_text=value(
             gui, "cleavage_components_text", ""
         ),
+        loading_time_h=number(gui, "loading_time_h", 0.0),
+        cleavage_time_h=number(gui, "cleavage_time_h", 0.0),
         **_shared_conditions(gui),
     )
 

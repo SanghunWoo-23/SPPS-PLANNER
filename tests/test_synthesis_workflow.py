@@ -128,7 +128,7 @@ class _Var:
 
 
 class _RuleGui:
-    pm_sequence = _Var("Ac-EEMQRR-NH2")
+    pm_sequence = _Var("Ac-AAAAAA-NH2")
     coupling_eq = _Var("5")
     reagent_eq_follows_coupling_eq = _Var(True)
     use_position_aa_eq = _Var(False)

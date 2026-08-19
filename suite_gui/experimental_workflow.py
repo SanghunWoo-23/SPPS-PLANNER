@@ -38,6 +38,10 @@ def cleavage_records(gui: Any, statuses=None):
     return experimental_data.list_records("cleavage", db_path(gui), statuses=statuses)
 
 
+def sequence_records(gui: Any, statuses=None):
+    return experimental_data.list_records("sequence", db_path(gui), statuses=statuses)
+
+
 def set_status(gui: Any, kind: str, ids, status: str) -> int:
     return experimental_data.set_status(kind, ids, status, db_path(gui))
 
@@ -155,4 +159,4 @@ def open_condition_optimizer(gui: Any) -> Any:
             _condition_optimizer_log_error = log_exc
     return window
 
-__all__ = ["initialize", "import_file", "loading_records", "cleavage_records", "set_status", "update_record", "add_loading_record", "add_cleavage_record", "record_coupling_review", "advise_loading", "advise_cleavage", "recommend_loading", "recommend_cleavage", "advise_coupling", "open_window", "open_advisor", "open_condition_optimizer", "db_path"]
+__all__ = ["initialize", "import_file", "loading_records", "cleavage_records", "sequence_records", "set_status", "update_record", "add_loading_record", "add_cleavage_record", "record_coupling_review", "advise_loading", "advise_cleavage", "recommend_loading", "recommend_cleavage", "advise_coupling", "open_window", "open_advisor", "open_condition_optimizer", "db_path"]

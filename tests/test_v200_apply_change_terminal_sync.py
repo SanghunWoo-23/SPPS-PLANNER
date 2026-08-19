@@ -49,12 +49,13 @@ def _visible_button(gui, text):
         if isinstance(widget, ttk.Button)
         and str(widget.cget("text")).strip() == text
         and widget.winfo_viewable()
+        and widget.winfo_toplevel() is gui
     ]
     assert len(buttons) == 1
     return buttons[0]
 
 
-def _edit_last_unit_with_visible_dialog(gui, value):
+def _edit_last_unit_with_visible_editor(gui, value):
     tree = gui.pm_selected_plan_tree
     final_iid = tree.get_children()[-1]
     tree.selection_set(final_iid)
@@ -64,13 +65,10 @@ def _edit_last_unit_with_visible_dialog(gui, value):
 
     _visible_button(gui, "Edit Unit name").invoke()
     gui.update()
-    windows = [child for child in gui.winfo_children() if child.winfo_class() == "Toplevel"]
-    assert windows
-    window = windows[-1]
-    combobox = next(widget for widget in _walk(window) if isinstance(widget, ttk.Combobox))
-    combobox.set(value)
-    apply_button = next(widget for widget in _walk(window) if isinstance(widget, ttk.Button))
-    apply_button.invoke()
+    editor = getattr(tree, "_v229_editor", None)
+    assert editor is not None and editor.winfo_exists()
+    editor.set(value)
+    editor.event_generate("<Return>")
     gui.update()
 
 
@@ -85,7 +83,7 @@ def test_visible_plan_edit_then_apply_change_rebuilds_terminal_protocol_and_expo
         assert gui.pm_generate_selected() is True
         gui.update()
 
-        _edit_last_unit_with_visible_dialog(gui, "Ac-Glu(OtBu)-OH")
+        _edit_last_unit_with_visible_editor(gui, "Ac-Glu(OtBu)-OH")
         _visible_button(gui, "Apply Change").invoke()
         gui.update()
 

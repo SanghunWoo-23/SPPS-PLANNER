@@ -41,7 +41,7 @@ def test_position_rules_cover_aa_daa_chemical_label_tag_and_linker(monkeypatch, 
 
         cases = {
             "Ac-EEMARR-NH2": "Acetic anhydride (Ac2O) for N-terminal acetylation",
-            "dA-EEMARR-NH2": "Fmoc-dA-OH (verify exact protected form)",
+            "dA-EEMARR-NH2": "Fmoc-D-Ala-OH",
             "FITC-Ahx-EEMARR-NH2": "FITC isothiocyanate",
             "Biotin-PEG4-EEMARR-NH2": "Biotin acid / default biotinylation acid form",
             "His6-Ahx-EEMARR-NH2": "His6 peptide tag macro (HHHHHH)",

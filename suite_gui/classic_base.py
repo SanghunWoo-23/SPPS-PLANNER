@@ -1510,28 +1510,6 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
             out.append({'no': i, 'project': r.get('Project', ''), 'peptide_name': r.get('Peptide name', ''), 'lot_no': r.get('LOT No', ''), 'form': r.get('Form', ''), 'copies': r.get('Copies', ''), 'sequence': ' / '.join(seq_parts), 'scale_mmol': r.get('Scale mmol', ''), 'resin': r.get('Resin', ''), 'loading_mmol_g': r.get('Loading', ''), 'output_folder': ''})
         return pd.DataFrame(out)
 
-    def refresh_batch_workspace_preview(self):
-        try:
-            rows = self._batch_rows_from_tree()
-            aa_df = self._batch_aa_synthesizer_summary(rows)
-            index_df = self._batch_project_index_df(rows)
-            if hasattr(self, 'batch_material_tree'):
-                self._write_tree(self.batch_material_tree, aa_df, ['AA', 'count', 'calc_mL', 'actual_mL', 'MW', 'weight_g'])
-            if hasattr(self, 'batch_project_tree'):
-                self._write_tree(self.batch_project_tree, index_df, ['no', 'project', 'peptide_name', 'lot_no', 'copies', 'sequence', 'scale_mmol', 'resin', 'output_folder'])
-            if hasattr(self, 'batch_hbtu_tree'):
-                self._write_tree(self.batch_hbtu_tree, self._batch_hbtu_nmp_summary(rows), ['material', 'count', 'calc_mL', 'actual_mL', 'MW', 'weight_g', 'note'])
-            if hasattr(self, 'batch_cap_tree'):
-                self._write_tree(self.batch_cap_tree, self._batch_modifier_summary(rows), ['material', 'type', 'count', 'calc_mL', 'actual_mL', 'MW', 'weight_g', 'note'])
-            if hasattr(self, 'batch_layout_text'):
-                self.batch_layout_text.delete('1.0', 'end')
-                self.batch_layout_text.insert('end', self._batch_layout_text(rows))
-        except Exception as e:
-            try:
-                self._log(f'Batch preview warning: {e}\n')
-            except Exception:
-                pass
-
     def _batch_layout_text(self, rows) -> str:
         lines = []
         lines.append('peptide name / synthesizer columns')
@@ -3158,7 +3136,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         tfa_eq = base_tfa_eq + 100 * cys_count
         tfa_mmol_equiv = scale * tfa_eq
         tfa_mL = tfa_mmol_equiv * 114.02 / 1000.0 / self._density_for('TFA') if scale else 0
-        rows = [{'component': 'TFA', 'ratio_percent': 'editable', 'equiv': tfa_eq, 'estimated_mL': round(tfa_mL, 4), 'note': 'base rule: short 30 eq, 15mer 80 eq, 22mer 100 eq, +100 eq per Cys; verify lab protocol'}, {'component': 'TIS', 'ratio_percent': 'editable', 'equiv': '', 'estimated_mL': '', 'note': 'scavenger; fill according to cleavage cocktail'}, {'component': 'Water', 'ratio_percent': 'editable', 'equiv': '', 'estimated_mL': '', 'note': 'scavenger; fill according to cleavage cocktail'}, {'component': 'EDT', 'ratio_percent': 'editable', 'equiv': '', 'estimated_mL': '', 'note': 'optional Cys scavenger; use only when protocol requires'}]
+        rows = [{'component': 'TFA', 'ratio_percent': 'editable', 'equiv': tfa_eq, 'estimated_mL': round(tfa_mL, 4), 'note': 'base rule: short 30 eq, 15mer 80 eq, 22mer 100 eq, +100 eq per Cys; verify lab protocol'}, {'component': 'TIS', 'ratio_percent': 'editable', 'equiv': '', 'estimated_mL': '', 'note': 'scavenger; fill only when the selected/recorded cocktail uses it'}, {'component': 'Water', 'ratio_percent': 'editable', 'equiv': '', 'estimated_mL': '', 'note': 'scavenger; fill according to the selected/recorded cocktail'}]
         return pd.DataFrame(rows)
 
     def manufacturing_transfer_df(self, materials: pd.DataFrame, plan: pd.DataFrame) -> pd.DataFrame:

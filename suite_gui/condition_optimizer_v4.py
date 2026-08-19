@@ -169,6 +169,40 @@ def _condition_signature(condition: Mapping[str, Any]) -> tuple[Any, ...]:
     return tuple(values)
 
 
+def _experiment_identity(item: Mapping[str, Any], fallback_index: int) -> str:
+    """Return one stable evidence identity per independent synthesis/work item."""
+    work_item_id = str(item.get("work_item_id") or "").strip()
+    if work_item_id:
+        return f"work-item:{work_item_id}"
+    parts = [
+        str(item.get("project") or "").strip(),
+        str(item.get("peptide") or "").strip(),
+        str(item.get("sequence") or "").strip(),
+        str(item.get("lot_no") or item.get("lot") or "").strip(),
+    ]
+    joined = "|".join(parts).strip("|")
+    return f"item:{joined}" if joined else f"item-index:{fallback_index}"
+
+
+def _independent_signature_rows(rows: Iterable[Mapping[str, Any]]) -> tuple[Counter, dict[tuple[str, tuple[Any, ...]], Mapping[str, Any]]]:
+    """Count condition support by independent synthesis, not repeated rows.
+
+    A peptide can contain the same bottle-level compound more than once.  Those
+    repeated positions are useful observations, but they are not independent
+    experimental replications and must not satisfy a repeated-consensus threshold
+    by themselves.
+    """
+    unique: dict[tuple[str, tuple[Any, ...]], Mapping[str, Any]] = {}
+    for row in rows:
+        signature = _condition_signature(row.get("condition", {}))
+        experiment = str(row.get("experiment_identity") or "").strip()
+        if not experiment:
+            experiment = str(row.get("work_item_id") or row.get("project") or id(row))
+        unique.setdefault((experiment, signature), row)
+    counts = Counter(signature for (_experiment, signature) in unique)
+    return counts, unique
+
+
 def _current_units(item: Mapping[str, Any]) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -199,9 +233,10 @@ def coupling_advice(items: Iterable[Any], current_item: Mapping[str, Any]) -> di
     current_family = _resin_family(current_item.get("resin", ""))
     historical_rows: list[dict[str, Any]] = []
     item_evidence: list[dict[str, Any]] = []
-    for item in items:
+    for item_index, item in enumerate(items):
         if not isinstance(item, Mapping) or item is current_item:
             continue
+        experiment_identity = _experiment_identity(item, item_index)
         review = _review(item)
         if not review.get("reviewed") or not review.get("included"):
             continue
@@ -230,6 +265,7 @@ def coupling_advice(items: Iterable[Any], current_item: Mapping[str, Any]) -> di
                 "compound": compound, "compound_key": key, "category": _compound_category(compound),
                 "resin_family": _resin_family(item.get("resin", "")),
                 "condition": _row_condition(row, item), "work_item_id": item.get("work_item_id", ""),
+                "experiment_identity": experiment_identity,
                 "project": item.get("project", ""), "peptide": item.get("peptide", ""), "sequence": item.get("sequence", ""),
                 "resin": item.get("resin", ""), "distance": distance, "outcome_score": outcome,
                 "outcome_notes": ", ".join(outcome_notes),
@@ -240,28 +276,47 @@ def coupling_advice(items: Iterable[Any], current_item: Mapping[str, Any]) -> di
     warnings: list[str] = []
     for unit in units:
         exact = [r for r in historical_rows if r["compound_key"] == unit["compound_key"] and r["resin_family"] == current_family]
-        exact_counter = Counter(_condition_signature(r["condition"]) for r in exact)
+        exact_counter, exact_unique = _independent_signature_rows(exact)
         exact_sig, exact_n = (exact_counter.most_common(1)[0] if exact_counter else (None, 0))
         source_rows: list[dict[str, Any]] = []
+        source_observation_count = 0
         kind = ""
         if exact_sig is not None and exact_n >= 2:
-            source_rows = [r for r in exact if _condition_signature(r["condition"]) == exact_sig]
+            source_rows = [
+                dict(row) for (experiment, signature), row in exact_unique.items()
+                if signature == exact_sig
+            ]
+            source_observation_count = sum(1 for r in exact if _condition_signature(r["condition"]) == exact_sig)
             kind = "HISTORICAL CONSENSUS"
         else:
             category = [r for r in historical_rows if r["category"] == unit["category"] and r["resin_family"] == current_family]
-            cat_counter = Counter(_condition_signature(r["condition"]) for r in category)
+            cat_counter, cat_unique = _independent_signature_rows(category)
             cat_sig, cat_n = (cat_counter.most_common(1)[0] if cat_counter else (None, 0))
             if cat_sig is not None and cat_n >= 2:
-                source_rows = [r for r in category if _condition_signature(r["condition"]) == cat_sig]
+                source_rows = [
+                    dict(row) for (experiment, signature), row in cat_unique.items()
+                    if signature == cat_sig
+                ]
+                source_observation_count = sum(1 for r in category if _condition_signature(r["condition"]) == cat_sig)
                 kind = "CATEGORY CONSENSUS"
         if not source_rows:
-            unit_recommendations.append({**unit, "recommendation_kind": "INSUFFICIENT EVIDENCE", "apply_allowed": False, "evidence_count": len(exact)})
+            exact_experiments = len({str(r.get("experiment_identity") or "") for r in exact})
+            unit_recommendations.append({
+                **unit, "recommendation_kind": "INSUFFICIENT EVIDENCE", "apply_allowed": False,
+                "evidence_count": exact_experiments,
+                "independent_experiment_count": exact_experiments,
+                "observation_count": len(exact),
+            })
             continue
         representative = min(source_rows, key=lambda r: (r["distance"], -r["outcome_score"]))
         unit_recommendations.append({
             **unit, "recommendation_kind": kind, "apply_allowed": True,
-            "evidence_count": len(source_rows), "condition": dict(representative["condition"]),
+            "evidence_count": len(source_rows),
+            "independent_experiment_count": len(source_rows),
+            "observation_count": source_observation_count,
+            "condition": dict(representative["condition"]),
             "source_projects": sorted({str(r["project"]) for r in source_rows if r.get("project")}),
+            "source_work_item_ids": sorted({str(r["work_item_id"]) for r in source_rows if r.get("work_item_id")}),
             "source_outcomes": sorted({str(r["outcome_notes"]) for r in source_rows if r.get("outcome_notes")}),
         })
 
@@ -302,6 +357,8 @@ def coupling_advice(items: Iterable[Any], current_item: Mapping[str, Any]) -> di
         "method": "historical consensus by bottle-level compound, then repeated category condition",
         "confidence": confidence,
         "evidence_count": len(historical_rows),
+        "observation_count": len(historical_rows),
+        "independent_experiment_count": len({str(r.get("experiment_identity") or "") for r in historical_rows}),
         "recommended_condition": global_rec,
         "unit_recommendations": unit_recommendations,
         "warnings": warnings,

@@ -39,4 +39,4 @@ def test_exact_sequence_record_preserves_recorded_composition(tmp_path):
 def test_stale_product_name_cannot_override_different_sequence(tmp_path):
     db=tmp_path/"exp.sqlite"; _add(db,"verified")
     result=ml_advisor_v4.cleavage_advice(product="Demo Product",sequence="Ac-GGGGGG-NH2",resin="Rink Amide",scale_mmol=500,db_path=db,include_parsed=True)
-    rec=result["recommended_condition"]; assert rec is not None and rec["condition_source"]=="sequence_rule_fallback"
+    rec=result["recommended_condition"]; assert rec is not None and rec["condition_source"]=="chemistry_rule_reference"

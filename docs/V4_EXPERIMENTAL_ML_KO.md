@@ -23,12 +23,13 @@ V4 Loading Advisor는 먼저 유사 실험을 보여준다. Verified loading 데
 
 Cleavage Advisor는 현재 단계에서 causal optimum을 단정하지 않는다. 유사 기록의 조건과 관찰 비율을 evidence-based note로 제시한다. Sequence/protecting-group linkage가 충분히 검증되면 후속 버전에서 sequence-aware supervised model로 확장한다.
 
-## Excel/ZIP import
+## Sequence History / Excel/ZIP import
 
 - 안정적인 Cleavage Report 형식: 구조화해서 `cleavage_records`로 import.
 - V4 loading CSV schema: `loading_records`로 import.
-- 알려지지 않은 월별 자유형 workbook: source registry에 등록하되 임의의 행을 만들어내지 않는다. 이는 placeholder가 아니라 데이터 오염 방지를 위한 명시적 보존 정책이다.
-- ZIP은 내부의 xlsx/xlsm/csv를 순회하며 Office 임시파일(`~$`)은 제외한다.
+- 월별 계산 workbook의 각 sheet에서 `Check table`이 확인되면 그 페이지의 STD product/sequence를 `synthesis_sequence_records`에 저장한다. 다른 날짜의 동일 product를 강제로 하나의 canonical sequence로 합치지 않으며, 각 페이지의 STD observation과 source file/sheet/cell 위치를 그대로 보존한다.
+- 지원되는 `Check table` 또는 Cleavage Report 구조가 없는 workbook은 source registry에만 등록하고 임의의 sequence/실험 행을 추측하지 않는다.
+- ZIP은 내부의 xlsx/xlsm/csv를 순회하며 Office 임시파일(`~$`)은 제외하고, archive 내부 원본 경로를 provenance로 보존한다.
 
 ## 사용자 제공 seed data
 
@@ -38,11 +39,11 @@ Cleavage Advisor는 현재 단계에서 causal optimum을 단정하지 않는다
 
 `Data / ML > Experimental Data / ML Advisors...`에서 다음을 제공한다.
 
-- Loading History / Cleavage History 조회
+- Loading History / Cleavage History / Sequence History 조회
 - Excel / ZIP / CSV import
 - Parsed → Verified / Excluded 상태 변경
 - 선택 record 수정
 - Loading Advisor
 - Cleavage Advisor
 
-Advisor는 Planner 값을 자동으로 덮어쓰지 않는다. V4.0.0에서 추천은 근거 확인용이며 기존 Generate / Apply Change의 역할은 그대로 유지한다.
+Chemistry-rule fallback은 historical/ML evidence로 취급하지 않으며 자동 Apply를 허용하지 않는다. 실제로 기록된 완전한 historical condition은 generic chemistry preset보다 우선한다. Advisor의 변경은 사용자가 명시적으로 Apply한 경우에만 Planner에 반영되며 기존 Generate / Apply Change의 역할은 그대로 유지한다.

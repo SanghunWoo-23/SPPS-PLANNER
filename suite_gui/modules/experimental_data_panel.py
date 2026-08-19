@@ -59,11 +59,13 @@ class ExperimentalDataWindow(tk.Toplevel):
         self.notebook = nb
         self.loading_tab = ttk.Frame(nb, padding=8); nb.add(self.loading_tab, text="Loading History")
         self.cleavage_tab = ttk.Frame(nb, padding=8); nb.add(self.cleavage_tab, text="Cleavage History")
+        self.sequence_tab = ttk.Frame(nb, padding=8); nb.add(self.sequence_tab, text="Sequence History")
         self.loading_advisor_tab = ttk.Frame(nb, padding=8); nb.add(self.loading_advisor_tab, text="Loading Advisor")
         self.cleavage_advisor_tab = ttk.Frame(nb, padding=8); nb.add(self.cleavage_advisor_tab, text="Cleavage Advisor")
         self.condition_optimizer_tab = ttk.Frame(nb, padding=8); nb.add(self.condition_optimizer_tab, text="Condition Optimizer")
         self._build_loading_history()
         self._build_cleavage_history()
+        self._build_sequence_history()
         self._build_loading_advisor()
         self._build_cleavage_advisor()
         self._build_condition_optimizer()
@@ -139,6 +141,24 @@ class ExperimentalDataWindow(tk.Toplevel):
         self.cleavage_tree = self._tree(self.cleavage_tab, columns)
         self.cleavage_tree.column("raw_observation", width=360)
         self.cleavage_tree.column("record_id", width=80)
+
+    def _build_sequence_history(self) -> None:
+        bar = ttk.Frame(self.sequence_tab); bar.pack(fill="x", pady=(0, 6))
+        ttk.Label(
+            bar,
+            text="Each row is a page-local Check table STD sequence. Repeated product names are retained as separate observations.",
+        ).pack(side="left")
+        ttk.Button(bar, text="Mark Verified", command=lambda: self._mark("sequence", "verified")).pack(side="right", padx=2)
+        ttk.Button(bar, text="Mark Excluded", command=lambda: self._mark("sequence", "excluded")).pack(side="right", padx=2)
+        columns = ["status", "product", "sequence", "source_file", "source_page", "source_locator", "row_basis", "record_id"]
+        self.sequence_tree = self._tree(self.sequence_tab, columns)
+        self.sequence_tree.column("product", width=180)
+        self.sequence_tree.column("sequence", width=360)
+        self.sequence_tree.column("source_file", width=240)
+        self.sequence_tree.column("source_page", width=170)
+        self.sequence_tree.column("source_locator", width=220)
+        self.sequence_tree.column("row_basis", width=110)
+        self.sequence_tree.column("record_id", width=80)
 
     def _build_loading_advisor(self) -> None:
         form = ttk.LabelFrame(self.loading_advisor_tab, text="Current loading condition", padding=10); form.pack(fill="x")
@@ -270,7 +290,11 @@ class ExperimentalDataWindow(tk.Toplevel):
                 f"Confidence: {clv.get('confidence','LOW')} | condition n={xrec.get('condition_evidence_count',0)} | outcome n={xrec.get('outcome_evidence_count',0)}",
             ])
         else:
-            lines.append("No safe sequence-based cleavage recommendation.")
+            matched_count = int(clv.get("matched_history_count", 0) or 0)
+            if matched_count:
+                lines.append(f"Historical sequence match recognized: {matched_count} record(s), but no complete reproducible cleavage condition is available for Apply.")
+            else:
+                lines.append("No safe sequence-based cleavage recommendation.")
         warnings = []
         for result in (load, coupling, clv):
             warnings.extend(result.get("warnings", []) or [])
@@ -598,7 +622,9 @@ class ExperimentalDataWindow(tk.Toplevel):
         ttk.Button(buttons, text="Save", command=save).pack(side="right", padx=6)
 
     def _mark(self, kind: str, status: str) -> None:
-        tree = self.loading_tree if kind == "loading" else self.cleavage_tree
+        tree = {"loading": self.loading_tree, "cleavage": self.cleavage_tree, "sequence": self.sequence_tree}.get(kind)
+        if tree is None:
+            raise ValueError(f"Unsupported experimental record kind: {kind}")
         selected = list(tree.selection())
         ids = [tree.set(item, "record_id") for item in selected]
         if not ids:
@@ -618,8 +644,9 @@ class ExperimentalDataWindow(tk.Toplevel):
         try:
             loading = experimental_workflow.loading_records(self.gui)
             cleavage = experimental_workflow.cleavage_records(self.gui)
-            self._fill(self.loading_tree, loading); self._fill(self.cleavage_tree, cleavage)
-            self.status.configure(text=f"Loading records: {len(loading)} | Cleavage records: {len(cleavage)} | DB: {experimental_workflow.db_path(self.gui)}")
+            sequence = experimental_workflow.sequence_records(self.gui)
+            self._fill(self.loading_tree, loading); self._fill(self.cleavage_tree, cleavage); self._fill(self.sequence_tree, sequence)
+            self.status.configure(text=f"Loading: {len(loading)} | Cleavage: {len(cleavage)} | Sequence STD observations: {len(sequence)} | DB: {experimental_workflow.db_path(self.gui)}")
         except Exception as exc:
             self.status.configure(text=f"Experimental DB error: {exc}")
 
@@ -674,7 +701,12 @@ class ExperimentalDataWindow(tk.Toplevel):
             if rec:
                 comp = rec.get("composition_pct") or {}
                 comp_text = "; ".join(f"{name} {_fmt(value,2)}%" for name, value in comp.items())
-                source_label = "Exact lab record" if rec.get("condition_source") == "exact_lab_record" else "Sequence-rule fallback"
+                source_kind = rec.get("condition_source")
+                source_label = (
+                    "Exact lab record" if source_kind == "exact_lab_record"
+                    else "Historical match — incomplete condition" if source_kind == "historical_match_incomplete"
+                    else "Chemistry reference"
+                )
                 lines.extend([
                     "", f"Recommendation — {source_label}",
                     f"Sequence: {rec.get('sequence')}",

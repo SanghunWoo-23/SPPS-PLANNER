@@ -37,3 +37,12 @@ def test_cleavage_recommendation_does_not_use_stale_product_for_different_sequen
 def test_optimizer_ui_has_separate_recommend_apply_paths():
     src=(Path(__file__).resolve().parents[1]/"suite_gui/modules/experimental_data_panel.py").read_text(encoding="utf-8")
     assert "Apply Loading Rec" in src and "Apply Cleavage Rec" in src and "recommend_loading(" in src and "recommend_cleavage(" in src
+
+
+
+def test_loading_lookup_is_case_insensitive_for_residue_and_bottle_name(tmp_path):
+    db=tmp_path/"exp.sqlite"; _loading(db,1,3,0.4); _loading(db,2,4,0.55)
+    lower_residue=ml_advisor_v4.loading_recommendation("2-ctc","r",target_loading_mmol_g=0.4,db_path=db,include_parsed=True)
+    lower_bottle=ml_advisor_v4.loading_recommendation("TRITYL/2-CTC RESIN","fmoc-arg(pbf)-oh",target_loading_mmol_g=0.4,db_path=db,include_parsed=True)
+    assert lower_residue["recommended_condition"] is not None
+    assert lower_bottle["recommended_condition"] is not None

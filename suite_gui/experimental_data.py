@@ -19,7 +19,7 @@ from uuid import uuid4
 import zipfile
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 STATUSES = ("parsed", "verified", "incomplete", "excluded")
 
 
@@ -130,10 +130,28 @@ def initialize(path: str | Path | None = None) -> Path:
                 FOREIGN KEY(source_id) REFERENCES import_sources(source_id)
             );
 
+            CREATE TABLE IF NOT EXISTS synthesis_sequence_records (
+                record_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                product TEXT NOT NULL DEFAULT '',
+                sequence TEXT NOT NULL DEFAULT '',
+                source_file TEXT NOT NULL DEFAULT '',
+                source_page TEXT NOT NULL DEFAULT '',
+                source_locator TEXT NOT NULL DEFAULT '',
+                row_basis TEXT NOT NULL DEFAULT '',
+                raw_note TEXT NOT NULL DEFAULT '',
+                source_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(source_id) REFERENCES import_sources(source_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_loading_lookup
               ON loading_records(resin_type, amino_acid_normalized, status);
             CREATE INDEX IF NOT EXISTS idx_cleavage_lookup
               ON cleavage_records(product, status);
+            CREATE INDEX IF NOT EXISTS idx_sequence_lookup
+              ON synthesis_sequence_records(product, status);
             """
         )
     return destination
@@ -246,8 +264,8 @@ def normalize_amino_acid(value: Any) -> str:
         return ""
     compact = re.sub(r"\s+", "", text)
     compact = compact.replace("Fmoc-", "Fmoc-")
-    if compact in AA_ALIASES:
-        return AA_ALIASES[compact]
+    if len(compact) == 1 and compact.upper() in AA_ALIASES:
+        return AA_ALIASES[compact.upper()]
     replacements = {
         "fmoc-arg(pbf)-oh": "Fmoc-Arg(Pbf)-OH",
         "fmoc-asn(trt)-oh": "Fmoc-Asn(Trt)-OH",
@@ -482,16 +500,329 @@ def import_loading_csv(path: str | Path, db_path: str | Path | None = None) -> d
     return {"kind": "loading", "inserted": inserted, "source": str(source)}
 
 
-def import_path(path: str | Path, db_path: str | Path | None = None) -> list[dict[str, Any]]:
+
+_SEQUENCE_NATURAL = set("ARNDCQEGHILKMFPSTWYV")
+_SEQUENCE_CORE_ALIASES = {
+    "AEEA": "AEEA", "AHX": "Ahx", "CHA": "Cha", "AIB": "Aib", "NLE": "Nle",
+    "ORN": "Orn", "CIT": "Cit", "HYP": "Hyp", "DAB": "Dab", "NAL": "Nal",
+    "DPR": "Dpr", "BALA": "bAla", "B-ALA": "bAla", "BETAALA": "bAla",
+    "GALA": "gAla", "G-ALA": "gAla", "GAMMAALA": "gAla", "GABA": "gAla",
+}
+_SEQUENCE_MODIFIER_ALIASES = {
+    "AC": "Ac", "ACETYL": "Ac", "BOC": "Boc", "FMOC": "Fmoc", "FITC": "FITC",
+    "BIOTIN": "Biotin", "FAM": "FAM", "5-FAM": "5-FAM", "6-FAM": "6-FAM",
+    "TAMRA": "TAMRA", "CY3": "CY3", "CY5": "CY5", "CY7": "CY7", "PAL": "Pal",
+    "MYR": "Myr", "GAL": "Gal", "NIC": "Nic", "CAF": "Caf", "DOTA": "DOTA",
+    "NOTA": "NOTA", "DABCYL": "Dabcyl", "BHQ": "BHQ", "NH2": "NH2",
+    "CONH2": "CONH2", "AMIDE": "AMIDE", "COOH": "COOH", "CO2H": "CO2H", "OH": "OH",
+}
+_SEQUENCE_WORD_AA = {
+    "ALA":"A", "ARG":"R", "ASN":"N", "ASP":"D", "CYS":"C", "GLN":"Q", "GLU":"E",
+    "GLY":"G", "HIS":"H", "ILE":"I", "LEU":"L", "LYS":"K", "MET":"M", "PHE":"F",
+    "PRO":"P", "SER":"S", "THR":"T", "TRP":"W", "TYR":"Y", "VAL":"V",
+}
+_SEQUENCE_TABLE_TERMINATORS = {
+    "AAS", "AA", "AMINO ACIDS", "AMINO ACID", "CHEMICALS", "DATE", "NAME", "EQ", "MW", "MMOL",
+}
+
+
+def _std_sequence_tokens(value: Any) -> list[str]:
+    """Return conservative sequence tokens from one Check-table cell.
+
+    A page-local STD cell may contain one residue (``E``), a D-form spelling
+    (``(D)F``), or a compact pair such as ``Ac-E`` / ``Boc-W``.  Only known
+    Planner vocabulary is accepted; arbitrary text is never converted into a
+    sequence.
+    """
+    if not isinstance(value, str):
+        return []
+    text = value.strip()
+    if not text or text.startswith("=") or len(text) > 35:
+        return []
+    # Cosmetic leading/trailing dashes are common for terminal markers.
+    stripped = text.strip().strip("-").strip()
+    compact = re.sub(r"\s+", "", stripped).upper()
+    if len(compact) == 1 and compact in _SEQUENCE_NATURAL:
+        return [compact]
+    if re.fullmatch(r"(?i)d[ARNDCQEGHILKMFPSTWYV]", stripped):
+        return ["d" + stripped[-1].upper()]
+    bracket_d = re.fullmatch(r"(?i)\(D\)[- ]?([ARNDCQEGHILKMFPSTWYV])", stripped)
+    if bracket_d:
+        return ["d" + bracket_d.group(1).upper()]
+    d_named = re.fullmatch(
+        r"\(?D\)?[- ]?(ALA|ARG|ASN|ASP|CYS|GLN|GLU|GLY|HIS|ILE|LEU|LYS|MET|PHE|PRO|SER|THR|TRP|TYR|VAL)",
+        compact,
+    )
+    if d_named:
+        return ["d" + _SEQUENCE_WORD_AA[d_named.group(1)]]
+    if compact in _SEQUENCE_CORE_ALIASES:
+        return [_SEQUENCE_CORE_ALIASES[compact]]
+    if compact in _SEQUENCE_MODIFIER_ALIASES:
+        return [_SEQUENCE_MODIFIER_ALIASES[compact]]
+    if re.fullmatch(r"PEG\d+", compact):
+        return [compact]
+    # Some real STD tables place two known tokens in one cell (e.g. Ac-E or
+    # Boc-W). Split only when every sub-token is independently recognized.
+    if "-" in stripped:
+        parts = [part for part in stripped.split("-") if part.strip()]
+        if len(parts) >= 2:
+            nested: list[str] = []
+            for part in parts:
+                parsed = _std_sequence_tokens(part)
+                if len(parsed) != 1:
+                    return []
+                nested.extend(parsed)
+            return nested
+    return []
+
+
+def _std_sequence_token(value: Any) -> str | None:
+    """Backward-compatible single-token helper."""
+    tokens = _std_sequence_tokens(value)
+    return tokens[0] if len(tokens) == 1 else None
+
+
+def _std_sequence_from_values(values: list[Any], row_number: int, start_index: int, end_index: int) -> tuple[str, str] | None:
+    from openpyxl.utils import get_column_letter
+    tokens: list[str] = []
+    coordinates: list[str] = []
+    for index in range(start_index, min(end_index + 1, len(values))):
+        cell_tokens = _std_sequence_tokens(values[index])
+        if cell_tokens:
+            tokens.extend(cell_tokens)
+            coordinates.append(f"{get_column_letter(index + 1)}{row_number}")
+    modifiers = set(_SEQUENCE_MODIFIER_ALIASES.values())
+    structural = [token for token in tokens if token not in modifiers]
+    if len(structural) < 2:
+        return None
+    return "-".join(tokens), ",".join(coordinates)
+
+
+def extract_synthesis_sequence_records(path: str | Path, *, source_file_label: str = "") -> list[dict[str, Any]]:
+    """Extract page-local STD sequences from monthly calculation workbooks.
+
+    Contract: a page's Check table is the source of truth for that page. Repeated
+    product names on later pages are separate observations, not sequence conflicts.
+    Older sheets that put the product name one row below its sequence are supported
+    by choosing the adjacent sequence row with the greater number of recognized tokens.
+    """
+    from openpyxl import load_workbook
+    from openpyxl.utils import get_column_letter
+
+    source = Path(path)
+    workbook = load_workbook(source, data_only=False, read_only=True)
+    records: list[dict[str, Any]] = []
+    skip_pages = {"틀", "틀2", "서식", "未完", "完", "ETC"}
+    try:
+        for sheet in workbook.worksheets:
+            if sheet.title.strip() in skip_pages:
+                continue
+            max_rows = min(80, int(sheet.max_row or 80))
+            max_cols = min(60, int(sheet.max_column or 60))
+            matrix = [list(row) for row in sheet.iter_rows(
+                min_row=1, max_row=max_rows, min_col=1, max_col=max_cols, values_only=True
+            )]
+            anchors: list[tuple[int, int]] = []
+            for row_index, row in enumerate(matrix):
+                for col_index, value in enumerate(row):
+                    if isinstance(value, str) and value.strip().lower() == "check table":
+                        anchors.append((row_index, col_index))
+            for header_row, product_col in anchors:
+                header = matrix[header_row]
+                result_col = next((
+                    col for col in range(product_col + 1, len(header))
+                    if isinstance(header[col], str) and header[col].strip().lower() == "result"
+                ), None)
+                end_col = (result_col - 1) if result_col is not None else min(len(header) - 1, product_col + 28)
+                started = False
+                blank_streak = 0
+                for row_index in range(header_row + 1, min(len(matrix), header_row + 28)):
+                    row = matrix[row_index]
+                    raw_product = row[product_col] if product_col < len(row) else None
+                    product = raw_product.strip() if isinstance(raw_product, str) else ""
+                    if product.upper() in _SEQUENCE_TABLE_TERMINATORS:
+                        if started:
+                            break
+                        continue
+                    if not product or product.startswith("="):
+                        product = ""
+                    same = _std_sequence_from_values(row, row_index + 1, product_col + 1, end_col)
+                    previous = (
+                        _std_sequence_from_values(matrix[row_index - 1], row_index, product_col + 1, end_col)
+                        if row_index > header_row + 1 else None
+                    )
+                    chosen = None
+                    row_basis = ""
+                    if product:
+                        candidates: list[tuple[int, int, tuple[str, str], str]] = []
+                        if same:
+                            candidates.append((len(same[0].split("-")), 1, same, "same-row"))
+                        if previous:
+                            candidates.append((len(previous[0].split("-")), 0, previous, "previous-row"))
+                        if candidates:
+                            candidates.sort(key=lambda value: (value[0], value[1]), reverse=True)
+                            _, _, chosen, row_basis = candidates[0]
+                    if product and chosen:
+                        sequence, sequence_cells = chosen
+                        anchor = f"{get_column_letter(product_col + 1)}{header_row + 1}"
+                        product_cell = f"{get_column_letter(product_col + 1)}{row_index + 1}"
+                        records.append({
+                            "status": "parsed",
+                            "product": product,
+                            "sequence": sequence,
+                            "source_file": str(source_file_label or source.name),
+                            "source_page": sheet.title,
+                            "source_locator": f"Check table {anchor}; product {product_cell}; sequence {sequence_cells}",
+                            "row_basis": row_basis,
+                            "raw_note": "Page-local STD sequence from Check table; no cross-page canonicalization.",
+                        })
+                        started = True
+                        blank_streak = 0
+                    elif started:
+                        if not product and not same:
+                            blank_streak += 1
+                            if blank_streak >= 3:
+                                break
+                        else:
+                            blank_streak = 0
+    finally:
+        workbook.close()
+    return records
+
+
+def _insert_sequence_record(
+    con: sqlite3.Connection,
+    row: Mapping[str, Any],
+    *,
+    replace_same_provenance: bool = False,
+) -> bool:
+    if replace_same_provenance:
+        # Bundled page-local STD seed is regenerated from the same source
+        # workbooks when the parser improves.  The sequence-cell list inside the
+        # locator can legitimately change when the parser starts recognizing a
+        # previously missed token, so the stable slot is workbook + page + product
+        # cell (e.g. ``product A3``), not the full locator text.
+        locator = str(row.get("source_locator", "") or "")
+        slot_match = re.search(r"\bproduct\s+([A-Z]+\d+)\b", locator, flags=re.I)
+        slot = slot_match.group(1).upper() if slot_match else ""
+        existing = None
+        if slot:
+            candidates = con.execute(
+                """SELECT record_id, source_locator FROM synthesis_sequence_records
+                   WHERE source_file=? AND source_page=?""",
+                (row.get("source_file", ""), row.get("source_page", "")),
+            ).fetchall()
+            for candidate in candidates:
+                old_match = re.search(r"\bproduct\s+([A-Z]+\d+)\b", str(candidate["source_locator"] or ""), flags=re.I)
+                if old_match and old_match.group(1).upper() == slot:
+                    existing = candidate
+                    break
+        else:
+            existing = con.execute(
+                """SELECT record_id FROM synthesis_sequence_records
+                   WHERE source_file=? AND source_page=? AND source_locator=? AND source_id=?""",
+                (row.get("source_file", ""), row.get("source_page", ""), locator, row.get("source_id")),
+            ).fetchone()
+        if existing:
+            con.execute(
+                """UPDATE synthesis_sequence_records
+                   SET status=?, product=?, sequence=?, row_basis=?, raw_note=?, source_id=?, updated_at=?
+                   WHERE record_id=?""",
+                (
+                    row.get("status", "parsed"), row.get("product", ""), row.get("sequence", ""),
+                    row.get("row_basis", ""), row.get("raw_note", ""), row.get("source_id"),
+                    row.get("updated_at") or _now(), existing["record_id"],
+                ),
+            )
+            return False
+    existing = con.execute(
+        """SELECT record_id FROM synthesis_sequence_records
+           WHERE source_id=? AND source_file=? AND source_page=? AND source_locator=? AND product=? AND sequence=?""",
+        (row.get("source_id"), row.get("source_file", ""), row.get("source_page", ""), row.get("source_locator", ""), row.get("product", ""), row.get("sequence", "")),
+    ).fetchone()
+    if existing:
+        return False
+    keys = [
+        "record_id", "status", "product", "sequence", "source_file", "source_page", "source_locator",
+        "row_basis", "raw_note", "source_id", "created_at", "updated_at",
+    ]
+    con.execute(
+        f"INSERT INTO synthesis_sequence_records ({','.join(keys)}) VALUES ({','.join('?' for _ in keys)})",
+        [row.get(key) for key in keys],
+    )
+    return True
+
+
+def import_synthesis_workbook(path: str | Path, db_path: str | Path | None = None, *, source_file_label: str = "") -> dict[str, Any]:
+    source = Path(path)
+    if not source.is_file():
+        raise FileNotFoundError(source)
+    initialize(db_path)
+    parsed = extract_synthesis_sequence_records(source, source_file_label=source_file_label)
+    inserted = 0
+    with _connect(db_path) as con:
+        source_id = _register_source(
+            con, source, "synthesis_check_table_xlsx",
+            note="Page-local Check table sequences; repeated products remain separate observations.",
+        )
+        for raw in parsed:
+            now = _now()
+            row = dict(raw)
+            row.update({"record_id": _id(), "source_id": source_id, "created_at": now, "updated_at": now})
+            inserted += int(_insert_sequence_record(con, row))
+    return {"kind": "sequence_history", "inserted": inserted, "parsed": len(parsed), "source": str(source)}
+
+
+def import_sequence_history_csv(path: str | Path, db_path: str | Path | None = None) -> dict[str, Any]:
+    source = Path(path)
+    if not source.is_file():
+        raise FileNotFoundError(source)
+    initialize(db_path)
+    inserted = 0
+    with source.open("r", encoding="utf-8-sig", newline="") as handle, _connect(db_path) as con:
+        reader = csv.DictReader(handle)
+        source_id = _register_source(con, source, "sequence_history_csv")
+        for number, raw in enumerate(reader, 2):
+            product = str(_mapping_value(raw, "product", "product_key") or "").strip()
+            sequence = str(_mapping_value(raw, "sequence") or "").strip()
+            if not product or not sequence:
+                continue
+            status = str(_mapping_value(raw, "status") or "parsed").lower()
+            if status not in STATUSES:
+                status = "parsed"
+            now = _now()
+            row = {
+                "record_id": _id(), "status": status, "product": product, "sequence": sequence,
+                "source_file": str(_mapping_value(raw, "source_file") or source.name),
+                "source_page": str(_mapping_value(raw, "source_page", "source_sheet") or ""),
+                "source_locator": str(_mapping_value(raw, "source_locator") or f"row{number}"),
+                "row_basis": str(_mapping_value(raw, "row_basis") or ""),
+                "raw_note": str(_mapping_value(raw, "raw_note", "source_note") or ""),
+                "source_id": source_id, "created_at": now, "updated_at": now,
+            }
+            inserted += int(_insert_sequence_record(
+                con, row, replace_same_provenance=(source.name.lower() == "synthesis_sequence_history_seed.csv")
+            ))
+    return {"kind": "sequence_history", "inserted": inserted, "source": str(source)}
+
+def import_path(path: str | Path, db_path: str | Path | None = None, *, source_label: str = "") -> list[dict[str, Any]]:
     source = Path(path)
     if not source.is_file():
         raise FileNotFoundError(source)
     suffix = source.suffix.lower()
     if suffix == ".csv":
+        try:
+            with source.open("r", encoding="utf-8-sig", newline="") as handle:
+                header = {str(value or "").strip().lower() for value in next(csv.reader(handle), [])}
+        except Exception:
+            header = set()
+        if {"product", "sequence"}.issubset(header) or {"product_key", "sequence"}.issubset(header):
+            return [import_sequence_history_csv(source, db_path)]
         return [import_loading_csv(source, db_path)]
     if suffix in {".xlsx", ".xlsm"}:
-        # Only Cleavage Report has a stable schema today. Other workbooks are registered
-        # without fabricating structure; they remain available for later reviewed parsing.
+        # Cleavage Report remains a dedicated stable schema. Monthly calculation
+        # workbooks are parsed only through page-local Check tables; no other cells
+        # are guessed into experimental records.
         try:
             from openpyxl import load_workbook
             wb = load_workbook(source, data_only=True, read_only=True)
@@ -503,9 +834,12 @@ def import_path(path: str | Path, db_path: str | Path | None = None) -> list[dic
             looks_like_cleavage = False
         if looks_like_cleavage:
             return [import_cleavage_report(source, db_path)]
+        parsed = import_synthesis_workbook(source, db_path, source_file_label=source_label)
+        if int(parsed.get("parsed", 0)) > 0:
+            return [parsed]
         initialize(db_path)
         with _connect(db_path) as con:
-            _register_source(con, source, "historical_workbook", note="Registered for reviewed V4 parsing; no guessed rows were created.")
+            _register_source(con, source, "historical_workbook", note="No supported Cleavage Report or page-local Check table was found; no guessed rows were created.")
         return [{"kind": "registered_workbook", "inserted": 0, "source": str(source)}]
     if suffix == ".zip":
         results: list[dict[str, Any]] = []
@@ -517,16 +851,15 @@ def import_path(path: str | Path, db_path: str | Path | None = None) -> list[dic
                         continue
                     safe = Path(temp) / f"{len(results):04d}_{name.name}"
                     safe.write_bytes(archive.read(info))
-                    results.extend(import_path(safe, db_path))
+                    results.extend(import_path(safe, db_path, source_label=name.as_posix()))
         return results
     raise ValueError(f"Unsupported experimental data file: {source.suffix}")
 
-
 def list_records(kind: str, db_path: str | Path | None = None, *, statuses: Iterable[str] | None = None) -> list[dict[str, Any]]:
     initialize(db_path)
-    table = "loading_records" if kind == "loading" else "cleavage_records" if kind == "cleavage" else None
+    table = "loading_records" if kind == "loading" else "cleavage_records" if kind == "cleavage" else "synthesis_sequence_records" if kind == "sequence" else None
     if table is None:
-        raise ValueError("kind must be loading or cleavage")
+        raise ValueError("kind must be loading, cleavage, or sequence")
     clauses = ""
     params: list[Any] = []
     if statuses:
@@ -542,9 +875,9 @@ def list_records(kind: str, db_path: str | Path | None = None, *, statuses: Iter
 def set_status(kind: str, record_ids: Iterable[str], status: str, db_path: str | Path | None = None) -> int:
     if status not in STATUSES:
         raise ValueError(f"Unsupported status: {status}")
-    table = "loading_records" if kind == "loading" else "cleavage_records" if kind == "cleavage" else None
+    table = "loading_records" if kind == "loading" else "cleavage_records" if kind == "cleavage" else "synthesis_sequence_records" if kind == "sequence" else None
     if table is None:
-        raise ValueError("kind must be loading or cleavage")
+        raise ValueError("kind must be loading, cleavage, or sequence")
     ids = [str(value) for value in record_ids if str(value)]
     if not ids:
         return 0
@@ -635,6 +968,7 @@ def sources(db_path: str | Path | None = None) -> list[dict[str, Any]]:
 
 __all__ = [
     "SCHEMA_VERSION", "STATUSES", "default_db_path", "initialize", "import_cleavage_report",
-    "import_loading_csv", "import_path", "list_records", "normalize_amino_acid", "normalize_resin",
+    "import_loading_csv", "import_sequence_history_csv", "import_synthesis_workbook", "extract_synthesis_sequence_records",
+    "import_path", "list_records", "normalize_amino_acid", "normalize_resin",
     "set_status", "update_record", "add_record", "sources", "flag_loading_outliers",
 ]

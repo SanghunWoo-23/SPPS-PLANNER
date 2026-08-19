@@ -38,15 +38,31 @@ def test_cleavage_parsed_exact_product_is_not_actionable(tmp_path):
     assert rec.get("source_status") in {"parsed", None}
 
 
-def test_cleavage_unknown_extra_component_blocks_apply_even_if_verified(tmp_path):
+def test_cleavage_numeric_extra_component_is_preserved_as_recorded(tmp_path):
     from suite_gui import ml_advisor_v4
     db=tmp_path/"exp.sqlite"; _add_cleavage(db,"verified",extra=True)
     result=ml_advisor_v4.cleavage_advice(product="Demo Product",sequence="Ac-AAAAAA-NH2",scale_mmol=100,db_path=db)
     rec=result["recommended_condition"]
     assert rec is not None
-    # An incomplete historical cocktail must not be reproduced. A chemistry-rule
-    # fallback is acceptable because it does not copy the unknown extra component.
+    assert rec.get("condition_source") == "exact_lab_record"
+    assert rec.get("apply_allowed") is True
+    assert "Thioanisole" in (rec.get("composition_pct") or {})
+
+
+def test_cleavage_unresolved_extra_component_blocks_historical_apply(tmp_path):
+    from suite_gui import experimental_data, ml_advisor_v4
+    db=tmp_path/"exp.sqlite"
+    experimental_data.add_record("cleavage", {
+        "product":"Demo Product","sequence":"Ac-AAAAAA-NH2","scale_mmol":100,
+        "tfa_ml":2850,"tis_ml":0,"water_ml":150,
+        "other_scavengers_json":'{"Thioanisole": "10 mL"}',
+        "cleavage_eq":30,"cleavage_time_h":3,"raw_observation":"synthetic fixture"
+    }, db, status="verified")
+    result=ml_advisor_v4.cleavage_advice(product="Demo Product",sequence="Ac-AAAAAA-NH2",scale_mmol=100,db_path=db)
+    rec=result["recommended_condition"]
+    assert rec is not None
     assert rec.get("condition_source") != "exact_lab_record"
+    assert rec.get("apply_allowed") is False
 
 
 def test_ml_apply_ui_recomputes_and_requires_direct_loading_mode():

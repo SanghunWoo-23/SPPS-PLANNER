@@ -668,17 +668,38 @@ def delete_selected_rows(gui, ns):
 
 
 def edit_unit(gui, ns):
-    for name in ("_v276c_edit_unit", "_v269_open_unit_picker", "_v239_edit_selected_unit"):
-        function = ns.get(name)
-        if callable(function):
-            try:
-                return function(gui)
-            except Exception:
-                pass
+    """Open the real inline Unit-name editor for the selected Plan row."""
+    tree = getattr(gui, "pm_selected_plan_tree", None)
+    if tree is None:
+        return None
     try:
-        messagebox.showinfo("Edit Unit name", "Select a row, then double-click a cell to edit it.")
-    except Exception:
-        pass
+        selected = list(tree.selection())
+        iid = selected[0] if selected else tree.focus()
+        if not iid:
+            raise ValueError("Select a Plan row first.")
+        tree.selection_set(iid)
+        tree.focus(iid)
+        tree.see(iid)
+        gui.update_idletasks()
+        x, y, width, height = tree.bbox(iid, "#2")
+        if width <= 0 or height <= 0:
+            raise ValueError("The selected Unit name cell is not visible.")
+        cx, cy = x + max(2, width // 2), y + max(2, height // 2)
+        for _ in range(2):
+            tree.event_generate("<ButtonPress-1>", x=cx, y=cy)
+            tree.event_generate("<ButtonRelease-1>", x=cx, y=cy)
+            gui.update_idletasks()
+        editor = getattr(tree, "_v229_editor", None)
+        if editor is None or not editor.winfo_exists():
+            raise RuntimeError("Unit name editor could not be opened.")
+        editor.focus_set()
+        return editor
+    except Exception as exc:
+        try:
+            messagebox.showinfo("Edit Unit name", str(exc) or "Select a Plan row first.")
+        except Exception:
+            pass
+        return None
 
 
 def _cocktail_presets():

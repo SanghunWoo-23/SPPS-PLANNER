@@ -64,6 +64,37 @@ def test_coupling_single_occurrence_does_not_become_exact_consensus():
     assert result["unit_recommendations"][0]["apply_allowed"] is False
 
 
+
+def test_coupling_duplicate_positions_in_one_synthesis_do_not_fake_consensus():
+    item = _reviewed_item("P1", "Fmoc-Lys(Boc)-OH")
+    item["selected_plan_rows"] = item["selected_plan_rows"] * 2
+    current = {
+        "sequence": "AKK", "resin": "Rink Amide AM", "scale": "1",
+        "selected_plan_rows": [{"Unit name": "Fmoc-Lys(Boc)-OH", "Note": "coupling"}],
+    }
+    result = condition_optimizer_v4.coupling_advice([item, current], current)
+    unit = result["unit_recommendations"][0]
+    assert unit["apply_allowed"] is False
+    assert unit["observation_count"] == 2
+    assert unit["independent_experiment_count"] == 1
+
+
+def test_coupling_consensus_reports_observations_and_independent_syntheses_separately():
+    p1 = _reviewed_item("P1", "Fmoc-Lys(Boc)-OH")
+    p2 = _reviewed_item("P2", "Fmoc-Lys(Boc)-OH")
+    p1["selected_plan_rows"] = p1["selected_plan_rows"] * 2
+    p2["selected_plan_rows"] = p2["selected_plan_rows"] * 2
+    current = {
+        "sequence": "AKK", "resin": "Rink Amide AM", "scale": "1",
+        "selected_plan_rows": [{"Unit name": "Fmoc-Lys(Boc)-OH", "Note": "coupling"}],
+    }
+    result = condition_optimizer_v4.coupling_advice([p1, p2, current], current)
+    unit = result["unit_recommendations"][0]
+    assert unit["recommendation_kind"] == "HISTORICAL CONSENSUS"
+    assert unit["observation_count"] == 4
+    assert unit["independent_experiment_count"] == 2
+    assert unit["evidence_count"] == 2
+
 def test_operator_loading_and_cleavage_records_can_be_added_directly(tmp_path):
     db = tmp_path / "experimental.sqlite"
     loading = experimental_data.add_record("loading", {

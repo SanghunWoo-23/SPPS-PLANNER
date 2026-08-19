@@ -608,14 +608,9 @@ def _recommend_cleavage_preset_initial(inp: PlanInput | str) -> dict[str, Any]:
     counts = {aa: aas.count(aa) for aa in sorted(set(aas))}
     if resin_family(resin) == "CTC/Trityl":
         return {"preset": "REAGENT_B", "reason": "2-CTC/Trityl resin detected; full deprotection still requires SOP check."}
-    if counts.get("C", 0) and any(counts.get(x, 0) for x in ("M", "W", "Y")):
-        return {"preset": "REAGENT_K", "reason": "Cys plus Met/Trp/Tyr detected; broad sensitive-residue scavenger mix recommended."}
-    if counts.get("C", 0):
-        return {"preset": "CYS_EDT", "reason": "Cys detected; EDT/TIS/water-containing cocktail recommended for thiol-sensitive cases."}
-    if any(counts.get(x, 0) for x in ("M", "W")):
-        return {"preset": "REDUCING_TFA_TIS_WATER_EDT", "reason": "Met or Trp detected; reducing EDT-containing mixture recommended, but avoid prolonged EDT exposure for Trp by SOP."}
-    if counts.get("Y", 0):
-        return {"preset": "REAGENT_B", "reason": "Tyr detected; phenolic/scavenger-rich option suggested."}
+    if any(counts.get(x, 0) for x in ("C", "M", "W", "Y")):
+        sensitive = ", ".join(x for x in ("C", "M", "W", "Y") if counts.get(x, 0))
+        return {"preset": "DEFAULT_TFA_TIS_WATER", "reason": f"Sensitive residue(s) {sensitive} detected. AUTO keeps the standard TFA/TIS/water baseline and does not auto-add EDT/phenol/thioanisole; use recorded history or select a protocol preset explicitly."}
     return {"preset": "DEFAULT_TFA_TIS_WATER", "reason": "No Cys/Met/Trp/Tyr sensitivity trigger detected; standard TFA/TIS/water preset selected."}
 
 
@@ -1760,14 +1755,9 @@ def recommend_cleavage_preset(inp: PlanInput | str) -> dict[str, Any]:
     tokens = list(parsed.core_tokens or []) + list(getattr(parsed, "branch_tokens", []) or [])
     aas = [str(t).replace("d", "").upper() for t in tokens]
     counts = {aa: aas.count(aa) for aa in sorted(set(aas))}
-    if counts.get("C", 0) and any(counts.get(x, 0) for x in ("M", "W", "Y")):
-        return {"preset": "REAGENT_K", "reason": "Cys plus Met/Trp/Tyr detected; broad sensitive-residue scavenger mix recommended."}
-    if counts.get("C", 0):
-        return {"preset": "CYS_EDT", "reason": "Cys detected; EDT/TIS/water-containing cocktail recommended for thiol-sensitive cases."}
-    if any(counts.get(x, 0) for x in ("M", "W")):
-        return {"preset": "REDUCING_TFA_TIS_WATER_EDT", "reason": "Met or Trp detected; reducing EDT-containing mixture recommended."}
-    if counts.get("Y", 0):
-        return {"preset": "REAGENT_B", "reason": "Tyr detected; phenolic/scavenger-rich option suggested."}
+    if any(counts.get(x, 0) for x in ("C", "M", "W", "Y")):
+        sensitive = ", ".join(x for x in ("C", "M", "W", "Y") if counts.get(x, 0))
+        return {"preset": "DEFAULT_TFA_TIS_WATER", "reason": f"Sensitive residue(s) {sensitive} detected. AUTO keeps the standard TFA/TIS/water baseline and does not auto-add EDT/phenol/thioanisole; use recorded history or select a protocol preset explicitly."}
     if resin_family(resin) == "CTC/Trityl":
         return {"preset": "ACOH_TFE_MC_1_1_8", "reason": "2-CTC/Trityl resin detected; mild AcOH/TFE/MC option shown, confirm full deprotection by SOP."}
     return {"preset": "DEFAULT_TFA_TIS_WATER", "reason": "No special sensitivity trigger detected; standard TFA/TIS/water preset selected."}

@@ -1285,7 +1285,7 @@ def apply_change(gui, ns: dict[str, Any]):
         _mark_visible_plan_edits(gui)
         inp = _build_plan_input(gui, ns)
         _recalc_plan(gui, ns, inp)
-        _write_linked(gui, ns, inp, include_cleavage=True)
+        _write_linked(gui, ns, inp, include_cleavage=True, paint_all_linked=True)
         index = _active_index(gui)
         if index is not None:
             gui.pm_items[index]["status"] = "Changed"

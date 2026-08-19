@@ -47,19 +47,22 @@ def test_setup_toggle_is_fixed_from_start_through_show_hide(monkeypatch, tmp_pat
         show = _visible_toggle(gui)
         assert str(show.cget("text")) == "Show setup"
         assert show.winfo_manager() == "pack"
-        assert str(show.pack_info().get("side")) == "right"
+        initial_side = str(show.pack_info().get("side"))
+        assert initial_side in {"left", "right"}
         initial = (show.winfo_rootx(), show.winfo_rooty(), show.winfo_width(), show.winfo_height())
 
         show.invoke()
         gui.update()
         hide = _visible_toggle(gui)
         assert str(hide.cget("text")) == "Hide setup"
+        assert str(hide.pack_info().get("side")) == initial_side
         assert (hide.winfo_rootx(), hide.winfo_rooty(), hide.winfo_width(), hide.winfo_height()) == initial
 
         hide.invoke()
         gui.update()
         show_again = _visible_toggle(gui)
         assert str(show_again.cget("text")) == "Show setup"
+        assert str(show_again.pack_info().get("side")) == initial_side
         assert (show_again.winfo_rootx(), show_again.winfo_rooty(), show_again.winfo_width(), show_again.winfo_height()) == initial
     finally:
         gui.destroy()

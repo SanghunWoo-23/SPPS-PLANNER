@@ -29,3 +29,22 @@ def test_active_release_and_static_base_have_no_runtime_rebinding():
             and node.name == "install"
         )
     assert installers == []
+
+
+def test_classic_base_has_no_duplicate_method_definitions():
+    root = Path(__file__).resolve().parents[1]
+    path = root / "suite_gui" / "classic_base.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    duplicates = {}
+    from collections import Counter
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        counts = Counter(
+            child.name for child in node.body
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+        )
+        repeated = {name: count for name, count in counts.items() if count > 1}
+        if repeated:
+            duplicates[node.name] = repeated
+    assert duplicates == {}

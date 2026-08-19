@@ -305,6 +305,12 @@ def _bind_resin_live_preview(gui, ns):
     _ensure_solvent_basis_controls(gui)
 
     def refresh(*_args):
+        # Update synchronously first so the visible preview always matches the
+        # just-selected resin/scale, even when an older idle refresh is pending.
+        try:
+            _update_volume_preview(gui)
+        except Exception:
+            pass
         pending = getattr(gui, "_v3_volume_preview_after_id", None)
         if pending:
             return

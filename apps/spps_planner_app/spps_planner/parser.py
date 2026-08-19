@@ -70,15 +70,15 @@ def _norm_key(token: str) -> str:
 
 
 def _uppercase_plain_natural_segment(seg: str) -> str:
-    """Allow lowercase FASTA input without changing explicit D-form syntax.
+    """Canonicalize plain natural-AA chunks case-insensitively.
 
-    g-h-k and ghk are treated as G-H-K.  Explicit dG remains dG; bracketed
-    vendor/linker tokens and mixed-case aliases such as gAla are handled by
-    the normal alias table instead of this helper.
+    Sequence identity must not depend on typing case. Explicit D-form tokens are
+    handled before this helper, while known linker/non-natural aliases are
+    resolved afterwards.
     """
     s = str(seg or "").strip()
     letters = [ch for ch in s if ch.isalpha()]
-    if letters and all(ch.islower() for ch in letters) and set(ch.upper() for ch in letters).issubset(NATURAL_AA_LETTERS):
+    if letters and set(ch.upper() for ch in letters).issubset(NATURAL_AA_LETTERS):
         return "".join(ch.upper() if ch.isalpha() else ch for ch in s)
     return s
 CTERM_MARKERS = {"NH2", "CONH2", "AMIDE", "COOH", "CO2H", "OH", "ACID"}
@@ -227,6 +227,8 @@ def _tokenize_compact_segment(segment: str) -> list[str]:
     if raw_segment.startswith("[") and raw_segment.endswith("]"):
         token = raw_segment[1:-1].strip()
         return [TOKEN_CANONICAL.get(token.upper(), token)] if token else []
+    if re.fullmatch(r"d[ARNDCQEGHILKMFPSTWYV]", raw_segment):
+        return ["d" + raw_segment[1].upper()]
     seg = _uppercase_plain_natural_segment(raw_segment)
     if not seg:
         return []
@@ -295,6 +297,8 @@ def _tokenize_segment_with_branches(segment: str) -> tuple[list[str], list[dict]
         token = raw_segment[1:-1].strip()
         canonical = TOKEN_CANONICAL.get(token.upper(), token)
         return ([canonical] if canonical else []), [], []
+    if re.fullmatch(r"d[ARNDCQEGHILKMFPSTWYV]", raw_segment):
+        return ["d" + raw_segment[1].upper()], [], []
     seg = _uppercase_plain_natural_segment(raw_segment)
     warnings: list[str] = []
     if not seg:
@@ -399,8 +403,14 @@ def parse_sequence(seq: str) -> ParsedSequence:
 
     # Remove C-terminal marker first.
     if parts and _is_cterm_marker(parts[-1]):
-        cterm = parts[-1]
+        cterm = str(parts[-1]).upper()
         parts = parts[:-1]
+
+    if len(parts) > 1:
+        parts = [
+            ("d" + part[1].upper()) if re.fullmatch(r"(?i)d[ARNDCQEGHILKMFPSTWYV]", str(part or "")) else part
+            for part in parts
+        ]
 
     # Then consume a known N-terminal modifier, supporting hyphenated modifiers.
     nterm, remaining = _consume_leading_nterm_modifier(parts)

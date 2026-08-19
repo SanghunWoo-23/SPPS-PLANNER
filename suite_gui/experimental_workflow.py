@@ -21,6 +21,14 @@ def initialize(gui: Any = None) -> Path:
     return experimental_data.initialize(db_path(gui))
 
 
+def data_health(gui: Any) -> dict[str, Any]:
+    return experimental_data.data_health(db_path(gui))
+
+
+def preview_import(gui: Any, path: str | Path) -> dict[str, Any]:
+    return experimental_data.preview_path(path)
+
+
 def import_file(gui: Any, path: str | Path) -> list[dict[str, Any]]:
     result = experimental_data.import_path(path, db_path(gui))
     try:
@@ -159,4 +167,4 @@ def open_condition_optimizer(gui: Any) -> Any:
             _condition_optimizer_log_error = log_exc
     return window
 
-__all__ = ["initialize", "import_file", "loading_records", "cleavage_records", "sequence_records", "set_status", "update_record", "add_loading_record", "add_cleavage_record", "record_coupling_review", "advise_loading", "advise_cleavage", "recommend_loading", "recommend_cleavage", "advise_coupling", "open_window", "open_advisor", "open_condition_optimizer", "db_path"]
+__all__ = ["initialize", "data_health", "preview_import", "import_file", "loading_records", "cleavage_records", "sequence_records", "set_status", "update_record", "add_loading_record", "add_cleavage_record", "record_coupling_review", "advise_loading", "advise_cleavage", "recommend_loading", "recommend_cleavage", "advise_coupling", "open_window", "open_advisor", "open_condition_optimizer", "db_path"]

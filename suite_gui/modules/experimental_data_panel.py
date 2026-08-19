@@ -7,7 +7,7 @@ from typing import Any
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from suite_gui import experimental_workflow
+from suite_gui import experimental_data, experimental_workflow
 
 # Legacy UI labels retained only as searchable compatibility notes for regression
 # contracts; the visible V4 labels below are intentionally shorter.
@@ -60,12 +60,14 @@ class ExperimentalDataWindow(tk.Toplevel):
         self.loading_tab = ttk.Frame(nb, padding=8); nb.add(self.loading_tab, text="Loading History")
         self.cleavage_tab = ttk.Frame(nb, padding=8); nb.add(self.cleavage_tab, text="Cleavage History")
         self.sequence_tab = ttk.Frame(nb, padding=8); nb.add(self.sequence_tab, text="Sequence History")
+        self.health_tab = ttk.Frame(nb, padding=8); nb.add(self.health_tab, text="Data Health")
         self.loading_advisor_tab = ttk.Frame(nb, padding=8); nb.add(self.loading_advisor_tab, text="Loading Advisor")
         self.cleavage_advisor_tab = ttk.Frame(nb, padding=8); nb.add(self.cleavage_advisor_tab, text="Cleavage Advisor")
         self.condition_optimizer_tab = ttk.Frame(nb, padding=8); nb.add(self.condition_optimizer_tab, text="Condition Optimizer")
         self._build_loading_history()
         self._build_cleavage_history()
         self._build_sequence_history()
+        self._build_data_health()
         self._build_loading_advisor()
         self._build_cleavage_advisor()
         self._build_condition_optimizer()
@@ -148,6 +150,7 @@ class ExperimentalDataWindow(tk.Toplevel):
             bar,
             text="Each row is a page-local Check table STD sequence. Repeated product names are retained as separate observations.",
         ).pack(side="left")
+        ttk.Button(bar, text="Verify Same Product", command=self._verify_same_sequence_product).pack(side="right", padx=2)
         ttk.Button(bar, text="Mark Verified", command=lambda: self._mark("sequence", "verified")).pack(side="right", padx=2)
         ttk.Button(bar, text="Mark Excluded", command=lambda: self._mark("sequence", "excluded")).pack(side="right", padx=2)
         columns = ["status", "product", "sequence", "source_file", "source_page", "source_locator", "row_basis", "record_id"]
@@ -159,6 +162,48 @@ class ExperimentalDataWindow(tk.Toplevel):
         self.sequence_tree.column("source_locator", width=220)
         self.sequence_tree.column("row_basis", width=110)
         self.sequence_tree.column("record_id", width=80)
+
+    def _build_data_health(self) -> None:
+        top = ttk.Frame(self.health_tab); top.pack(fill="x", pady=(0,6))
+        ttk.Label(top, text="Objective DB quality and retrospective consistency metrics; these are not biochemical success rates.").pack(side="left")
+        ttk.Button(top, text="Refresh Health", command=self._refresh_health).pack(side="right")
+        self.health_text = tk.Text(self.health_tab, height=28, wrap="word")
+        self.health_text.pack(fill="both", expand=True)
+
+    def _refresh_health(self) -> None:
+        health = experimental_workflow.data_health(self.gui)
+        counts = health.get("counts") or {}; missing = health.get("missing_canonical_keys") or {}
+        status = health.get("status_counts") or {}
+        mae = health.get("loading_leave_one_out_mae_mmol_g")
+        agreement = health.get("cleavage_eq_time_replay_agreement_pct")
+        lines = [
+            "Experimental Data Health", "",
+            f"Records — Loading {counts.get('loading',0)} / Cleavage {counts.get('cleavage',0)} / Sequence STD {counts.get('sequence',0)}",
+            f"Status — Loading {status.get('loading',{})}",
+            f"Status — Cleavage {status.get('cleavage',{})}",
+            f"Status — Sequence {status.get('sequence',{})}", "",
+            f"Canonical-key gaps — Loading {missing.get('loading',0)} / Cleavage {missing.get('cleavage',0)} / Sequence {missing.get('sequence',0)}",
+            f"Distinct sequence products: {health.get('sequence_products',0)}",
+            f"Cleavage records linked to a sequence product: {health.get('cleavage_records_linked_to_sequence_product',0)}",
+            f"Repeated resin+building-block loading groups: {health.get('repeated_loading_groups',0)}",
+            f"Explicit EDT historical records: {health.get('explicit_edt_records',0)}", "",
+            "Retrospective consistency (not success probability)",
+            f"Loading exact-group leave-one-out MAE: {_fmt(mae,4) if mae is not None else 'N/A'} mmol/g (n={health.get('loading_leave_one_out_evaluated',0)})",
+            f"Cleavage product eq/time replay agreement: {_fmt(agreement,1) if agreement is not None else 'N/A'}% (n={health.get('cleavage_eq_time_replay_evaluated',0)})",
+        ]
+        self.health_text.delete("1.0","end"); self.health_text.insert("1.0","\n".join(lines))
+
+    def _verify_same_sequence_product(self) -> None:
+        selected = list(self.sequence_tree.selection())
+        if not selected:
+            messagebox.showinfo("Sequence History", "Select one sequence record first.", parent=self); return
+        columns = list(self.sequence_tree["columns"]); product_index = columns.index("product")
+        product = str(self.sequence_tree.item(selected[0], "values")[product_index])
+        key = experimental_data.canonical_product_key(product)
+        ids = [row.get("record_id") for row in experimental_workflow.sequence_records(self.gui) if experimental_data.canonical_product_key(row.get("product")) == key]
+        changed = experimental_workflow.set_status(self.gui, "sequence", ids, "verified")
+        self.refresh_all()
+        messagebox.showinfo("Sequence History", f"Verified {changed} page-local STD observation(s) for {product}.", parent=self)
 
     def _build_loading_advisor(self) -> None:
         form = ttk.LabelFrame(self.loading_advisor_tab, text="Current loading condition", padding=10); form.pack(fill="x")
@@ -572,11 +617,38 @@ class ExperimentalDataWindow(tk.Toplevel):
             self._cterm_parse_error = exc
         return ""
 
+    def _confirm_import_preview(self, preview: dict[str, Any]) -> bool:
+        dialog = tk.Toplevel(self)
+        dialog.title("Import Preview / Audit")
+        dialog.transient(self); dialog.grab_set()
+        dialog.geometry("980x560")
+        counts = preview.get("counts") or {}
+        ttk.Label(dialog, text=f"Loading {counts.get('loading',0)} | Cleavage {counts.get('cleavage',0)} | Sequence STD {counts.get('sequence',0)}", font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=10, pady=(10,4))
+        ttk.Label(dialog, text="Preview only — the Experimental DB has not been modified.").pack(anchor="w", padx=10)
+        for warning in preview.get("warnings") or []:
+            ttk.Label(dialog, text=f"Warning: {warning}").pack(anchor="w", padx=10, pady=(2,0))
+        columns = ["kind", "status", "product", "sequence", "source", "locator"]
+        tree = self._tree(dialog, columns)
+        tree.column("product", width=180); tree.column("sequence", width=280); tree.column("source", width=220); tree.column("locator", width=260)
+        self._fill(tree, preview.get("samples") or [])
+        decision = {"ok": False}
+        buttons = ttk.Frame(dialog); buttons.pack(fill="x", padx=10, pady=(0,10))
+        def accept() -> None:
+            decision["ok"] = True; dialog.destroy()
+        ttk.Button(buttons, text="Import", command=accept).pack(side="right")
+        ttk.Button(buttons, text="Cancel", command=dialog.destroy).pack(side="right", padx=(0,6))
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        self.wait_window(dialog)
+        return bool(decision["ok"])
+
     def import_file(self) -> None:
         path = filedialog.askopenfilename(parent=self, title="Import Experimental Data", filetypes=[("Experimental data", "*.xlsx *.xlsm *.csv *.zip"), ("All files", "*.*")])
         if not path:
             return
         try:
+            preview = experimental_workflow.preview_import(self.gui, path)
+            if not self._confirm_import_preview(preview):
+                return
             results = experimental_workflow.import_file(self.gui, path)
             inserted = sum(int(row.get("inserted", 0)) for row in results)
             registered = sum(row.get("kind") == "registered_workbook" for row in results)
@@ -647,6 +719,8 @@ class ExperimentalDataWindow(tk.Toplevel):
             sequence = experimental_workflow.sequence_records(self.gui)
             self._fill(self.loading_tree, loading); self._fill(self.cleavage_tree, cleavage); self._fill(self.sequence_tree, sequence)
             self.status.configure(text=f"Loading: {len(loading)} | Cleavage: {len(cleavage)} | Sequence STD observations: {len(sequence)} | DB: {experimental_workflow.db_path(self.gui)}")
+            if hasattr(self, "health_text"):
+                self._refresh_health()
         except Exception as exc:
             self.status.configure(text=f"Experimental DB error: {exc}")
 
@@ -667,6 +741,14 @@ class ExperimentalDataWindow(tk.Toplevel):
                 f"Confidence: {result.get('confidence', 'LOW')}",
                 f"Target loading: {_fmt(self.load_target.get())} mmol/g",
             ]
+            summary = result.get("evidence_summary") or {}
+            if summary:
+                lines.extend([
+                    "", "Evidence audit:",
+                    f"Source class: {summary.get('source_kind','')}",
+                    f"Exact records: {summary.get('exact_records',0)} (Verified {summary.get('verified_exact_records',0)} / Parsed {summary.get('parsed_exact_records',0)})",
+                    f"Apply allowed: {'YES' if summary.get('apply_allowed') else 'NO'}",
+                ])
             rec = result.get("recommended_condition") or {}
             if rec:
                 lines.extend([
@@ -697,6 +779,15 @@ class ExperimentalDataWindow(tk.Toplevel):
                 f"Method: {result.get('method')}", f"Confidence: {result.get('confidence', 'LOW')}",
                 f"Evidence: {result.get('evidence_count', 0)} records ({result.get('exact_count', 0)} exact product matches)",
             ]
+            summary = result.get("evidence_summary") or {}
+            if summary:
+                lines.extend([
+                    "", "Evidence audit:",
+                    f"Source class: {summary.get('source_kind','')}",
+                    f"Exact product records: {summary.get('exact_product_records',0)}",
+                    f"Sequence key: {summary.get('sequence_key','') or '(none)'}",
+                    f"Apply allowed: {'YES' if summary.get('apply_allowed') else 'NO'}",
+                ])
             rec = result.get("recommended_condition") or {}
             if rec:
                 comp = rec.get("composition_pct") or {}

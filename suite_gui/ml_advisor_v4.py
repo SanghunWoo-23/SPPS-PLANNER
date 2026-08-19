@@ -118,6 +118,8 @@ def loading_advice(
     """
     resin_n = experimental_data.normalize_resin(resin)
     aa_n = experimental_data.normalize_amino_acid(amino_acid)
+    resin_key = experimental_data.canonical_resin_key(resin_n)
+    aa_key = experimental_data.canonical_amino_acid_key(aa_n)
     frame = _eligible_loading(db_path, include_parsed)
     if frame.empty:
         return {"method": "no-data", "prediction": None, "confidence": "LOW", "evidence": [], "recommended_condition": None, "message": "No eligible loading records."}
@@ -125,8 +127,10 @@ def loading_advice(
     q_aa = _num(aa_eq); q_base = _num(base_eq); q_time = _num(loading_time_h)
     q_target = _num(target_loading_mmol_g)
     frame = frame.copy()
-    frame["resin_match"] = (frame["resin_type"].fillna("") == resin_n).astype(float)
-    frame["aa_match"] = (frame["amino_acid_normalized"].fillna("") == aa_n).astype(float)
+    frame_resin_keys = frame.get("resin_key", frame["resin_type"].fillna("").map(experimental_data.canonical_resin_key)).fillna("")
+    frame_aa_keys = frame.get("amino_acid_key", frame["amino_acid_normalized"].fillna("").map(experimental_data.canonical_amino_acid_key)).fillna("")
+    frame["resin_match"] = frame_resin_keys.eq(resin_key).astype(float)
+    frame["aa_match"] = frame_aa_keys.eq(aa_key).astype(float)
     frame["distance"] = 3.0 - 1.2 * frame["resin_match"] - 1.5 * frame["aa_match"]
     for column, query, weight in (("aa_eq", q_aa, 0.7), ("base_eq", q_base, 0.35), ("loading_time_h", q_time, 0.2)):
         values = pd.to_numeric(frame[column], errors="coerce")
@@ -213,60 +217,28 @@ def loading_advice(
         "observed_max": float(frame["loading_rate_mmol_g"].max()),
         "confidence": confidence,
         "evidence_count": len(frame), "exact_count": len(exact), "spread": spread,
+        "evidence_summary": {
+            "source_kind": "HISTORICAL EXACT" if len(exact) else "SIMILARITY EVIDENCE",
+            "total_records": int(len(frame)), "exact_records": int(len(exact)),
+            "verified_exact_records": int((exact["status"] == "verified").sum()) if not exact.empty and "status" in exact else 0,
+            "parsed_exact_records": int((exact["status"] == "parsed").sum()) if not exact.empty and "status" in exact else 0,
+            "apply_allowed": bool((recommended or {}).get("apply_allowed", False)),
+        },
         "recommended_condition": recommended,
         "warnings": warnings, "evidence": evidence,
     }
 
 
 def _normalize_product_key(value: Any) -> str:
-    """Return a conservative product-family lookup key.
-
-    Raw product labels remain untouched in the database/UI.  Matching ignores only
-    spreadsheet metadata (MW/date/page-count suffixes) and cosmetic separators. A
-    product-family match never suffices by itself for sequence-based Apply: the
-    page-local STD sequence must also match the current Planner sequence.
-    """
-    text = str(value or "").strip().lower().replace("–", "-").replace("—", "-")
-    # Remove trailing MW first because date/count annotations may precede it.
-    text = re.sub(r"\s*:\s*\d+(?:\.\d+)?\s*(?:g\s*/\s*mol)?\.?\s*$", "", text, flags=re.I)
-    text = re.sub(r"\s*:\s*$", "", text)
-    # Date/batch/page-count suffixes are workbook metadata, not sequence identity.
-    text = re.sub(r"\((?:\d{6,8}|\d{2}[.]\d{2}[.]\d{2}|\d{1,3})\)\s*$", "", text)
-    # Product identifiers are frequently typed with spaces, underscores or hyphens
-    # inconsistently (PSG251101 vs PSG_251101). Keep letters/numbers only.
-    return re.sub(r"[^a-z0-9]+", "", text)
+    return experimental_data.canonical_product_key(value)
 
 
 def _sequence_signature(sequence: Any) -> tuple[str, tuple[str, ...], str] | None:
-    text = str(sequence or "").strip()
-    if not text:
-        return None
-    try:
-        from spps_planner.parser import parse_sequence
-        parsed = parse_sequence(text)
-        tokens: list[str] = []
-        for token in list(parsed.core_tokens or []) + list(getattr(parsed, "branch_tokens", []) or []):
-            raw = str(token).strip()
-            if raw.lower().startswith("d") and len(raw) > 1:
-                tokens.append("d" + raw[1:].upper())
-            else:
-                tokens.append(raw.upper())
-        if not tokens:
-            return None
-        nterm = str(getattr(parsed, "nterm", "") or "").strip().upper()
-        cterm = str(getattr(parsed, "cterm_text", "") or "").strip().upper()
-        return nterm, tuple(tokens), cterm
-    except Exception:
-        return None
+    return experimental_data.sequence_signature(sequence)
 
 
 def _sequence_match_key(sequence: Any) -> str:
-    signature = _sequence_signature(sequence)
-    if signature:
-        nterm, tokens, cterm = signature
-        return "|".join([nterm, *tokens, cterm])
-    text = str(sequence or "").strip()
-    return re.sub(r"\s+", "", text).upper() if text else ""
+    return experimental_data.canonical_sequence_key(sequence)
 
 
 def _sequence_observation_matches(observed: Any, current: Any) -> bool:
@@ -500,7 +472,7 @@ def _sequence_cleavage_condition(
         # or (b) a page-local Check table product↔sequence observation.  Exact current
         # product rows are included only when that product is itself sequence-supported.
         product_key = _normalize_product_key(product)
-        product_keys = frame.get("product", pd.Series(index=frame.index, dtype=object)).fillna("").map(_normalize_product_key)
+        product_keys = frame.get("product_key", frame.get("product", pd.Series(index=frame.index, dtype=object)).fillna("").map(_normalize_product_key)).fillna("")
         row_sequences = frame.get("sequence", pd.Series(index=frame.index, dtype=object)).fillna("")
         row_sequence_match = row_sequences.map(lambda observed: _sequence_observation_matches(observed, seq) if str(observed).strip() else False)
         observations = _product_sequence_observations(db_path)
@@ -654,7 +626,8 @@ def cleavage_advice(
     frame = all_frame.copy()
     frame["distance"] = 2.0
     if product_low:
-        frame["product_match"] = frame["product"].fillna("").map(_normalize_product_key).eq(product_low).astype(float)
+        product_keys = frame.get("product_key", frame["product"].fillna("").map(_normalize_product_key)).fillna("")
+        frame["product_match"] = product_keys.eq(product_low).astype(float)
         frame["distance"] -= frame["product_match"] * 1.0
     else:
         frame["product_match"] = 0.0
@@ -752,6 +725,13 @@ def cleavage_advice(
         "confidence": confidence,
         "evidence_count": len(frame),
         "exact_count": len(exact),
+        "evidence_summary": {
+            "source_kind": (recommended or {}).get("recommendation_kind") or ("HISTORICAL PRODUCT EVIDENCE" if len(exact) else "CONTEXT EVIDENCE"),
+            "total_records": int(len(frame)), "exact_product_records": int(len(exact)),
+            "sequence_key": experimental_data.canonical_sequence_key(seq_text),
+            "product_key": product_low,
+            "apply_allowed": bool((recommended or {}).get("apply_allowed", False)),
+        },
         "recommendations": recommendations,
         "recommended_condition": recommended,
         "warnings": warnings,
@@ -1061,7 +1041,18 @@ def cleavage_recommendation(
             "evidence_count": group["evidence_count"], "verified_count": group["verified_count"],
             "outcome_evidence_count": group["outcome_count"], "outcome_score": group["quality"],
         })
-    return {"method": "sequence-matched observed-condition recommendation", "confidence": confidence, "recommended_condition": recommended, "warnings": warnings, "evidence": evidence}
+    return {
+        "method": "sequence-matched observed-condition recommendation", "confidence": confidence,
+        "evidence_summary": {
+            "source_kind": "HISTORICAL CONSENSUS",
+            "matched_records": int(len(matched)),
+            "condition_records": int(chosen_group["evidence_count"]),
+            "verified_condition_records": int(chosen_group["verified_count"]),
+            "outcome_records": int(chosen_group["outcome_count"]),
+            "apply_allowed": True,
+        },
+        "recommended_condition": recommended, "warnings": warnings, "evidence": evidence,
+    }
 
 
 __all__ = ["loading_advice", "cleavage_advice", "loading_recommendation", "cleavage_recommendation"]

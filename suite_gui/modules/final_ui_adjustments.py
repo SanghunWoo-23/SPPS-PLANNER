@@ -1,4 +1,4 @@
-"""V2.2.14 focused fixes: sequence chemicals, CTC(합성용), compact checklist."""
+"""Final UI normalization for sequence chemicals, resin aliases, and checklist layout."""
 from __future__ import annotations
 from tkinter import ttk
 

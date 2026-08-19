@@ -43,7 +43,7 @@ def test_legacy_operator_names_migrate_without_changing_sequence_syntax():
     assert catalogs.canonical_unit_name("dR") == "Fmoc-D-Arg(Pbf)-OH"
     assert catalogs.canonical_unit_name("dG") == "Fmoc-Gly-OH"
     assert catalogs.canonical_unit_name("PEG4") == "Fmoc-NH-PEG4-CH2COOH"
-    assert parse_sequence("EEMQRR-NH2").core_tokens == list("EEMQRR")
+    assert parse_sequence("GHTYKL-NH2").core_tokens == list("GHTYKL")
 
 
 def test_every_operator_fmoc_choice_has_an_exact_database_row_and_mw():

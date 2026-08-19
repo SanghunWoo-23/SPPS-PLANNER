@@ -1,9 +1,8 @@
-"""Shared Tk Project Manager helpers for SPPS Planner V3.0.0.
+"""Shared Tk Project Manager helpers for SPPS Planner V4.0.0.
 
-This module is the first real extraction from the historical 43k-line Tk file.
-It owns state snapshots, list refresh, tree export, PlanInput construction, and
-selected-output refresh.  New GUI patches should call these helpers instead of
-legacy ``_v2093_*`` globals.
+Owns state snapshots, list refresh, tree export, PlanInput construction, and
+selected-output refresh. Historical state-field names are retained only where
+needed for saved-session compatibility.
 """
 from __future__ import annotations
 

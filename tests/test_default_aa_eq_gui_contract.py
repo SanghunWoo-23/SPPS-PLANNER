@@ -27,7 +27,7 @@ def test_short_sequence_uses_visible_default_aa_eq():
 
 
 def test_long_sequence_uses_same_visible_default_aa_eq():
-    gui = _Gui(pm_sequence="EEMQRR", coupling_eq="4")
+    gui = _Gui(pm_sequence="GHTYKL", coupling_eq="4")
     assert plan_workflow._sequence_aa_eq(gui) == 4.0
 
 

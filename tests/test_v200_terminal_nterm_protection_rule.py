@@ -59,7 +59,7 @@ def test_terminal_deprotection_classifier_uses_nterm_fmoc_only():
 def test_terminal_fmoc_aa_like_linker_gets_final_deprotection(monkeypatch, tmp_path):
     gui = _new_gui(monkeypatch, tmp_path)
     try:
-        gui.pm_sequence.set("Ahx-EEMQRR-NH2")
+        gui.pm_sequence.set("Ahx-GHTYKL-NH2")
         gui.pm_scale.set("1")
         gui.pm_resin.set("Rink Amide AM")
         assert gui.pm_generate_selected() is True
@@ -89,7 +89,7 @@ def test_apply_change_custom_n_fmoc_terminal_unit_gets_final_deprotection(monkey
     try:
         from suite_gui.modules import plan_workflow as ctl
 
-        gui.pm_sequence.set("EEMQRR-NH2")
+        gui.pm_sequence.set("GHTYKL-NH2")
         gui.pm_scale.set("1")
         gui.pm_resin.set("Rink Amide AM")
         assert gui.pm_generate_selected() is True

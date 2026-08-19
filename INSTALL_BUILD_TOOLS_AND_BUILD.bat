@@ -37,7 +37,10 @@ echo [4/4] Verifying source and building EXE plus installer...
 %PY_CMD% tools\verify_windows_release.py
 if errorlevel 1 goto :fail
 call BUILD_INSTALLER.bat --no-pause
-if errorlevel 1 goto :fail
+if errorlevel 1 (
+  if exist "dist\SPPS_Planner\SPPS_Planner.exe" echo [INFO] Portable EXE exists: %CD%\dist\SPPS_Planner\SPPS_Planner.exe
+  goto :fail
+)
 
 echo.
 echo [OK] Complete Windows installer build finished.

@@ -40,9 +40,9 @@ def test_branch_sequence_is_not_silently_dropped():
 
 
 def test_acetylated_amino_acid_modifier_is_parsed_without_runtime_patch():
-    parsed = parse_sequence("Ac-Glu(OtBu)-OH-EEMQRR-NH2")
+    parsed = parse_sequence("Ac-Glu(OtBu)-OH-GHTYKL-NH2")
     assert parsed.nterm == "Ac-Glu(OtBu)-OH"
-    assert parsed.core_tokens == ["E", "E", "M", "Q", "R", "R"]
+    assert parsed.core_tokens == ["G", "H", "T", "Y", "K", "L"]
 
 
 def test_free_nterm_final_deprotection_is_counted():

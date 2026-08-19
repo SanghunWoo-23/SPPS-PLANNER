@@ -1,6 +1,6 @@
 # Contributing
 
-SPPS Planner V3.0.0 is a fixed release. Changes should preserve the existing operator workflow and calculation behavior.
+SPPS Planner V4.0.0 is the current fixed public release. Changes should preserve the existing operator workflow and calculation behavior.
 
 ## Development setup
 

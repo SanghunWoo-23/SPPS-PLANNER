@@ -1,8 +1,7 @@
-"""SPPS Planner V4.0.0 final release adjustments.
+"""SPPS Planner V4.0.0 release UI normalization.
 
-This final layer is deliberately narrow: it preserves the accepted V2.2.15
-workflow and only normalizes startup, cleavage preset display names, and release
-version labeling.
+This layer keeps the validated workflow intact while normalizing startup,
+cleavage-preset display names, resin aliases, and release labeling.
 """
 from __future__ import annotations
 

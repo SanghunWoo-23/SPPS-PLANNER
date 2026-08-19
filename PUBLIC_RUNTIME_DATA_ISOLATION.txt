@@ -1,7 +1,0 @@
-SPPS Planner V4.0.0 PUBLIC runtime data isolation
-
-Runtime user-data namespace: SPPS_Planner_PUBLIC
-Windows session namespace: SPPS Planner Public
-POSIX fallback namespace: .spps_planner_public
-
-This build does not share experimental DB, actual-runs data, ML datasets, or session state with the other distribution.

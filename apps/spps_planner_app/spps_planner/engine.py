@@ -1502,11 +1502,11 @@ def _plan_summary_initial(inp: PlanInput, compounds: pd.DataFrame | None = None,
     return {"sequence": inp.sequence, "nterm": parsed.nterm, "core": parsed.core, "core_tokens": "|".join(parsed.core_tokens), "branch_tokens": "|".join(getattr(parsed, "branch_tokens", []) or []), "branch_count": len(getattr(parsed, "branch_sites", []) or []), "warnings": " ; ".join(warnings), "cterm_text": parsed.cterm_text, "resin_family": resin_family(inp.resin), "cterm_output": cterm_output(inp.resin), "resin_g": inp.scale_mmol / inp.resin_loading_mmol_g if inp.resin_loading_mmol_g else 0.0, "operation_volume_mL": working_volume_mL(inp), "default_aa_coupling_eq": effective_eq, "aa_coupling_eq_source": effective_eq_source, "default_modifier_eq": inp.ac_eq, "default_coupling_repeats": inp.default_coupling_repeats, "default_modifier_repeats": inp.default_modifier_repeats, "default_coupling_system": _normalized_default_coupling_system(inp), "default_reagent_eq": inp.default_reagent_eq, "default_reagent_count": inp.default_reagent_count, "default_catalyst_eq": inp.default_catalyst_eq, "default_catalyst_count": inp.default_catalyst_count, "default_base_eq": inp.default_base_eq, "default_base_count": inp.default_base_count, "reagent_eq_follows_coupling_eq": inp.reagent_eq_follows_coupling_eq, "solvent_volume_mode": inp.solvent_volume_mode, "amide_ml_per_mmol": inp.amide_ml_per_mmol, "ctc_ml_per_mmol": inp.ctc_ml_per_mmol, "solvent_molarity_m": inp.solvent_molarity_m, "deprotection_condition": f"{inp.deprotection_base} / {inp.deprotection_ratio} x{inp.deprotection_count}", "cleavage_eq_suggestion": cleavage.get("cleavage_eq"), "cleavage_eq_source": cleavage.get("source"), "cleavage_auto_recommended_preset": recommend_cleavage_preset(inp).get("preset"), "cleavage_auto_reason": recommend_cleavage_preset(inp).get("reason"), "cleavage_tfa_mL_neat_equiv": cleavage.get("tfa_mL_neat_equiv"), "cleavage_cocktail_total_mL": cocktail_total_mL, "dmf_mL": float(matrix["dmf_mL"].sum()), "piperidine_mL": float(matrix["piperidine_mL"].sum()), "dcm_mL": float(matrix["dcm_mL"].sum()), "manual_override_count": int((matrix.get("override_source", "") != "default").sum()) if "override_source" in matrix.columns else 0, "product_mw": product_mw, "mh": product_mw + 1.0073, "mna": product_mw + 22.9898, "materials_count": int(len(materials))}
 
 
-# ======================= V2.1.7 BENCH-ACCURATE CLEAVAGE + STEP MATERIALS =======================
-# User-confirmed correction: cleavage cocktail "eq" is used as a bench volume
-# planning rule, not as a neat-TFA molar equivalent.  For 2-CTC/Trityl plans the
-# lab rule uses scale/2 * eq mL total cocktail; for amide/Rink plans it uses
-# scale * eq mL total cocktail.  Example checks:
+# ======================= BENCH-ACCURATE CLEAVAGE + STEP MATERIALS =======================
+# Cleavage cocktail "eq" is interpreted as a bench volume planning rule, not as
+# a neat-TFA molar equivalent. For 2-CTC/Trityl plans the calculation uses
+# scale/2 * eq mL total cocktail; for amide/Rink plans it uses scale * eq mL.
+# Example check:
 #   GHK, 1000 mmol, 2-CTC, 18 eq -> 9000 mL total = 8550 mL TFA + 450 mL water for 95/5
 
 _CLEAVAGE_COMPONENT_INFO.update({
@@ -1542,11 +1542,11 @@ def _canonical_cleavage_component(name: str) -> str:
 def cleavage_cocktail_presets() -> pd.DataFrame:
     rows = [
         {"preset": "AUTO", "components": "<sequence recommendation>", "recommended_for": "Automatically choose a preset from residue composition", "source_note": "Planner rule: Cys/Met/Trp/Tyr and resin family drive recommendation"},
-        {"preset": "DEFAULT_TFA_WATER", "components": "TFA=95;Water=5", "recommended_for": "Simple short peptides and GHK-style basic cleavage planning", "source_note": "User-confirmed 95/5 TFA/water option"},
+        {"preset": "DEFAULT_TFA_WATER", "components": "TFA=95;Water=5", "recommended_for": "Simple short peptides and GHK-style basic cleavage planning", "source_note": "General 95:5 TFA/water preset"},
         {"preset": "DEFAULT_TFA_TIS_WATER", "components": "TFA=95;TIS=2.5;Water=2.5", "recommended_for": "Standard non-sensitive Fmoc/Rink Amide cases", "source_note": "Common 95:2.5:2.5 TFA/TIS/water"},
         {"preset": "TFA_TIS_WATER_96_2_2", "components": "TFA=96;TIS=2;Water=2", "recommended_for": "Simple standard peptides; compact 96/2/2 option", "source_note": "Common TFA/TIS/H2O 96/2/2 variant"},
-        {"preset": "TFA_MC_1_1", "components": "TFA=50;MC=50", "recommended_for": "TFA/MC 1:1 cleavage option", "source_note": "User-requested MC:TFA=1:1 option"},
-        {"preset": "ACOH_TFE_MC_1_1_8", "components": "AcOH=10;TFE=10;MC=80", "recommended_for": "Mild 2-CTC cleavage/check cleavage; AcOH/TFE/MC 1:1:8", "source_note": "User-requested AcOH/TFE(or TEE)/MC option"},
+        {"preset": "TFA_MC_1_1", "components": "TFA=50;MC=50", "recommended_for": "TFA/MC 1:1 cleavage option", "source_note": "TFA/MC 1:1 option"},
+        {"preset": "ACOH_TFE_MC_1_1_8", "components": "AcOH=10;TFE=10;MC=80", "recommended_for": "Mild 2-CTC cleavage/check cleavage; AcOH/TFE/MC 1:1:8", "source_note": "AcOH/TFE(or TEE)/MC mild-cleavage option"},
         {"preset": "ACOH_TFE_MC_2_2_6", "components": "AcOH=20;TFE=20;MC=60", "recommended_for": "Stronger mild-acid 2-CTC cleavage variant", "source_note": "AcOH/TFE/MC 2:2:6 variant"},
         {"preset": "REDUCING_TFA_TIS_WATER_EDT", "components": "TFA=94;TIS=1;Water=2.5;EDT=2.5", "recommended_for": "Most peptides containing Trp, Cys, or Met", "source_note": "Reducing mix 94/1/2.5/2.5"},
         {"preset": "CYS_EDT", "components": "TFA=92.5;TIS=2.5;Water=2.5;EDT=2.5", "recommended_for": "Cys/thiol-sensitive peptides; EDT-containing option", "source_note": "TFA/TIS/water + EDT variant"},
@@ -1750,7 +1750,7 @@ def _generate_step_materials_core(inp: PlanInput, compounds: pd.DataFrame | None
         rows.append(_step_material_row("cleavage", "Cleavage cocktail", "manual check", phase="cleavage", note=str(e), source="cleavage generation failed"))
     cols = ["step", "material", "class", "MW", "density_g_mL", "planned_mmol", "planned_g", "planned_mL", "unit", "use_count", "repeat", "phase", "note", "source"]
     return pd.DataFrame(rows, columns=cols)
-# ======================= END V2.1.7 BENCH-ACCURATE CLEAVAGE + STEP MATERIALS =======================
+# ======================= END BENCH-ACCURATE CLEAVAGE + STEP MATERIALS =======================
 
 # ======================= V2.1.7 AUTO CLEAVAGE RECOMMENDATION REPAIR =======================
 def recommend_cleavage_preset(inp: PlanInput | str) -> dict[str, Any]:

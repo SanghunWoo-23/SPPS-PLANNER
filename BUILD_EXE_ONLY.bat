@@ -36,10 +36,13 @@ if errorlevel 1 goto :fail_compile
 echo [2/6] Verifying Windows release contract...
 %PY_CMD% tools\verify_windows_release.py
 if errorlevel 1 goto :fail_contract
+echo [3/7] Running source functional self-test...
+%PY_CMD% -c "import sys; sys.path.insert(0, r'apps\spps_planner_app'); from suite_gui.runtime_selftest import run; import json; r=run(); print(json.dumps(r, ensure_ascii=False, indent=2)); raise SystemExit(0 if r.get('ok') else 1)"
+if errorlevel 1 goto :fail_source_selftest
 
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
-echo [3/6] Building packaged EXE...
+echo [4/7] Building packaged EXE...
 %PY_CMD% -m PyInstaller --clean --noconfirm SPPS_Planner.spec
 if errorlevel 1 goto :fail_pyinstaller
 
@@ -47,18 +50,19 @@ if not exist "dist\SPPS_Planner\SPPS_Planner.exe" (
   echo [ERROR] PyInstaller completed without the expected EXE.
   goto :fail
 )
-echo [4/6] Verifying packaged EXE contract...
+echo [5/7] Verifying packaged EXE contract...
 %PY_CMD% tools\verify_windows_release.py --check-exe
 if errorlevel 1 goto :fail_exe_contract
 set "SPPS_PLANNER_SELFTEST_OUTPUT=%CD%\dist\SPPS_Planner\runtime_selftest.json"
 if exist "%SPPS_PLANNER_SELFTEST_OUTPUT%" del /q "%SPPS_PLANNER_SELFTEST_OUTPUT%"
-echo [5/6] Running packaged EXE functional self-test...
+echo [6/7] Running packaged EXE functional self-test...
 "%CD%\dist\SPPS_Planner\SPPS_Planner.exe" --self-test
-if errorlevel 1 goto :fail_selftest
+set "SELFTEST_RC=%ERRORLEVEL%"
 if not exist "%SPPS_PLANNER_SELFTEST_OUTPUT%" goto :selftest_missing
-echo [6/6] Verifying packaged self-test report...
+echo [7/7] Verifying packaged self-test report...
 %PY_CMD% tools\verify_packaged_runtime.py "%SPPS_PLANNER_SELFTEST_OUTPUT%"
 if errorlevel 1 goto :fail_selftest_report
+if not "%SELFTEST_RC%"=="0" goto :fail_selftest
 
 echo.
 echo [OK] EXE created:
@@ -76,6 +80,10 @@ goto :fail
 
 :fail_contract
 echo [ERROR] Windows release contract verification failed before packaging.
+goto :fail
+
+:fail_source_selftest
+echo [ERROR] Source functional self-test failed before packaging.
 goto :fail
 
 :fail_pyinstaller

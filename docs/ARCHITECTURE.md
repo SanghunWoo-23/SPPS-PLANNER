@@ -1,4 +1,4 @@
-# SPPS Planner V3.0.0 Architecture
+# SPPS Planner V4.0.0 Architecture
 
 ## Stable entry points
 
@@ -142,11 +142,11 @@ forbidden by the release audit.
 - `synthesis_execution.py`: UI-independent append-only execution ledger and ML-ready row projection
 - `modules/project_manager_workflow.py`: Project Manager operator workflow
 - `release_contract.py`: active runtime route validation
-- `tools/verify_windows_release.py`: V3 identity, PyInstaller, Installer and optional PE artifact contract
+- `tools/verify_windows_release.py`: V4 identity, PyInstaller, Installer and optional PE artifact contract
 
 ## Behaviour compatibility
 
-The refactor preserves the V3.0.0 window title, resin choices, project/session
+The V4 release preserves the validated planner behavior, resin choices, project/session
 JSON keys, visible Plan editing behaviour, Apply Change synchronization,
 materials/checklist/total outputs, Batch calculation, CSV/XLSX export, Custom
 DB, and Windows build entry points.

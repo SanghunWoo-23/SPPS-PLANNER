@@ -1,4 +1,4 @@
-# SPPS Planner V3.0.0 User Manual
+# SPPS Planner V4.0.0 User Manual
 
 SPPS Planner turns a peptide sequence plus resin, scale, loading and chemistry
 settings into an editable synthesis Plan connected to Materials, Totals,

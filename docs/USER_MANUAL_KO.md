@@ -1,4 +1,4 @@
-# SPPS Planner V3.0.0 사용자 매뉴얼
+# SPPS Planner V4.0.0 사용자 매뉴얼
 
 ## 1. 프로그램의 역할
 
@@ -136,7 +136,7 @@ mapping으로 변환한다.
 
 ## 12. Windows 설치와 문제 해결
 
-일반 사용자는 `SPPS_Planner_Setup_V3.0.0.exe`를 실행한다. 소스 빌드는
+일반 사용자는 `SPPS_Planner_Setup_V4.0.0.exe`를 실행한다. 소스 빌드는
 `WINDOWS_BUILD_KO.md`를 따른다. 실행 실패 시 사용자 data 폴더의
 `spps_planner_runtime_error.log`를 확인한다. 저장 충돌은 원본을 확인한 뒤
 Reload 또는 Save As로 해결한다. 손상 파일은 `.bak` 복구 결과를 확인하고

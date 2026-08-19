@@ -1,111 +1,64 @@
 <div align="center">
 
-
-## V4.0.0 Experimental Intelligence
-
-V4.0.0 preserves the V3 planning workflow and adds an evidence-first Experimental Data layer: reviewed resin-loading history, structured cleavage/precipitation history, Excel/ZIP/CSV import, Similar Experiment evidence, a Loading Advisor with supervised Random Forest support after operator verification, and a Cleavage Advisor that exposes historical evidence and confidence instead of inventing optimum conditions. The public build bundles no private experimental records; users import authorized data locally, and imported records are never silently promoted to **Verified**. See `docs/V4_EXPERIMENTAL_ML_KO.md`.
-
 <img src="assets/SPPS_Planner_Icon.png" alt="SPPS Planner icon" width="150">
 
-# SPPS Planner
+# SPPS Planner V4.0.0
 
-### From peptide sequence to an editable, export-ready synthesis plan
+**Desktop planning software for solid-phase peptide synthesis (SPPS)**
 
-Desktop workflow software for planning **solid-phase peptide synthesis (SPPS)**,
-calculating materials, managing multiple peptides, and exporting operator-ready
-records.
+Sequence parsing · editable synthesis plans · materials · checklist · batch workflow · experimental-data recommendations
 
 [![Release](https://img.shields.io/badge/release-V4.0.0-2563EB?style=for-the-badge)](VERSION)
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](requirements.txt)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white)](#quick-start)
-[![Tests](https://img.shields.io/badge/regression_tests-149%20passed-16A34A?style=for-the-badge)](#verification)
 
-**[한국어](README_KO.md) · [Quick start](#quick-start) · [Features](#what-it-does) · [Build](#build-for-windows) · [Architecture](docs/ARCHITECTURE.md)**
+**[한국어](README_KO.md) · [User Manual](docs/USER_MANUAL_EN.md) · [Architecture](docs/ARCHITECTURE.md) · [Windows Build](docs/WINDOWS_BUILD_KO.md)**
 
 </div>
 
 ---
 
-## Why SPPS Planner?
+## Overview
 
-SPPS planning is more than converting a sequence into amino-acid weights.
-Resin type, loading, coupling chemistry, repeat cycles, deprotection, washing,
-terminal modifications, cleavage cocktails, and manual operator edits all need
-to remain synchronized.
+SPPS Planner converts a peptide design and synthesis settings into an editable, traceable workflow. The generated Plan remains user-editable, and **Apply Change** recalculates connected outputs from the visible Plan instead of silently regenerating the original sequence.
 
-SPPS Planner keeps those decisions in one workflow:
+V4.0.0 also adds an experimental-data layer for locally recorded Loading, Coupling, and Cleavage results. Recommendations are evidence-first: repeated historical conditions are preferred, model-based advice is limited by available reviewed data, and the public build contains no private experimental history.
 
 ```text
-Peptide sequence
-      ↓
-Resin · scale · loading · chemistry
-      ↓
-Editable synthesis Plan
-      ↓
-Apply Change
-      ↓
-Materials · Checklist · Totals · Batch · Export
+Sequence / modifiers / branch settings
+                ↓
+Resin · scale · loading · coupling chemistry
+                ↓
+           Generate
+                ↓
+Plan · Materials · Checklist · Total Materials
+                ↓
+        manual Plan edits
+                ↓
+          Apply Change
 ```
 
-## What it does
+## Main features
 
-See the [V3 development roadmap (KO)](docs/V3_DEVELOPMENT_ROADMAP_KO.md)
-for the staged implementation scope and current status.
+- **Sequence processing** — terminal groups, D/non-natural residues, chemicals, linkers, labels, tags, and protected bottle-level building blocks.
+- **Resin & loading** — Rink Amide families, 2-CTC direct loading, Wang, HMPB, Sieber Amide, PAL, Tentagel, and manual profiles.
+- **Editable synthesis Plan** — coupling, deprotection, washing, loading, terminal modification, repeat, and doubling workflows.
+- **Materials / Checklist / Totals** — synchronized calculations from the active Plan.
+- **Cleavage planning** — presets and custom cocktails with component-specific mass/volume handling.
+- **Branch support** — branched synthesis settings and orthogonal protecting-group workflow support.
+- **Project & Batch management** — multiple peptide items, saved state, batch calculations, and export.
+- **Custom DB** — user-defined amino acids, chemicals, reagents, catalysts/additives, bases, solvents, resins, and other materials.
+- **Experimental Data** — record/import Loading, Coupling, and Cleavage results into a local knowledge base.
+- **Recommendations** — exact/repeated historical consensus first, then conservative data-driven or chemistry-rule guidance when supported.
+- **Windows release tooling** — PyInstaller portable build, packaged runtime self-test, and Inno Setup installer workflow.
 
-Through Stage 6/6, V3 provides the independent Work Item window, execution and
-ML ledgers, a Project → Work Item → Run hierarchy, and a Data / HPLC workspace.
-Multiple synthesis runs remain separate, HPLC results and source files are
-linked, and the complete hierarchy round-trips through a multi-sheet workbook.
-Risk Review adds explained rule findings and real-data ML signals only when a
-valid reviewed-data model exists.
-The completed hybrid UI adds responsive sizing, three display densities,
-keyboard operation, Windows DPI handling and a fully versioned build path.
+## Public data policy
 
-| Area | Capabilities |
-| --- | --- |
-| **Project Manager** | Manage multiple peptides, duplicate/delete/reorder items, preserve per-peptide inputs and calculated outputs |
-| **Sequence processing** | Interpret terminal groups, amino acids, D/non-natural residues, chemicals, modifiers, tags, labels, and linkers |
-| **Resin & loading** | Rink Amide families, 2-CTC direct loading, preloaded `CTC(합성기)`, Wang, HMPB, Sieber Amide, PAL, Tentagel, and Manual profiles |
-| **Synthesis Plan** | Generate coupling/deprotection/wash operations and directly edit unit, MW, density, eq, reagent, solvent, and repeat values |
-| **Apply Change** | Recalculate from the visible edited Plan without silently regenerating it from the original sequence |
-| **Materials** | Calculate resin, amino acids, coupling reagents, catalysts, bases, solvents, modifiers, and cleavage components |
-| **Doubling & repeats** | Position-based doubling plus repeat values beyond 2×, synchronized through materials and checklist outputs |
-| **Live execution records** | Record step status, actual material amount/status, Plan corrections, doubling, reasons, and operator notes in an append-only event ledger |
-| **Compensating revert** | Restore Plan values and linked results by appending an inverse event without deleting the original record |
-| **Cleavage** | Presets and custom cocktail composition with mass/volume display policies for liquid and solid components |
-| **Batch Manager** | Edit regions/linkers/tags/labels, synchronize Project rows, and calculate peptide-level and batch-level protected-reagent requirements |
-| **Records & export** | Autosave sessions and export CSV/XLSX/JSON records with project, peptide, and LOT information |
-| **Project data system** | Multiple Runs per Work Item, atomic JSON, last-good recovery, recent files, and external-edit conflict protection |
-| **Excel workbook** | Round-trip Project, Runs, Plan, events, ML, HPLC, materials, totals, checklist, cleavage, history, and column mappings |
-| **HPLC linkage** | Searchable/sortable results, analysis metadata, audit history, and path/size/time/SHA-256 links to data and method files |
-| **Custom DB** | Add, update, and delete user materials with class, MW, density, and notes |
-| **Observed-data ML** | Derive features from execution history and train/predict only from at least five included reviewed yield, purity, failure, or doubling outcomes |
-| **ML data review** | Preserve outcome revisions, inclusion/exclusion reasons, immutable dataset snapshots, fingerprints, manifests, and model metadata |
-| **Synthesis risk review** | Explained aspartimide, aggregation, difficult-coupling, oxidation/protection and execution-history rules plus real-data ML signals and per-Run audit revisions |
-| **Final UI & Windows** | Responsive windows, three display densities, keyboard access, DPI handling, V3 EXE/Installer metadata, and automated build validation |
-| **V2-speed interaction** | Debounced autosave/live sync, cached Batch results, one engine Plan per Batch item, and one-click linked-result rendering |
+This GitHub distribution is intentionally **data-sanitized**. It includes the schema, import/record UI, recommendation engine, and empty runtime templates, but it does not bundle private/company experimental history or private product-to-sequence mappings.
 
-## Operator-focused behavior
-
-- **Generate** creates or recreates Plan, Materials, Checklist and Total Materials together from the current inputs.
-- **Apply Change** preserves manual Plan edits, updates connected results, and remains the explicit action that applies Cleavage.
-- Empty sequence fields stay empty—no fake peptide or placeholder Plan is injected.
-- Chemistry preset buttons update conditions without unexpectedly generating rows.
-- `2-CTC` direct-loading rows retain loading AA/DIEA chemistry instead of being
-  converted into ordinary DIC/HOBt coupling rows.
-- Legacy saved `CTC(합성용)` values migrate to `CTC(합성기)`.
-- Static unit-name normalization remains a static method through the final Classic controller, preventing the Generate-time argument mismatch.
-- Natural, D, and non-natural amino acids are shown with their full protected `Fmoc-AA-OH` bottle names in Plan choices and Batch preparation tables; one- and three-letter material labels are not exposed.
-- Linker choices distinguish exact commercial end-group forms such as `Fmoc-NH-PEGn-CH2COOH` and `Fmoc-N-amido-PEGn-acid`, and every selectable Fmoc item is connected to a database MW and calculation route.
-- Legacy saved values such as `R`, `D-R`, `dR`, `PEG4`, and `Ahx` migrate to full bottle names on load. One-letter peptide sequence input remains supported.
-- The duplicate `Unit defaults → mL per mmol` input was removed. Working volume is calculated and persisted only from the Amide/Rink or 2-CTC/Trityl factor—or the molarity basis—under `Solvents / Wash`.
-- Bracketed chemicals, linkers, tags, and labels remain single parser tokens; dashed residue input such as `A-C-D` is never mistaken for `Ac-`.
-- Project switching saves only changed output tables, avoiding repeated full Treeview serialization on ordinary clicks.
+Runtime data is written outside the repository under a public-build-specific user directory. See [PUBLIC_DATA_POLICY.md](PUBLIC_DATA_POLICY.md).
 
 ## Quick start
-
-See the [English user manual](docs/USER_MANUAL_EN.md) for the complete workflow
-and the [Windows build guide (KO)](docs/WINDOWS_BUILD_KO.md) for source builds.
 
 ### Requirements
 
@@ -123,115 +76,100 @@ python main_launcher.py
 
 ## Build for Windows
 
-### Portable application
+### Portable EXE
 
 ```bat
 BUILD_EXE_ONLY.bat
 ```
 
-Output:
+Expected output:
 
 ```text
 dist\SPPS_Planner\SPPS_Planner.exe
 ```
 
-### Windows installer
+### Installer
 
-Install [Inno Setup](https://jrsoftware.org/isinfo.php), then run:
+With Inno Setup installed:
 
 ```bat
 BUILD_INSTALLER.bat
 ```
 
-Output:
+Or install/check build dependencies and build in one step:
+
+```bat
+INSTALL_BUILD_TOOLS_AND_BUILD.bat
+```
+
+Expected output:
 
 ```text
 installer\output\SPPS_Planner_Setup_V4.0.0.exe
 ```
 
-## Project structure
+The build scripts distinguish source validation, PyInstaller creation, packaged runtime self-test, and installer validation so a failed post-build check is not reported as a missing EXE.
+
+## Repository structure
 
 ```text
 SPPS-Planner/
-├─ main_launcher.py              # Application entry point
+├─ main_launcher.py              # Desktop entry point
 ├─ suite_gui/                    # Tkinter UI and workflow controllers
-│  ├─ controller.py              # Direct V4.0.0 runtime controller
-│  ├─ classic_base.py            # Static retained Classic UI base
-│  ├─ position_rules.py          # C-terminal eq/repeat rules
-│  ├─ modules/                   # Semantic Plan, operator, and release workflows
-│  ├─ release.py                 # Canonical public GUI entry
-│  └─ release_contract.py        # Active-route validation
 ├─ apps/spps_planner_app/
-│  ├─ spps_planner/              # Parser, engine, database, and export
-│  └─ data/                      # Bundled process and reagent data
+│  ├─ spps_planner/              # Parser, calculation engine, database, export
+│  └─ data/                      # Public reagent/process defaults and empty templates
 ├─ tests/                        # Regression and behavior contracts
-├─ tools/                        # Release and source-audit utilities
-├─ docs/                         # Architecture and data contracts
-└─ installer/                    # Inno Setup configuration
+├─ tools/                        # Release/build/source-audit utilities
+├─ docs/                         # User, architecture, parser, and data documentation
+├─ installer/                    # Inno Setup configuration
+├─ requirements.txt
+└─ requirements-dev.txt
 ```
 
-See [Architecture](docs/ARCHITECTURE.md) for the complete direct execution
-flow. Numbered compatibility modules and the legacy controller are no longer
-part of the source tree, and the release audit requires zero runtime controller
-rebinding.
+## Runtime data
 
-## Session and Custom DB
-
-The normal Windows autosave location is:
+The public build keeps user-generated data outside the repository. On Windows, the core data directory is based on:
 
 ```text
-%LOCALAPPDATA%\SPPS Planner\spps_planner_session_v1.json
+%LOCALAPPDATA%\SPPS_Planner_PUBLIC\
 ```
 
-To reset the restored session, close SPPS Planner and remove this file.
-
-Custom materials are available under:
-
-```text
-Project Manager → Show setup → Custom DB
-```
-
-Supported classes include AA/Chemical, coupling reagent, catalyst/additive,
-base, solvent, cleavage cocktail, resin, and other materials.
+Session-state components use their corresponding public-build user directory. Experimental databases, imported lab data, models, logs, and outputs should never be committed to Git.
 
 ## Verification
 
-The final release includes fixed calculation snapshots and focused contracts
-for Plan generation, Apply Change, 2-CTC loading, terminal behavior, doubling,
-repeat cycles, material ordering, project items, persistence, immediate Custom
-DB reflection, observed synthesis logging/ML routing, and release routing.
-Risk rules, real classifier probabilities, assessment acknowledgement history,
-and risk-sheet workbook round trips are also covered.
-
-Run the complete verification five times:
+Install development requirements and run the release verification:
 
 ```bat
 python -m pip install -r requirements.txt -r requirements-dev.txt
-python tools\verify_release.py --passes 5
+python tools\verify_release.py
+python tools\verify_windows_release.py
 ```
 
-Audit only the routes active in the final controller:
+Audit the active release for prohibited runtime rebinding:
 
 ```bat
 python tools\audit_monkey_patches.py --active-release
 ```
 
+The test suite covers sequence/parser behavior, Generate/Apply Change, loading, coupling, cleavage, doubling/repeats, materials/checklist/totals, persistence, experimental-data workflows, recommendation safety, and Windows release contracts.
+
+## Documentation
+
+- [English user manual](docs/USER_MANUAL_EN.md)
+- [한국어 사용자 매뉴얼](docs/USER_MANUAL_KO.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Parser contract](docs/SPPS_PARSER_CONTRACT.md)
+- [Reagent database schema](docs/SPPS_REAGENT_DATABASE_SCHEMA.md)
+- [Experimental Data / ML guide (KO)](docs/V4_EXPERIMENTAL_ML_KO.md)
+- [Windows build guide (KO)](docs/WINDOWS_BUILD_KO.md)
+- [Public data policy](PUBLIC_DATA_POLICY.md)
+
 ## Version
 
-This repository is the fixed public release **SPPS Planner V4.0.0**.
-Historical internal version names remain only where required to preserve
-accepted behavior and import compatibility.
+Current public release: **V4.0.0**.
 
 ## License
 
-See [LICENSE](LICENSE). This project uses a custom public academic citation
-license and is not presented as an OSI-approved open-source license.
-
----
-
-<div align="center">
-
-**SPPS Planner V4.0.0**  
-Practical peptide-synthesis planning with editable, traceable calculations.
-
-</div>
+See [LICENSE](LICENSE). The repository uses its included custom public academic citation license; do not describe it as an OSI-approved open-source license unless the license is changed accordingly.

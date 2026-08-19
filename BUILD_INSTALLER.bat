@@ -10,7 +10,8 @@ if /I "%~1"=="--no-pause" set "NO_PAUSE=1"
 echo [1/3] Building and validating portable EXE...
 call BUILD_EXE_ONLY.bat --no-pause
 if errorlevel 1 (
-  echo [ERROR] Portable EXE stage failed. See the specific BUILD_EXE_ONLY error above.
+  echo [ERROR] Portable EXE validation stage failed. See the specific BUILD_EXE_ONLY error above.
+  if exist "dist\SPPS_Planner\SPPS_Planner.exe" echo [INFO] PyInstaller output exists at dist\SPPS_Planner\SPPS_Planner.exe but did not pass all validation checks.
   exit /b 1
 )
 

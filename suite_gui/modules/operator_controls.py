@@ -1,9 +1,8 @@
-"""V2.2.13 operator-requested final restoration.
+"""Operator controls for the V4 desktop workflow.
 
-Restores position-based AA eq/doubling controls, exact sequence-length plan
-construction, Apply Change synchronization, cleavage inclusion in totals,
-compact checklist UI, operator-facing label cleanup, and stable peptide-item
-state handling without deleting legacy functionality.
+Provides position-based AA eq/doubling controls, sequence-length plan handling,
+Apply Change synchronization, cleavage totals, compact checklist behavior, and
+peptide-item state integration.
 """
 from __future__ import annotations
 

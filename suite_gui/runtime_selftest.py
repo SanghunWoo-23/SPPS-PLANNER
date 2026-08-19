@@ -50,7 +50,7 @@ def run() -> dict[str, Any]:
     aa_items = set(tables["AA stock"]["Item"])
     chemical_items = set(tables["Chemicals"]["Item"])
     ac_plan = generate_step_reagent_plan(PlanInput(sequence="Ac-AAAA-NH2"))
-    pal_plan = generate_step_reagent_plan(PlanInput(sequence="Pal-EEMQRR-NH2"))
+    pal_plan = generate_step_reagent_plan(PlanInput(sequence="Pal-AAAA-NH2"))
     checks = {
         "version": VERSION_NUMBER == "4.0.0",
         "protected_aa_catalog": catalogs.UNIT_VALUES[1] == "Fmoc-Ala-OH",
@@ -70,7 +70,7 @@ def run() -> dict[str, Any]:
             and "Acetic anhydride" in str(ac_plan.iloc[-1]["protected_reagent"])
         ),
         "terminal_pal_plan": (
-            len(pal_plan) == 7
+            len(pal_plan) == 5
             and str(pal_plan.iloc[-1]["unit"]) == "Pal"
             and "Palmitic acid" in str(pal_plan.iloc[-1]["protected_reagent"])
         ),

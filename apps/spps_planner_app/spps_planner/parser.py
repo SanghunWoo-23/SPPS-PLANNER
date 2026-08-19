@@ -123,7 +123,7 @@ def _normalise_nterm_modifier(token: str) -> str:
 def _consume_leading_nterm_modifier(parts: list[str]) -> tuple[str, list[str]]:
     """Return (modifier, remaining_parts), supporting hyphenated modifiers.
 
-    Examples: 5-FAM-Ahx-EEMQRR-NH2 -> modifier 5-FAM; Biotin-NHS-PEPTIDE
+    Examples: 5-FAM-Ahx-GHTYKL-NH2 -> modifier 5-FAM; Biotin-NHS-PEPTIDE
     -> modifier Biotin-NHS.  Plain FAM-PEPTIDE still works.
     """
     if not parts:
@@ -158,12 +158,12 @@ def _split_attached_nterm(core_text: str) -> tuple[str, str]:
     planning this is dangerous because it changes the actual core sequence.
 
     Supported compact form:
-    - AcEEMQRR -> Ac + EEMQRR
+    - AcGHTYKL -> Ac + GHTYKL
 
     Other modifiers should be written explicitly with a dash:
-    - FITC-EEMQRR
-    - Biotin-EEMQRR
-    - Pal-EEMQRR
+    - FITC-GHTYKL
+    - Biotin-GHTYKL
+    - Pal-GHTYKL
     """
     s = str(core_text or "").strip()
     if s.startswith("Ac") and not s.startswith("AC") and len(s) > 2:
@@ -221,7 +221,7 @@ def _tokenize_compact_segment(segment: str) -> list[str]:
 
     Multi-letter laboratory tokens are preserved only when written as a full
     segment (Ahx, AEEA, Cha, PEG4, etc.) or in bracket notation.  Plain FASTA
-    chunks such as EEMQRR are still split into amino-acid residues.
+    chunks such as GHTYKL are still split into amino-acid residues.
     """
     raw_segment = str(segment or "").strip()
     if raw_segment.startswith("[") and raw_segment.endswith("]"):
@@ -408,7 +408,7 @@ def parse_sequence(seq: str) -> ParsedSequence:
         core = "-".join(remaining)
     else:
         core_candidate = "-".join(parts) if parts else s
-        # Safe compact notation: AcEEMQRR -> Ac + EEMQRR.
+        # Safe compact notation: AcGHTYKL -> Ac + GHTYKL.
         detected, remainder = _split_attached_nterm(core_candidate)
         nterm, core = detected, remainder
 

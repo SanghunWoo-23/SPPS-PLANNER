@@ -1,14 +1,11 @@
-"""V2.2.8 fast legacy Project Manager controller.
+"""Project Manager workspace orchestration for the V4 desktop workflow.
 
-The historical file contains many stacked UI patches.  This module deliberately
-bypasses that build-wrapper chain and starts from the original, complete legacy
-V2.0.94-style builder once.  Current engine/calculation functions remain in use,
-but the operator workflow is explicit:
+The operator workflow is explicit:
 
-* Generate: create/recreate Selected Plan from the editor and Setup.
-* Apply Change: keep the edited Selected Plan and propagate it to adjacent tabs.
-* Peptide item click: save the old item and restore the clicked item, no generation.
-* Cleavage cocktail presets are actual cocktail presets, never resin names.
+* Generate creates/recreates the selected Plan from the editor and Setup.
+* Apply Change preserves the edited Plan and propagates connected outputs.
+* Peptide-item switching saves/restores item state without implicit generation.
+* Cleavage cocktail presets remain independent from resin selection.
 """
 from __future__ import annotations
 

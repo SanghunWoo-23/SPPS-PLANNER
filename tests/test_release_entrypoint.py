@@ -33,7 +33,7 @@ def test_final_controller_surface_matches_the_accepted_release():
         "restore_custom_db_tab",
     )
     assert all(callable(getattr(SPPSGui, name, None)) for name in required_routes)
-    assert SPPSGui.TITLE == "SPPS Planner V4.0.0"
+    assert SPPSGui.TITLE == "SPPS Planner V5.0.0"
     assert SPPSGui.RESIN_VALUES == [
         "Rink Amide AM", "Rink Amide MBHA", "Rink Amide ChemMatrix",
         "Rink Amide Tentagel", "2-CTC", "CTC(합성기)", "Wang", "HMPB",

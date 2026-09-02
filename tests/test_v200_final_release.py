@@ -67,7 +67,7 @@ def test_gui_starts_with_one_blank_item_and_final_title():
     app.withdraw()
     app.update_idletasks()
     try:
-        assert app.title() == "SPPS Planner V4.0.0"
+        assert app.title() == "SPPS Planner V5.0.0"
         assert len(app.pm_items) == 1
         assert app.pm_list.size() == 1
         assert app.pm_sequence.get() == ""

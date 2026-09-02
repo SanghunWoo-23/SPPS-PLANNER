@@ -1,4 +1,4 @@
-"""SPPS Planner V4.0.0 release UI normalization.
+"""SPPS Planner V5.0.0 release UI normalization.
 
 This layer keeps the validated workflow intact while normalizing startup,
 cleavage-preset display names, resin aliases, and release labeling.
@@ -8,8 +8,8 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-APP_VERSION = "V4.0.0"
-VERSION_LABEL = "SPPS Planner V4.0.0"
+APP_VERSION = "V5.0.0"
+VERSION_LABEL = "SPPS Planner V5.0.0"
 
 
 ACTIVE_RESINS = [
@@ -115,6 +115,10 @@ def _blank_item():
         "cleavage_components_text": "",
         "loading_time_h": "",
         "cleavage_time_h": "",
+        "post_cleavage_rescue": "None",
+        "nh4i_eq": "2",
+        "nh4i_concentration_m": "0.2",
+        "nh4i_time_h": "1",
     }
 
 

@@ -10,7 +10,7 @@ import os
 import sys
 from pathlib import Path
 
-APP_FOLDER = "SPPS_Planner_PUBLIC"
+from .build_profile import APP_FOLDER
 
 
 def user_data_dir() -> Path:

@@ -15,7 +15,7 @@ def _about(gui: Any) -> None:
     from suite_gui.runtime_selftest import BUILD_REVISION
     messagebox.showinfo(
         "About SPPS Planner",
-        "SPPS Planner V4.0.0\n\n"
+        "SPPS Planner V5.0.0\n\n"
         f"Build revision: {BUILD_REVISION}\n"
         "Modern/Classic hybrid workspace\n"
         "V3 planning workflow preserved + V4 Experimental Data / ML Advisors",
@@ -64,7 +64,6 @@ def _open_recent(gui: Any) -> None:
     rows = list(gui.recent_projects())
     window = tk.Toplevel(gui)
     window.title("Recent Projects")
-    window.geometry("760x320")
     frame = ttk.Frame(window, padding=10); frame.pack(fill="both", expand=True)
     tree = ttk.Treeview(frame, columns=("path", "opened_at", "exists", "recovered"), show="headings")
     for column in tree["columns"]:
@@ -87,6 +86,7 @@ def _open_recent(gui: Any) -> None:
 
     tree.bind("<Double-1>", open_selected)
     ttk.Button(frame, text="Open Selected", command=open_selected).pack(anchor="e", pady=(7, 0))
+    ui_system.fit_window_to_content(window, preferred_width=1050, preferred_height=520, minimum_width=900, minimum_height=420)
 
 
 def install_menu(gui: Any) -> tk.Menu:
@@ -175,7 +175,7 @@ def install_menu(gui: Any) -> tk.Menu:
     menu.add_cascade(label="Data / ML", menu=data_menu)
 
     help_menu = tk.Menu(menu, tearoff=False)
-    help_menu.add_command(label="User Manual (한국어)", command=lambda: _open_manual(gui, "USER_MANUAL_KO.md"))
+    help_menu.add_command(label="User Manual (Korean)", command=lambda: _open_manual(gui, "USER_MANUAL_KO.md"))
     help_menu.add_command(label="User Manual (English)", command=lambda: _open_manual(gui, "USER_MANUAL_EN.md"))
     help_menu.add_command(label="Keyboard Shortcuts", command=lambda: _shortcuts(gui))
     help_menu.add_separator()

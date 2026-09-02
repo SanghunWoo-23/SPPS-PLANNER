@@ -24,7 +24,7 @@ from suite_gui.modules import (
 )
 
 
-TITLE = "SPPS Planner V4.0.0"
+TITLE = "SPPS Planner V5.0.0"
 
 
 def build_base_interface(gui: Any) -> None:

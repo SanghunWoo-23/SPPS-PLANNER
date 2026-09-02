@@ -35,7 +35,8 @@ def log_path(gui: Any = None) -> Path:
         from suite_gui.modules.data_log_panel import _log_path
         return Path(_log_path())
     except Exception:
-        return Path.home() / ".spps_planner_public" / "data" / "actual_runs.csv"
+        from spps_planner.build_profile import FALLBACK_DOT_DIR
+        return Path.home() / FALLBACK_DOT_DIR / "data" / "actual_runs.csv"
 
 
 def dataset_dir(gui: Any = None) -> Path:

@@ -44,6 +44,30 @@ def fit_window(window: Any, *, preferred_width: int = 1600, preferred_height: in
     return geometry
 
 
+def fit_window_to_content(window: Any, *, preferred_width: int = 1280, preferred_height: int = 800,
+                          minimum_width: int = 900, minimum_height: int = 600,
+                          padding_width: int = 80, padding_height: int = 100) -> str:
+    """Open a feature window large enough for its requested content, screen permitting.
+
+    Call this after the window has built its widgets.  The result is capped to the
+    current screen so users do not have to manually enlarge feature dialogs each time.
+    """
+    try:
+        window.update_idletasks()
+        requested_width = int(window.winfo_reqwidth()) + int(padding_width)
+        requested_height = int(window.winfo_reqheight()) + int(padding_height)
+    except Exception:
+        requested_width = preferred_width
+        requested_height = preferred_height
+    return fit_window(
+        window,
+        preferred_width=max(preferred_width, requested_width),
+        preferred_height=max(preferred_height, requested_height),
+        minimum_width=minimum_width,
+        minimum_height=minimum_height,
+    )
+
+
 def apply_theme(gui: Any, density: str = "Standard") -> str:
     density = density if density in DENSITIES else "Standard"
     values = DENSITIES[density]

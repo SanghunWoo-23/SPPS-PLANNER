@@ -2,8 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "APP_VERSION=V4.0.0"
-set "SETUP_EXE=installer\output\SPPS_Planner_Setup_V4.0.0.exe"
+set "APP_VERSION=V5.0.0"
+set "SETUP_EXE=installer\output\SPPS_Planner_Setup_V5.0.0.exe"
 set "NO_PAUSE=0"
 if /I "%~1"=="--no-pause" set "NO_PAUSE=1"
 

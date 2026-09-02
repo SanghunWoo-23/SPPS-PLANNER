@@ -105,7 +105,7 @@ def test_cleavage_cocktail_explicit_function_and_cys_rule():
     assert components == {"TFA": 95.0, "TIS": 2.5, "DW / water": 2.5}
 
     cys = generate_cleavage_cocktail(PlanInput(sequence="Ac-CCCCCC-NH2", scale_mmol=0.4))
-    assert float(cys[cys["component"].eq("Total cocktail")].iloc[0]["recommended_eq"]) == 630.0
+    assert float(cys[cys["component"].eq("Total cocktail")].iloc[0]["recommended_eq"]) == 600.0  # Cys hard rule: 6 x 100 eq; no length-baseline addition
 
 
 def test_compound_database_has_no_case_duplicate_biotin():

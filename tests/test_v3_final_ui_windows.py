@@ -50,13 +50,13 @@ def test_windows_release_contract_has_no_stale_v2_or_legacy_imports():
     installer = (ROOT / "installer" / "SPPS_Planner_Setup.iss").read_text(encoding="utf-8")
     assert "legacy_controller" not in spec
     assert "release_composition" not in spec
-    assert '#define MyAppVersion "4.0.0"' in installer
-    assert "VersionInfoVersion=4.0.0.0" in installer
+    assert '#define MyAppVersion "5.0.0"' in installer
+    assert "VersionInfoVersion=5.0.0.0" in installer
     launcher = (ROOT / "main_launcher.py").read_text(encoding="utf-8")
     assert "SetProcessDpiAwareness" in launcher
     version = (ROOT / "apps" / "spps_planner_app" / "spps_planner" / "version.py").read_text(encoding="utf-8")
-    assert 'VERSION_NUMBER = "4.0.0"' in version
-    assert 'DATA_VERSION = "SPPS data v4.0.0"' in version
+    assert 'VERSION_NUMBER = "5.0.0"' in version
+    assert 'DATA_VERSION = "SPPS data v5.0.0"' in version
 
 
 def test_final_manuals_cover_every_operator_workspace():

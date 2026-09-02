@@ -1,4 +1,4 @@
-Pepforge Public Academic Citation License
+SPPS Planner Public Academic Citation License
 Version 1.0
 
 Copyright (c) 2026 Sanghun Woo
@@ -9,18 +9,18 @@ Permission is granted to use, copy, modify, and distribute this software and its
    The above copyright notice and this license notice must be included in all copies or substantial portions of the software.
 
 2. Academic Citation Requirement
-   If Pepforge, Pepforge-generated results, Pepforge-derived workflows, or modified versions of Pepforge are used in academic work, including journal articles, preprints, theses, dissertations, posters, presentations, reports, grant documents, or research-derived software, the user must cite Pepforge and the corresponding release DOI when available.
+   If SPPS Planner, SPPS Planner-generated results, SPPS Planner-derived workflows, or modified versions of SPPS Planner are used in academic work, including journal articles, preprints, theses, dissertations, posters, presentations, reports, grant documents, or research-derived software, the user must cite SPPS Planner and the corresponding release DOI when available.
 
    Recommended citation:
-   Woo, S. Pepforge: An Integrated Peptide Research Workbench. GitHub repository, Version 8.8. https://github.com/poowsh1407/Pepforge
+   Woo, S. SPPS Planner: Solid-Phase Peptide Synthesis Planning and Evidence-Driven Decision Support. GitHub repository, Version 5.0.0. https://github.com/SanghunWoo-23/SPPS-PLANNER
 
 3. Result Attribution
-   Output folders, generated analysis packages, docking/contact reports, SPPS planning outputs, and derived figures or tables should retain or reproduce the Pepforge citation notice.
+   SPPS Planner planning outputs, exported calculation packages, derived workflows, figures, or tables should retain or reproduce the SPPS Planner citation notice when they are redistributed or used in academic work.
 
 4. No Warranty
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. THE AUTHOR SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.
 
 5. Scientific Scope
-   Embedded docking, affinity, and molecular dynamics outputs are intended for screening and prioritization. Quantitative binding claims should be validated using external all-atom molecular dynamics and/or experimental assays.
+   SPPS Planner calculations, empirical rules, recommendations, risk/evidence summaries, and machine-learning outputs are intended for planning, screening, prioritization, and research support. They do not replace an approved SOP, SDS, institutional safety requirements, qualified analytical methods, operator review, or experimental validation.
 
-Note: This is a custom public-source license with an academic citation requirement. If you need OSI-approved open-source compatibility, contact the author before redistribution under a different license.
+Note: This is a custom public-source license with an academic citation requirement. It is not an OSI-approved open-source license. If you need OSI-approved open-source compatibility or commercial-use permission, contact the author before redistribution under different terms.

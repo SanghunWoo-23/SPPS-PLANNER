@@ -23,8 +23,8 @@ from suite_gui import peptide_item_collection
 from suite_gui import state_persistence
 from suite_gui import position_rules
 
-VERSION = "V4.0.0"
-TITLE = "SPPS Planner V4.0.0"
+VERSION = "V5.0.0"
+TITLE = "SPPS Planner V5.0.0"
 
 PLAN_COLUMNS = [
     "No", "Unit name", "MW", "Density(g/mL)", "Unit eq", "Unit mmol", "Unit amount",
@@ -1526,6 +1526,7 @@ def _install_traces(gui):
     names = [
         "pm_project", "pm_peptide", "pm_sequence", "pm_scale", "pm_resin", "pm_loading", "pm_lot", "pm_chemistry", "pm_copies",
         "apply_loading_calc", "loading_aa_eq", "loading_diea_eq", "loading_time_h", "cleavage_preset", "cleavage_eq_override", "cleavage_components_text", "cleavage_time_h",
+        "post_cleavage_rescue", "nh4i_eq", "nh4i_concentration_m", "nh4i_time_h",
     ]
     gui._v229_trace_tokens = []
     for name in names:
@@ -1575,7 +1576,8 @@ def _session_path(gui) -> Path:
     try:
         path = gui._state_file_path()
     except Exception:
-        path = Path.home() / ".spps_planner_public" / "spps_planner_session_v1.json"
+        from spps_planner.build_profile import FALLBACK_DOT_DIR
+        path = Path.home() / FALLBACK_DOT_DIR / "spps_planner_session_v1.json"
     gui.state_file = path
     return path
 
@@ -1708,7 +1710,7 @@ def _bind_item_actions(gui, ns):
 
 
 def export_outputs(gui, ns):
-    """Export the exact visible V4.0.0 state without replacing manual edits."""
+    """Export the exact visible V5.0.0 state without replacing manual edits."""
     try:
         if not v228._tree_rows(getattr(gui, "pm_selected_plan_tree", None)):
             if not generate(gui, ns):
@@ -1758,9 +1760,11 @@ def export_outputs(gui, ns):
             "loading_aa_eq": item.get("loading_aa_eq", ""), "loading_diea_eq": item.get("loading_diea_eq", ""), "loading_time_h": item.get("loading_time_h", ""),
             "cleavage_time_h": item.get("cleavage_time_h", ""), "cleavage_preset": item.get("cleavage_preset", ""),
             "cleavage_components_text": item.get("cleavage_components_text", ""),
+            "post_cleavage_rescue": item.get("post_cleavage_rescue", "None"),
+            "nh4i_eq": item.get("nh4i_eq", "2"), "nh4i_concentration_m": item.get("nh4i_concentration_m", "0.2"), "nh4i_time_h": item.get("nh4i_time_h", "1"),
         }])
 
-        xlsx = out / "project_manager_selected_outputs_v4.0.0.xlsx"
+        xlsx = out / "project_manager_selected_outputs_v5.0.0.xlsx"
         with pd.ExcelWriter(xlsx, engine="openpyxl") as writer:
             editor_summary.to_excel(writer, index=False, sheet_name="00_EDITOR_SUMMARY")
             visible_plan.to_excel(writer, index=False, sheet_name="01_SELECTED_PLAN_VISIBLE")
@@ -1784,9 +1788,9 @@ def export_outputs(gui, ns):
         state = {
             "app_version": VERSION, "saved_at": datetime.now().isoformat(timespec="seconds"),
             "active_index": index, "pm_items": list(getattr(gui, "pm_items", []) or []),
-            "visible_selected_plan_source": "current edited TreeView; Apply Change-linked V4.0.0 tables; no regeneration during export",
+            "visible_selected_plan_source": "current edited TreeView; Apply Change-linked V5.0.0 tables; no regeneration during export",
         }
-        (out / "project_manager_state_v4.0.0.json").write_text(
+        (out / "project_manager_state_v5.0.0.json").write_text(
             json.dumps(state, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
         )
         gui.last_outdir = out

@@ -1,5 +1,7 @@
 # SPPS Planner V4.0.0 — Experimental Data / ML 설계
 
+> **Historical design reference.** 이 문서는 V4에서 도입된 Experimental Data / ML 설계 배경을 보존하기 위한 자료입니다. 현재 V5.0.0의 실제 동작 기준은 `README.md`, `README_KO.md`, `docs/V5_DECISION_SUPPORT_*.md`, 현재 source code 및 regression tests입니다.
+
 V4.0.0은 V3.0.0의 Plan, Materials, Checklist, Total Materials, Apply Change, Project/Session, Batch, parser 및 catalog 계산 경로를 대체하지 않는다. 새 기능은 실제 실험 데이터를 별도 SQLite knowledge base에 보존하고, 기존 Planner 입력을 근거 데이터와 비교하여 조언하는 독립 계층이다.
 
 ## 데이터 상태

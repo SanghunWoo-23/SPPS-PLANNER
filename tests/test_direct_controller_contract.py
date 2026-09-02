@@ -37,7 +37,7 @@ def test_direct_controller_is_the_public_runtime_identity():
 
     assert ReleaseController is DirectController
     assert PublicController is DirectController
-    assert DirectController.TITLE == "SPPS Planner V4.0.0"
+    assert DirectController.TITLE == "SPPS Planner V5.0.0"
 
 
 def test_direct_build_uses_explicit_ui_pipeline_not_super_wrapper():

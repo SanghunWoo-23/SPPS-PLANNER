@@ -220,7 +220,7 @@ def test_ac_is_visible_in_project_plan_and_batch_chemical_preparation():
 
     gui = type("Gui", (), {})()
     gui.custom_materials = {}
-    gui.pm_sequence = _Var("Ac-AAAAAA-NH2")
+    gui.pm_sequence = _Var("Ac-EEMQRR-NH2")
     gui.use_position_aa_eq = _Var(True)
     gui.use_position_doubling = _Var(True)
     gui.position_aa_eq_rules = _Var("")
@@ -230,7 +230,7 @@ def test_ac_is_visible_in_project_plan_and_batch_chemical_preparation():
 
     plan_rows = plan_workflow._generated_plan_rows(
         gui, {}, PlanInput(
-            sequence="Ac-AAAAAA-NH2", scale_mmol=0.5,
+            sequence="Ac-EEMQRR-NH2", scale_mmol=0.5,
             resin="Rink Amide AM", resin_loading_mmol_g=0.68,
         ),
     )
@@ -240,7 +240,7 @@ def test_ac_is_visible_in_project_plan_and_batch_chemical_preparation():
     )
 
     gui.pm_items = [{
-        "project": "P", "peptide": "Pep", "sequence": "Ac-AAAAAA-NH2",
+        "project": "P", "peptide": "Pep", "sequence": "Ac-EEMQRR-NH2",
         "copies": "1", "scale": "0.5", "resin": "Rink Amide AM",
         "loading": "0.68", "chemistry": "DIC/HOBt",
     }]
@@ -255,7 +255,7 @@ def test_ac_is_visible_in_project_plan_and_batch_chemical_preparation():
 def test_classic_batch_dashboard_schema_is_fully_populated_and_separated():
     gui = type("Gui", (), {})()
     gui.pm_items = [{
-        "project": "P", "peptide": "Pep", "sequence": "Ac-AAAAAA-NH2",
+        "project": "P", "peptide": "Pep", "sequence": "Ac-EEMQRR-NH2",
         "copies": "1", "scale": "0.5", "resin": "Rink Amide AM",
         "loading": "0.68", "chemistry": "DIC/HOBt",
     }]
@@ -315,3 +315,53 @@ def test_batch_uses_each_rows_aa_concentration_and_equivalents():
 
     assert set(aa["Eq"]) == {2.0, 4.0}
     assert set(aa["Conc_M"]) == {0.5, 0.25}
+
+
+def test_compact_material_list_groups_l_d_non_natural_then_chemical():
+    gui = type("Gui", (), {})()
+    gui.pm_items = [{
+        "project": "P", "peptide": "Grouped", "sequence": "Ac-dR-V-Cit-NH2",
+        "copies": "1", "scale": "0.2", "resin": "Rink Amide AM",
+        "loading": "0.8", "chemistry": "DIC/HOBt",
+        "tag": "His6", "label": "FITC", "linker": "AEEA", "c_term": "NH2",
+    }]
+
+    grouped = batch_workflow.calculate(gui)["AA + Chemicals"]
+    pairs = list(grouped[["Category", "Item"]].itertuples(index=False, name=None))
+    categories = [category for category, _ in pairs]
+    order = {"L-AA": 0, "D-AA": 1, "Non-natural AA": 2, "Chemical": 3}
+    assert [order[category] for category in categories] == sorted(order[category] for category in categories)
+    assert ("D-AA", "Fmoc-D-Arg(Pbf)-OH") in pairs
+    assert ("Non-natural AA", "Fmoc-Cit-OH") in pairs
+    assert ("Chemical", "Acetic anhydride") in pairs
+    assert ("Chemical", "FITC isothiocyanate") in pairs
+    assert ("Chemical", "Fmoc-AEEA-OH") in pairs
+    assert any(category == "Chemical" and item.startswith("His6") for category, item in pairs)
+    for category in ("L-AA", "D-AA", "Non-natural AA", "Chemical"):
+        items = [item for current, item in pairs if current == category]
+        assert items == sorted(items, key=str.casefold)
+
+
+def test_shared_compact_tree_is_not_overwritten_by_chemical_repaint():
+    gui = type("Gui", (), {})()
+    gui.pm_items = [{
+        "project": "P", "peptide": "Grouped", "sequence": "dR-V-Cit-NH2",
+        "copies": "1", "scale": "0.2", "resin": "Rink Amide AM",
+        "loading": "0.8", "chemistry": "DIC/HOBt", "label": "FITC",
+    }]
+    shared = _Tree(batch_workflow.BATCH_COLUMNS)
+    gui.batch_aa_tree = shared
+    gui.batch_modifier_tree = shared
+    gui.batch_coupling_reagent_tree = None
+    gui.batch_catalyst_tree = None
+    gui.batch_base_tree = None
+    gui.batch_solvent_tree = None
+    gui.batch_project_tree = None
+    gui.v29_batch_trees = {}
+
+    batch_workflow.refresh(gui, force=True)
+    pairs = [(row[0], row[1]) for row in shared.rows.values()]
+    assert ("L-AA", "Fmoc-Val-OH") in pairs
+    assert ("D-AA", "Fmoc-D-Arg(Pbf)-OH") in pairs
+    assert ("Non-natural AA", "Fmoc-Cit-OH") in pairs
+    assert ("Chemical", "FITC isothiocyanate") in pairs

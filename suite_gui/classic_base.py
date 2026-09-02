@@ -18,7 +18,7 @@ import pandas as pd
 from suite_gui.gui_primitives import EditableTree, StaticValue as _StaticValue, bind_combobox_first_letter_jump, const_var as _v225_const_var, open_path
 from suite_gui import catalogs as _catalogs
 from suite_gui.session_state import SessionStateMixin
-APP_VERSION = 'V4.0.0'
+APP_VERSION = 'V5.0.0'
 APP = ROOT / 'apps' / 'spps_planner_app'
 if str(APP) not in sys.path:
     sys.path.insert(0, str(APP))
@@ -76,7 +76,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         style.configure('TNotebook.Tab', padding=(24, 10), font=('Segoe UI', 11, 'bold'))
         main = ttk.Frame(self, padding=10)
         main.pack(fill='both', expand=True)
-        ttk.Label(main, text='SPPS Planner V4.0.0 - Modern / Classic Hybrid', font=('Segoe UI', 18, 'bold')).pack(anchor='w')
+        ttk.Label(main, text='SPPS Planner V5.0.0 - Modern / Classic Hybrid', font=('Segoe UI', 18, 'bold')).pack(anchor='w')
         self.project_name = tk.StringVar(value='')
         self.seq = tk.StringVar(value='')
         self.lot_no = tk.StringVar(value=self._generate_lot_no())
@@ -1523,9 +1523,9 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
             cols = [str(i) for i in range(col_no, col_no + copies)]
             lines.append(f"Columns {', '.join(cols)} | {name} | {lot} | {form}")
             if str(r.get('Region 1 seq', '')).strip():
-                lines.append(f"  1구역 ({r.get('Region 1 eq', '1')}eq): " + ' '.join(self._aa_letters_from_sequence(r.get('Region 1 seq'))))
+                lines.append(f"  Region 1 ({r.get('Region 1 eq', '1')}eq): " + ' '.join(self._aa_letters_from_sequence(r.get('Region 1 seq'))))
             if str(r.get('Region 2 seq', '')).strip():
-                lines.append(f"  2구역 ({r.get('Region 2 eq', '')}eq): " + ' '.join(self._aa_letters_from_sequence(r.get('Region 2 seq'))))
+                lines.append(f"  Region 2 ({r.get('Region 2 eq', '')}eq): " + ' '.join(self._aa_letters_from_sequence(r.get('Region 2 seq'))))
             lines.append('')
             col_no += copies
         lines.append('Combined AA table uses: count × scale × AA coupling eq / concentration.')
@@ -1807,10 +1807,10 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         header3 = [''] + [c.get('Form') or 'linear' for c in peptide_cols]
         layout_rows = [header1, header2, header3, ['Loading'] + ['-' for _ in peptide_cols]]
         max_r1 = max([len(self._aa_letters_from_sequence(c.get('Region 1 seq'))) for c in peptide_cols] + [0])
-        layout_rows.append(['1구역 (1eq)'] + ['' for _ in peptide_cols])
+        layout_rows.append(['Region 1 (1eq)'] + ['' for _ in peptide_cols])
         for i in range(max_r1):
             layout_rows.append([''] + [self._aa_letters_from_sequence(c.get('Region 1 seq'))[i] if i < len(self._aa_letters_from_sequence(c.get('Region 1 seq'))) else '' for c in peptide_cols])
-        layout_rows.append(['2구역'] + ['' for _ in peptide_cols])
+        layout_rows.append(['Region 2'] + ['' for _ in peptide_cols])
         max_r2 = max([len(self._aa_letters_from_sequence(c.get('Region 2 seq'))) for c in peptide_cols] + [0])
         for i in range(max_r2):
             layout_rows.append([''] + [self._aa_letters_from_sequence(c.get('Region 2 seq'))[i] if i < len(self._aa_letters_from_sequence(c.get('Region 2 seq'))) else '' for c in peptide_cols])
@@ -2184,7 +2184,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
     def _default_counts_for_row(self, step: int, total_steps: int, phase: str, unit_name: str, needs_depro: bool | None=None) -> tuple[str, int, str, int]:
         """Return post-coupling wash defaults for one editable row.
 
-        Pepforge separates the SPPS process into loading, standard cycles, last
+        SPPS Planner separates the SPPS process into loading, standard cycles, last
         coupling, and final modifier steps. The deprotection wash (DMF x6) is
         generated in the operation/checklist/material tables, not stored in the
         post-coupling solvent columns.
@@ -3124,7 +3124,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
     def cleavage_calculator_df(self) -> pd.DataFrame:
         """Cleavage planning scaffold.
 
-        This is intentionally editable after export. It uses the current Pepforge
+        This is intentionally editable after export. It uses the current SPPS Planner
         resin/scale defaults and the user's empirical rules can be adjusted in Excel.
         """
         scale = self._to_float(self.scale.get(), 0.0)
@@ -3133,10 +3133,10 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         length = len(core)
         cys_count = core.upper().count('C')
         base_tfa_eq = 30 if length <= 7 else 80 if length <= 15 else 100
-        tfa_eq = base_tfa_eq + 100 * cys_count
+        tfa_eq = (100 * cys_count) if cys_count else base_tfa_eq
         tfa_mmol_equiv = scale * tfa_eq
         tfa_mL = tfa_mmol_equiv * 114.02 / 1000.0 / self._density_for('TFA') if scale else 0
-        rows = [{'component': 'TFA', 'ratio_percent': 'editable', 'equiv': tfa_eq, 'estimated_mL': round(tfa_mL, 4), 'note': 'base rule: short 30 eq, 15mer 80 eq, 22mer 100 eq, +100 eq per Cys; verify lab protocol'}, {'component': 'TIS', 'ratio_percent': 'editable', 'equiv': '', 'estimated_mL': '', 'note': 'scavenger; fill only when the selected/recorded cocktail uses it'}, {'component': 'Water', 'ratio_percent': 'editable', 'equiv': '', 'estimated_mL': '', 'note': 'scavenger; fill according to the selected/recorded cocktail'}]
+        rows = [{'component': 'TFA', 'ratio_percent': 'editable', 'equiv': tfa_eq, 'estimated_mL': round(tfa_mL, 4), 'note': 'base rule: if Cys is present, TFA eq = 100 × Cys count regardless of mer count; otherwise short/length rule; verify lab protocol'}, {'component': 'TIS', 'ratio_percent': 'editable', 'equiv': '', 'estimated_mL': '', 'note': 'scavenger; fill only when the selected/recorded cocktail uses it'}, {'component': 'Water', 'ratio_percent': 'editable', 'equiv': '', 'estimated_mL': '', 'note': 'scavenger; fill according to the selected/recorded cocktail'}]
         return pd.DataFrame(rows)
 
     def manufacturing_transfer_df(self, materials: pd.DataFrame, plan: pd.DataFrame) -> pd.DataFrame:
@@ -3198,14 +3198,14 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         return pd.DataFrame(rows)
 
     def _safe_name(self, value: str) -> str:
-        raw = str(value or '').strip() or 'Pepforge_Project'
+        raw = str(value or '').strip() or 'SPPS_Planner_Project'
         raw = re.sub('[<>:"/\\\\|?*]+', '_', raw)
         raw = re.sub('\\s+', ' ', raw).strip()
         return raw[:120] if len(raw) > 120 else raw
 
     def _project_export_dir(self) -> Path:
         base = Path(self.outdir.get())
-        chosen = self.project_name.get().strip() or self.seq.get().strip() or 'Pepforge_Project'
+        chosen = self.project_name.get().strip() or self.seq.get().strip() or 'SPPS_Planner_Project'
         folder = self._safe_name(chosen) + '_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         return base / folder
 
@@ -3359,7 +3359,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
 
     def load_project(self):
-        p = filedialog.askopenfilename(filetypes=[('Pepforge project state', 'project_state.json *.json'), ('All files', '*.*')])
+        p = filedialog.askopenfilename(filetypes=[('SPPS Planner project state', 'project_state.json *.json'), ('All files', '*.*')])
         if not p:
             return
         try:
@@ -3393,7 +3393,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
             messagebox.showerror('Load error', str(e))
 
     def load_output_folder(self):
-        folder = filedialog.askdirectory(title='Select a Pepforge SPPS output folder')
+        folder = filedialog.askdirectory(title='Select an SPPS Planner output folder')
         if not folder:
             return
         try:
@@ -3487,7 +3487,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
                 self.amino_acid_usage_summary(materials).to_excel(cw, index=False, sheet_name='AA_USAGE')
                 self.reagent_usage_summary(materials).to_excel(cw, index=False, sheet_name='REAGENT_BASE')
                 self.solvent_usage_summary(materials).to_excel(cw, index=False, sheet_name='SOLVENT_TOTAL')
-            (outdir / 'OUTPUT_MANIFEST.txt').write_text('Pepforge SPPS output folder\n' + 'Created: ' + datetime.now().isoformat(timespec='seconds') + '\n' + 'Open this folder from SPPS Planner with Load Output or Open Output.\n', encoding='utf-8')
+            (outdir / 'OUTPUT_MANIFEST.txt').write_text('SPPS Planner output folder\n' + 'Created: ' + datetime.now().isoformat(timespec='seconds') + '\n' + 'Open this folder from SPPS Planner with Load Output or Open Output.\n', encoding='utf-8')
             self.last_outdir = outdir
             self._log(f'Exported: {outdir}\n')
             messagebox.showinfo('Export complete', f'CSV/XLSX exported to:\n{outdir}')
@@ -3700,16 +3700,19 @@ def _v23_build_batch_tab(self):
         frame.columnconfigure(0, weight=1)
         nb.add(frame, text=title)
         return self._tree_in_frame(frame, cols)
-    self.batch_aa_tree = tab('AA stock solutions', ['AA', 'count', 'eq', 'solvent', 'conc_M', 'calculated_mL', 'actual_mL', 'MW', 'weight_g', 'note'])
+    material_cols = ['Category', 'Item', 'Solvent', 'Count', 'Eq', 'Conc_M', 'Calculated_mL', 'Actual_mL', 'MW', 'Density', 'Weight_g', 'Volume_mL', 'Note']
+    self.batch_aa_tree = tab('AA + Chemicals', material_cols)
     common = ['item', 'purpose', 'count', 'eq', 'solvent', 'conc_M', 'calculated', 'actual', 'unit', 'MW', 'density', 'weight_g', 'volume_mL', 'note']
     self.batch_coupling_reagent_tree = tab('Coupling reagents', common)
     self.batch_catalyst_tree = tab('Catalyst / additive', common)
     self.batch_solvent_tree = tab('Solvents / reservoirs', common)
-    self.batch_modifier_tree = tab('Chemicals / caps', common)
     self.batch_project_tree = tab('Project summary', ['no', 'project', 'peptide_name', 'lot_no', 'sequence', 'copies', 'scale_mmol', 'resin', 'chemistry'])
+    # One visible material list. batch_workflow.refresh recognizes this shared
+    # tree and paints L-AA -> D-AA -> Non-natural AA -> Chemical exactly once.
+    self.batch_modifier_tree = self.batch_aa_tree
     self.batch_material_tree = self.batch_aa_tree
     self.batch_hbtu_tree = self.batch_coupling_reagent_tree
-    self.batch_cap_tree = self.batch_modifier_tree
+    self.batch_cap_tree = self.batch_aa_tree
     self.refresh_batch_workspace_preview()
 
 def _v23_refresh_batch_workspace_preview(self):
@@ -3731,15 +3734,17 @@ def _v23_export_batch_calculator(self):
     path = filedialog.asksaveasfilename(defaultextension='.xlsx', filetypes=[('Excel', '*.xlsx')])
     if not path:
         return
-    rows = self._v23_project_rows()
-    totals = self._v23_batch_totals(rows)
+    from suite_gui import batch_workflow
+    tables = batch_workflow.calculate(self)
     with pd.ExcelWriter(path, engine='openpyxl') as writer:
-        self._v23_project_summary_df(rows).to_excel(writer, index=False, sheet_name='00_PROJECT_SUMMARY')
-        self._v23_aa_calculator_df(rows).to_excel(writer, index=False, sheet_name='01_AA_STOCK')
-        totals['coupling'].to_excel(writer, index=False, sheet_name='02_COUPLING')
-        totals['catalyst'].to_excel(writer, index=False, sheet_name='03_CATALYST')
-        totals['solvent'].to_excel(writer, index=False, sheet_name='04_SOLVENTS')
-        totals['modifier'].to_excel(writer, index=False, sheet_name='05_CHEMICALS')
+        tables.get('Summary', pd.DataFrame()).to_excel(writer, index=False, sheet_name='00_PROJECT_SUMMARY')
+        tables.get('AA + Chemicals', pd.DataFrame()).to_excel(writer, index=False, sheet_name='01_AA_AND_CHEMICALS')
+        tables.get('AA stock', pd.DataFrame()).to_excel(writer, index=False, sheet_name='02_AA_STOCK')
+        tables.get('Chemicals', pd.DataFrame()).to_excel(writer, index=False, sheet_name='03_CHEMICALS')
+        tables.get('Coupling reagents', pd.DataFrame()).to_excel(writer, index=False, sheet_name='04_COUPLING')
+        tables.get('Catalyst/additive', pd.DataFrame()).to_excel(writer, index=False, sheet_name='05_CATALYST')
+        tables.get('Base/Deprotection', pd.DataFrame()).to_excel(writer, index=False, sheet_name='06_BASE_DEPRO')
+        tables.get('Solvents', pd.DataFrame()).to_excel(writer, index=False, sheet_name='07_SOLVENTS')
     messagebox.showinfo('Export complete', f'Batch calculator saved:\n{path}')
 
 def _v23_pm_live_sync_selected(self):

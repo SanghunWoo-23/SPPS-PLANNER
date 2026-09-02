@@ -1,4 +1,4 @@
-# SPPS Planner V4.0.0 Architecture
+# SPPS Planner V5.0.0 Architecture
 
 ## Stable entry points
 
@@ -142,11 +142,36 @@ forbidden by the release audit.
 - `synthesis_execution.py`: UI-independent append-only execution ledger and ML-ready row projection
 - `modules/project_manager_workflow.py`: Project Manager operator workflow
 - `release_contract.py`: active runtime route validation
-- `tools/verify_windows_release.py`: V4 identity, PyInstaller, Installer and optional PE artifact contract
+- `tools/verify_windows_release.py`: V5 identity, PyInstaller, Installer and optional PE artifact contract
+
+## V5 evidence-driven decision-support layer
+
+V5 keeps the Planner calculation path unchanged and adds a separate evidence layer:
+
+```text
+page-local STD sequence / operator lab record / material-usage workbook
+  -> experimental_data canonical raw+lookup storage
+  -> verified/parsed/incomplete/excluded evidence
+  -> condition_optimizer_v5 / ml_advisor_v5 / decision_support_v5
+  -> evidence, difficulty/risk review, bounded candidates
+  -> explicit operator Apply only when a real historical condition is eligible
+```
+
+Additional V5 responsibilities:
+
+- `experimental_data.py`: schema V5, raw + canonical keys, outcomes, cleavage-usage records, V4-to-V5 local DB clone/migration.
+- `v5_material_usage.py`: unit-preserving TFA/Water/TIS/Ether usage parsing and operator unit review.
+- `decision_support_v5.py`: Sequence Difficulty Map, Stage Risk Advisor, Similar Historical Experiments, bounded cleavage-volume/workup evidence and retrospective validation snapshots.
+- `condition_optimizer_v5.py`: evidence-quality wrapper around the validated bottle-level coupling consensus engine.
+- `ml_advisor_v5.py`: evidence-first V5 advisor composition; no implicit per-advisor model training.
+- `model_registry_v5.py`: explicit Verified-data Loading model rebuild, cross-validation metadata, version history and rollback.
+- `modules/experimental_data_panel.py`: V5 operator UI for data health, usage-unit review, decision support, advisors and model controls.
+
+Public and Private share identical planner/decision-support runtime code. Only `build_profile.py`, bundled seed/policy material, and private-only golden tests are allowed to differ. Runtime DB directories remain isolated.
 
 ## Behaviour compatibility
 
-The V4 release preserves the validated planner behavior, resin choices, project/session
+The V5 release preserves the validated planner behavior carried forward from V4, resin choices, project/session
 JSON keys, visible Plan editing behaviour, Apply Change synchronization,
 materials/checklist/total outputs, Batch calculation, CSV/XLSX export, Custom
 DB, and Windows build entry points.

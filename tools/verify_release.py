@@ -1,4 +1,4 @@
-"""Repeatable final verification for the SPPS Planner V4.0.0 source release."""
+"""Repeatable final verification for the SPPS Planner V5.0.0 source release."""
 from __future__ import annotations
 
 import argparse
@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "V4.0.0"
+EXPECTED_VERSION = "V5.0.0"
 REQUIRED_FILES = (
     "main_launcher.py",
     "SPPS_Planner.spec",
@@ -33,7 +33,7 @@ def verify_static_release() -> None:
     from suite_gui.release_contract import validate_release_controller
 
     validate_release_controller(SPPSGui)
-    if SPPSGui.TITLE != "SPPS Planner V4.0.0":
+    if SPPSGui.TITLE != "SPPS Planner V5.0.0":
         raise RuntimeError(f"Unexpected release title: {SPPSGui.TITLE}")
     from tools.verify_windows_release import verify_all as verify_windows
     verify_windows()

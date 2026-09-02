@@ -52,7 +52,7 @@ def run() -> dict[str, Any]:
     ac_plan = generate_step_reagent_plan(PlanInput(sequence="Ac-AAAA-NH2"))
     pal_plan = generate_step_reagent_plan(PlanInput(sequence="Pal-AAAA-NH2"))
     checks = {
-        "version": VERSION_NUMBER == "4.0.0",
+        "version": VERSION_NUMBER == "5.0.0",
         "protected_aa_catalog": catalogs.UNIT_VALUES[1] == "Fmoc-Ala-OH",
         "parser_tokens": parsed.core_tokens == ["FITC", "A", "C", "D", "PEG4"],
         "batch_summary": len(tables["Summary"]) == 1,
@@ -81,7 +81,7 @@ def run() -> dict[str, Any]:
         }),
     }
     return {
-        "app_version": "V4.0.0",
+        "app_version": "V5.0.0",
         "build_revision": BUILD_REVISION,
         "checks": checks,
         "ok": all(checks.values()),

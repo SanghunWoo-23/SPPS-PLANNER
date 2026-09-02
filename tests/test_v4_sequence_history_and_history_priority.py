@@ -47,8 +47,8 @@ def test_check_table_import_preserves_page_local_std_and_legacy_previous_row(tmp
 def test_product_sequence_history_is_many_observations_not_forced_one_to_one(tmp_path):
     db = tmp_path / "exp.sqlite"
     first = tmp_path / "seq1.csv"; second = tmp_path / "seq2.csv"
-    _write_sequence_csv(first, "Product-X", "Boc-W-L-G-Q-G-G-G-S-K-Dab-FITC-AEEA")
-    _write_sequence_csv(second, "Product-X", "W-L-G-Q-G-G-G-S-K-Dab-AEEA")
+    _write_sequence_csv(first, "Product-X", "Boc-A-G-K-Dab-FITC-AEEA")
+    _write_sequence_csv(second, "Product-X", "A-G-K-Dab-AEEA")
     experimental_data.import_sequence_history_csv(first, db)
     experimental_data.import_sequence_history_csv(second, db)
     observations = ml_advisor_v4._product_sequence_observations(db)

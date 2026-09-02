@@ -1,4 +1,4 @@
-"""Evidence-first loading and cleavage advisors for SPPS Planner V4.0.0."""
+"""Evidence-first loading and cleavage advisors for SPPS Planner V5.0.0."""
 from __future__ import annotations
 
 import math

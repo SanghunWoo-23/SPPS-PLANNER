@@ -1,4 +1,4 @@
-# SPPS Planner V4.0.0 사용자 매뉴얼
+# SPPS Planner V5.0.0 사용자 매뉴얼
 
 ## 1. 프로그램의 역할
 
@@ -136,7 +136,7 @@ mapping으로 변환한다.
 
 ## 12. Windows 설치와 문제 해결
 
-일반 사용자는 `SPPS_Planner_Setup_V4.0.0.exe`를 실행한다. 소스 빌드는
+일반 사용자는 `SPPS_Planner_Setup_V5.0.0.exe`를 실행한다. 소스 빌드는
 `WINDOWS_BUILD_KO.md`를 따른다. 실행 실패 시 사용자 data 폴더의
 `spps_planner_runtime_error.log`를 확인한다. 저장 충돌은 원본을 확인한 뒤
 Reload 또는 Save As로 해결한다. 손상 파일은 `.bak` 복구 결과를 확인하고
@@ -145,3 +145,30 @@ Reload 또는 Save As로 해결한다. 손상 파일은 `.bak` 복구 결과를 
 실험에 사용하기 전에는 Sequence, resin/loading, scale 단위, Repeat,
 Materials/Total, Checklist, cleavage 조성, 위험 finding과 HPLC 연결을 작업자가
 최종 확인해야 한다.
+
+## V5 Empirical Cleavage Fallback
+
+When a complete exact-sequence historical cleavage condition is unavailable, V5 can show an explicit **EMPIRICAL ESTIMATE** rather than leaving the operator with a blank condition.
+
+Priority:
+1. Operator-approved exact sequence anchor when a local/private anchor exists.
+2. Complete exact sequence historical condition / consensus.
+3. Bounded similar-sequence historical adjustment.
+4. Public-safe monotonic sequence-length baseline.
+5. TFA / water / TIS chemistry fallback.
+
+Default length baseline is intentionally conservative and is not presented as a universal chemical law. Short general peptides (<=5mer, without Cys/Met/Trp/Tyr) use <=20 eq and TFA/water 95:5 as the fallback. Longer or sensitive sequences use TFA/TIS/water 95:2.5:2.5 unless exact history overrides it. Similar historical sequences may adjust the length baseline only within a bounded range; distant chain lengths and Cys/non-Cys classes are not mixed.
+
+The recommendation view shows the baseline eq, similar-history adjustment, estimated eq range, cocktail basis, and current-scale component volumes. Estimated values require operator confirmation before Apply. Observed exact history always remains higher priority.
+
+
+## V5.0.0 간단 실험 기록 및 학습 흐름
+
+- Planner가 이미 알고 있는 합성 조건은 사용자가 다시 입력하지 않습니다.
+- Loading 화면의 `Measured Loading`에 실제 측정값만 입력하면 현재 Work Item/Run, resin, C-terminal AA, AA eq, base eq, time이 자동으로 함께 기록됩니다.
+- `Add Result`는 Loading 또는 Cleavage/Final의 실제 측정 결과를 저장합니다. 계획만 작성한 값은 Verified ML 결과로 취급하지 않습니다.
+- `Add Issue`는 자연어 특이사항을 저장하며, 당시 Planner 조건과 기존 active Run ID를 자동으로 연결합니다.
+- Loading 추천은 동일 resin + 동일 C-terminal AA의 Verified 결과를 우선하며 관측 범위 밖 extrapolation을 하지 않습니다.
+- 활성 모델 이후 새 Verified Loading 결과가 5개 이상 쌓이면 모델 rebuild 알림을 표시하지만 자동 재학습은 하지 않습니다.
+- 새 모델은 기존 active model과 validation 성능을 비교하고, 더 나쁜 후보가 자동으로 기존 모델을 덮어쓰지 않습니다.
+- Recommendations/Work Item/Result/Issue 창은 화면 크기 범위에서 내용이 보이도록 자동으로 크게 열립니다.

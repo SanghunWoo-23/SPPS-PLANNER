@@ -47,10 +47,10 @@ class SPPSGui(tk.Tk):
         "QA": ["Project Manager", "Data Log", "Windows Self-Test"],
     }
     MODE_HELP = {
-        "Essential": "핵심 합성 계산과 작업용 결과만 표시합니다.",
-        "Workbench": "필요할 때만 여는 실무 도구 화면: Advanced, Batch, Data Log를 추가 표시합니다.",
-        "Expert": "전체 기능 표시: DB Editor, ML Lab, QA까지 모두 엽니다.",
-        "QA": "검증용: Project Manager, Data Log, Windows Self-Test만 표시합니다.",
+        "Essential": "Shows the essential synthesis calculations and working results.",
+        "Workbench": "Adds practical tools when needed: Advanced, Batch, and Data Log.",
+        "Expert": "Shows all available tools, including DB Editor, ML Lab, and QA.",
+        "QA": "Validation view: Project Manager, Data Log, and Windows Self-Test only.",
     }
 
     TITLE = VERSION_NAME
@@ -345,7 +345,7 @@ class SPPSGui(tk.Tk):
             ttk.Entry(self.pm_item_advanced_frame, textvariable=var, width=18).grid(row=r, column=1, sticky="ew", padx=(6, 0), pady=2)
         ttk.Label(
             self.pm_item_advanced_frame,
-            text="고급 조건은 계산/export에 반영됩니다. 평소에는 숨겨서 화면을 단순하게 유지합니다.",
+            text="Advanced conditions are included in calculations and exports, but remain hidden during normal use.",
             foreground="#555",
         ).grid(row=len(advanced_fields), column=0, columnspan=2, sticky="w", pady=(4, 0))
 

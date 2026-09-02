@@ -512,33 +512,58 @@ def _sequence_key_for_cleavage(seq: str) -> str:
 def cleavage_eq_suggestion(inp: PlanInput) -> dict[str, float | str]:
     """Return the working cleavage-cocktail equivalent rule.
 
-    Public-build automatic rules use generic sequence features only:
-    - default/STD 30 eq, >=15mer 80 eq, >=22mer 100 eq
-    - each Cys adds +100 eq
-    Manual override wins over all automatic rules. Exact sequence-specific
-    conditions belong in the user-local experimental database, not source code.
+    Priority is intentionally explicit and matches the V5 advisor:
+    1) an operator/manual override is used exactly as entered;
+    2) otherwise, any Cys activates the hard automatic rule of 100 TFA eq/Cys;
+       peptide length is bypassed rather than added;
+    3) Cys-free sequences use the public-safe empirical length baseline.
+
+    Exact sequence-specific conditions belong in the user-local experimental
+    database/advisor.  When such a recommendation is applied as an override, this
+    function must not add the Cys rule a second time.
     """
     parsed = parse_sequence(inp.sequence)
     tokens = list(parsed.core_tokens or []) + list(getattr(parsed, "branch_tokens", []) or [])
     n = len(tokens)
-    cys_count = sum(1 for t in tokens if str(t).upper() in {"C", "DC", "dC"})
+    cys_count = sum(1 for t in tokens if str(t).upper() in {"C", "DC"})
     override = float(getattr(inp, "cleavage_eq_override", 0.0) or 0.0)
     if override > 0:
         eq = override
         source = "manual_override"
+    elif cys_count:
+        eq = 100.0 * cys_count
+        source = f"V5 Cys hard rule: {cys_count} x 100 eq"
     else:
+        # V5 public-safe empirical length baseline. Exact/private history still
+        # outranks this rule in the advisor. Short general peptides stay <=20 eq.
         if n >= 22:
-            eq = 100.0
-            source = "length>=22mer"
+            eq = 100.0; source = "V5 length baseline >=22mer"
         elif n >= 15:
-            eq = 80.0
-            source = "length>=15mer"
+            eq = 80.0; source = "V5 length baseline >=15mer"
+        elif n >= 13:
+            eq = 55.0 if n == 13 else 60.0; source = "V5 length baseline 13-14mer"
+        elif n >= 11:
+            eq = 48.0 if n == 11 else 50.0; source = "V5 length baseline 11-12mer"
+        elif n == 10:
+            eq = 45.0; source = "V5 length baseline 10mer"
+        elif n == 9:
+            eq = 40.0; source = "V5 length baseline 9mer"
+        elif n == 8:
+            eq = 35.0; source = "V5 length baseline 8mer"
+        elif n == 7:
+            eq = 33.0; source = "V5 length baseline 7mer"
+        elif n == 6:
+            eq = 30.0; source = "V5 length baseline 6mer"
+        elif n == 5:
+            eq = 20.0; source = "V5 short baseline 5mer"
+        elif n == 4:
+            eq = 18.0; source = "V5 short baseline 4mer"
+        elif n == 3:
+            eq = 15.0; source = "V5 short baseline 3mer"
+        elif n == 2:
+            eq = 10.0; source = "V5 short baseline 2mer"
         else:
-            eq = 30.0
-            source = "STD/default"
-    if cys_count:
-        eq += 100.0 * cys_count
-        source += f" + Cys x{cys_count}"
+            eq = 8.0; source = "V5 short baseline 1mer"
     tfa_mmol = float(inp.scale_mmol or 0.0) * eq
     tfa_g = tfa_mmol * 114.02 / 1000.0
     tfa_mL = tfa_g / 1.49 if tfa_g else 0.0
@@ -725,7 +750,7 @@ def _generate_cleavage_cocktail_initial(inp: PlanInput) -> pd.DataFrame:
         "note": f"Preset={selected_preset}; requested={getattr(inp, 'cleavage_preset', 'AUTO') or 'AUTO'}; custom={bool(str(getattr(inp, 'cleavage_components_text', '') or '').strip())}. Prepare fresh and verify sequence-specific scavengers by SOP.",
     })
     if int(float(sug.get("cys_count", 0) or 0)) > 0:
-        rows.append({"component": "Cys warning", "role": "manual check", "recommended_eq": "", "percent": "", "percent_basis": "", "volume_mL": "", "density_g_mL": "", "approx_g": "", "physical_state": "", "selected_preset": selected_preset, "auto_recommended_preset": rec.get("preset", ""), "include": "INFO", "note": "Cys detected: planner adds +100 eq per Cys. EDT/thioanisole/TIS/water selection should be confirmed by lab SOP."})
+        rows.append({"component": "Cys warning", "role": "manual check", "recommended_eq": "", "percent": "", "percent_basis": "", "volume_mL": "", "density_g_mL": "", "approx_g": "", "physical_state": "", "selected_preset": selected_preset, "auto_recommended_preset": rec.get("preset", ""), "include": "INFO", "note": "Cys detected: automatic cleavage eq is 100 eq per Cys and bypasses the length baseline. A manual override is used exactly as entered. Confirm scavenger selection by lab SOP."})
     if resin_family(inp.resin) == "CTC/Trityl":
         rows.append({"component": "2-CTC/Trityl warning", "role": "manual check", "recommended_eq": "", "percent": "", "percent_basis": "", "volume_mL": "", "density_g_mL": "", "approx_g": "", "physical_state": "", "selected_preset": selected_preset, "auto_recommended_preset": rec.get("preset", ""), "include": "INFO", "note": "2-CTC/Trityl full cleavage/deprotection may require different acid strength than test cleavage. Confirm cocktail before bench use."})
     return pd.DataFrame(rows)
@@ -1637,7 +1662,7 @@ def generate_cleavage_cocktail(inp: PlanInput) -> pd.DataFrame:
         "note": f"Preset={selected_preset}; requested={getattr(inp, 'cleavage_preset', 'AUTO') or 'AUTO'}; custom={bool(str(getattr(inp, 'cleavage_components_text', '') or '').strip())}." + (f" Cleavage time={float(getattr(inp, 'cleavage_time_h', 0.0) or 0.0):g} h." if float(getattr(inp, 'cleavage_time_h', 0.0) or 0.0) > 0 else "") + " Use SOP/protecting-group check before bench use.",
     })
     if int(float(sug.get("cys_count", 0) or 0)) > 0:
-        rows.append({"component": "Cys warning", "role": "manual check", "recommended_eq": "", "percent": "", "percent_basis": "", "volume_mL": "", "density_g_mL": "", "approx_g": "", "physical_state": "", "selected_preset": selected_preset, "auto_recommended_preset": rec.get("preset", ""), "include": "INFO", "note": "Cys detected: planner adds +100 eq per Cys. EDT/thioanisole/TIS/water selection should be confirmed by lab SOP."})
+        rows.append({"component": "Cys warning", "role": "manual check", "recommended_eq": "", "percent": "", "percent_basis": "", "volume_mL": "", "density_g_mL": "", "approx_g": "", "physical_state": "", "selected_preset": selected_preset, "auto_recommended_preset": rec.get("preset", ""), "include": "INFO", "note": "Cys detected: automatic cleavage eq is 100 eq per Cys and bypasses the length baseline. A manual override is used exactly as entered. Confirm scavenger selection by lab SOP."})
     if resin_family(inp.resin) == "CTC/Trityl":
         rows.append({"component": "2-CTC/Trityl warning", "role": "manual check", "recommended_eq": "", "percent": "", "percent_basis": "", "volume_mL": "", "density_g_mL": "", "approx_g": "", "physical_state": "", "selected_preset": selected_preset, "auto_recommended_preset": rec.get("preset", ""), "include": "INFO", "note": "2-CTC/Trityl uses scale/2 x eq mL volume basis in this planner. Confirm cleavage cocktail/protecting groups by SOP."})
     return pd.DataFrame(rows)
@@ -1757,10 +1782,12 @@ def recommend_cleavage_preset(inp: PlanInput | str) -> dict[str, Any]:
     counts = {aa: aas.count(aa) for aa in sorted(set(aas))}
     if any(counts.get(x, 0) for x in ("C", "M", "W", "Y")):
         sensitive = ", ".join(x for x in ("C", "M", "W", "Y") if counts.get(x, 0))
-        return {"preset": "DEFAULT_TFA_TIS_WATER", "reason": f"Sensitive residue(s) {sensitive} detected. AUTO keeps the standard TFA/TIS/water baseline and does not auto-add EDT/phenol/thioanisole; use recorded history or select a protocol preset explicitly."}
+        return {"preset": "DEFAULT_TFA_TIS_WATER", "reason": f"Sensitive residue(s) {sensitive} detected. AUTO keeps TIS in the TFA/water fallback; exact history/SOP may override it."}
     if resin_family(resin) == "CTC/Trityl":
         return {"preset": "ACOH_TFE_MC_1_1_8", "reason": "2-CTC/Trityl resin detected; mild AcOH/TFE/MC option shown, confirm full deprotection by SOP."}
-    return {"preset": "DEFAULT_TFA_TIS_WATER", "reason": "No special sensitivity trigger detected; standard TFA/TIS/water preset selected."}
+    if len(tokens) <= 5:
+        return {"preset": "DEFAULT_TFA_WATER", "reason": "V5 short-peptide fallback (<=5mer, no Cys/Met/Trp/Tyr): TFA/water 95:5 without TIS; exact history/SOP remains higher priority."}
+    return {"preset": "DEFAULT_TFA_TIS_WATER", "reason": "V5 general fallback (>5mer): standard TFA/TIS/water 95:2.5:2.5; exact history/SOP remains higher priority."}
 # ======================= END V2.1.7 AUTO CLEAVAGE RECOMMENDATION REPAIR =======================
 
 # ======================= V2.1.7 SUMMARY CLEAVAGE LABEL REPAIR =======================

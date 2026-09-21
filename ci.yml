@@ -1,0 +1,133 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '${{ matrix.python }}'
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install runtime and test dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      # GitHub-hosted Windows runners can intermittently expose Tcl/Tk from
+      # Python's tool cache in a state where init.tcl is located but cannot be
+      # read by Tcl ("couldn't read file ... init.tcl: No error").
+      # Keep Python 3.11 untouched because it is already stable, and for 3.12
+      # copy the complete Tcl/Tk runtime to the runner's writable temp area.
+      - name: Stabilize Tcl/Tk runtime (Windows Python 3.12)
+        if: matrix.python == '3.12'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pyRoot = python -c "import sys; print(sys.base_prefix)"
+          $srcTcl = Join-Path $pyRoot 'tcl'
+          if (-not (Test-Path $srcTcl)) {
+            throw "Python Tcl/Tk directory was not found: $srcTcl"
+          }
+
+          $dstTcl = Join-Path $env:RUNNER_TEMP 'spps-python-tcl'
+          if (Test-Path $dstTcl) {
+            Remove-Item -Recurse -Force $dstTcl
+          }
+          New-Item -ItemType Directory -Force -Path $dstTcl | Out-Null
+
+          $copied = $false
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            try {
+              Copy-Item -Path (Join-Path $srcTcl '*') -Destination $dstTcl -Recurse -Force -ErrorAction Stop
+              $copied = $true
+              break
+            }
+            catch {
+              if ($attempt -eq 5) { throw }
+              Write-Host "Tcl/Tk copy attempt $attempt failed; retrying..."
+              Start-Sleep -Seconds 2
+            }
+          }
+          if (-not $copied) {
+            throw 'Unable to stage Tcl/Tk runtime.'
+          }
+
+          $tclDir = Get-ChildItem $dstTcl -Directory |
+            Where-Object { $_.Name -like 'tcl8.*' } |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+          $tkDir = Get-ChildItem $dstTcl -Directory |
+            Where-Object { $_.Name -like 'tk8.*' } |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+
+          if ($null -eq $tclDir -or -not (Test-Path (Join-Path $tclDir.FullName 'init.tcl'))) {
+            throw "Usable Tcl init.tcl was not found under $dstTcl"
+          }
+          if ($null -eq $tkDir -or -not (Test-Path (Join-Path $tkDir.FullName 'tk.tcl'))) {
+            throw "Usable Tk runtime was not found under $dstTcl"
+          }
+
+          "TCL_LIBRARY=$($tclDir.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TK_LIBRARY=$($tkDir.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          $tixDir = Get-ChildItem $dstTcl -Directory |
+            Where-Object { $_.Name -like 'tix*' } |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+          if ($null -ne $tixDir) {
+            "TIX_LIBRARY=$($tixDir.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
+          Write-Host "TCL_LIBRARY=$($tclDir.FullName)"
+          Write-Host "TK_LIBRARY=$($tkDir.FullName)"
+
+      - name: Verify Tk runtime (Windows Python 3.12)
+        if: matrix.python == '3.12'
+        shell: pwsh
+        run: |
+          python -c "import tkinter as tk; r=tk.Tk(); r.withdraw(); print('Tk patchlevel:', r.tk.call('info','patchlevel')); r.destroy()"
+
+      - name: Run pytest
+        run: python -m pytest -q
+
+      - name: Verify V6 integrity
+        run: python tools/verify_v6_integrity.py
+
+      - name: Verify Windows release
+        run: python tools/verify_windows_release.py
+
+      - name: Verify release
+        run: python tools/verify_release.py --passes 1
+
+  linux-tk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system Tk/Xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install runtime and test dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run pytest with virtual display
+        run: xvfb-run -a python -m pytest -q

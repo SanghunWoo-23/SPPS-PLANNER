@@ -82,7 +82,7 @@ class SessionStateMixin:
             except Exception:
                 pass
         return state_persistence.project_state(
-            app_version="V5.0.0",
+            app_version="V6.0.0",
             saved_at=datetime.now().isoformat(timespec="seconds"),
             selected_pm_index=selected_pm,
             pm_items=getattr(self, "pm_items", []),

@@ -1,10 +1,11 @@
-"""Shared Tk Project Manager helpers for SPPS Planner V5.0.0.
+"""Shared Tk Project Manager helpers for SPPS Planner V6.0.0.
 
 Owns state snapshots, list refresh, tree export, PlanInput construction, and
 selected-output refresh. Historical state-field names are retained only where
 needed for saved-session compatibility.
 """
 from __future__ import annotations
+from suite_gui.runtime_state import get_active_index, set_active_index
 
 from pathlib import Path
 import json
@@ -148,24 +149,16 @@ def parse_chemistry(chemistry: str, default_reagent: str = "DIC", default_cataly
 
 
 def active_index(gui) -> int | None:
-    for attr in ("_v2097_active_index", "_v2096_active_index", "_v2095_active_index", "_v2093_active_index"):
-        try:
-            idx = getattr(gui, attr)
-            if idx is not None:
-                idx = int(idx)
-                if 0 <= idx < len(getattr(gui, "pm_items", []) or []):
-                    return idx
-        except Exception:
-            pass
+    idx=get_active_index(gui,None)
+    if idx is not None and 0 <= int(idx) < len(getattr(gui,"pm_items",[]) or []):
+        return int(idx)
     try:
-        sels = [int(i) for i in gui.pm_list.curselection()]
-        if sels:
-            idx = sels[0]
-            if 0 <= idx < len(getattr(gui, "pm_items", []) or []):
-                return idx
+        sels=[int(i) for i in gui.pm_list.curselection()]
+        if sels and 0 <= sels[0] < len(getattr(gui,"pm_items",[]) or []):
+            set_active_index(gui,sels[0]); return sels[0]
     except Exception:
         pass
-    return 0 if getattr(gui, "pm_items", None) else None
+    return 0 if getattr(gui,"pm_items",None) else None
 
 
 def selected_indices(gui) -> list[int]:
@@ -207,11 +200,11 @@ def refresh_list(gui, selected: Iterable[int] | None = None, load_index: int | N
             for i in selected_set:
                 lb.selection_set(i)
             lb.activate(selected_set[0]); lb.see(selected_set[0])
-            gui._v2097_active_index = selected_set[0]
+            set_active_index(gui, selected_set[0])
         elif n:
             i = 0 if load_index is None else max(0, min(int(load_index), n - 1))
             lb.selection_set(i); lb.activate(i); lb.see(i)
-            gui._v2097_active_index = i
+            set_active_index(gui, i)
     except Exception:
         pass
     try:
@@ -306,7 +299,7 @@ def load_item_to_editor(gui, idx: int) -> None:
     if not (0 <= idx < len(items)):
         return
     item = items[idx]
-    gui._v2097_active_index = idx
+    set_active_index(gui, idx)
     for attr, key, default in [
         ("pm_project", "project", ""), ("pm_peptide", "peptide", item.get("name", "")),
         ("pm_sequence", "sequence", ""), ("pm_scale", "scale", "400"),

@@ -44,7 +44,12 @@ def test_target_loading_inverse_does_not_mix_other_amino_acid(tmp_path: Path):
         resin='2-CTC',amino_acid='Fmoc-Val-OH',target_loading_mmol_g=0.3,
         db_path=db,include_parsed=True,
     )
-    assert out['target_recommendation'] is None
+    rec=out['target_recommendation']
+    assert rec is not None
+    assert rec.get('recommendation_kind') == 'CHEMISTRY DEFAULT'
+    assert rec.get('evidence_count') == 0
+    assert rec.get('predicted_loading_mmol_g') is None
+    assert 'not a prediction' in str(rec.get('basis')).lower()
 
 
 def test_target_loading_inverse_prefers_verified_over_conflicting_parsed(tmp_path: Path):

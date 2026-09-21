@@ -1,5 +1,6 @@
 """Real synthesis outcomes, reviewed datasets and ML for SPPS Planner V3."""
 from __future__ import annotations
+from suite_gui.runtime_state import get_active_index
 
 from datetime import datetime, timezone
 import json
@@ -61,7 +62,7 @@ def _atomic_csv(path: Path, frame: pd.DataFrame) -> Path:
 def _active_item_ref(gui: Any) -> dict[str, Any]:
     items = getattr(gui, "pm_items", []) or []
     try:
-        index = int(getattr(gui, "_v229_active_index", -1))
+        index = int(get_active_index(gui, -1))
     except Exception as exc:
         raise ValueError("No active Work Item.") from exc
     if not (0 <= index < len(items)):

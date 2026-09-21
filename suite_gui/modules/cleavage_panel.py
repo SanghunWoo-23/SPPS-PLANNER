@@ -1,5 +1,6 @@
 """Cleavage cocktail panel helpers for SPPS Planner V3.0.0."""
 from __future__ import annotations
+from suite_gui import runtime_state
 from . import gui_common as state
 
 
@@ -136,7 +137,7 @@ def ensure_cleavage_panel(gui, ns: dict | None = None):
         frame.rowconfigure(2, weight=1); frame.columnconfigure(0, weight=1)
     except Exception:
         pass
-    if not getattr(gui, "_v2097_cleavage_controls_added", False):
+    if not runtime_state.get_flag(gui,"cleavage_controls_added"):
         ctl = ttk.Frame(frame)
         ctl.grid(row=0, column=0, columnspan=2, sticky="ew", padx=4, pady=4)
         try:
@@ -157,10 +158,10 @@ def ensure_cleavage_panel(gui, ns: dict | None = None):
         for var in (gui.cleavage_eq_override, gui.cleavage_preset, gui.cleavage_components_text, gui.cleavage_time_h):
             try: var.trace_add("write", lambda *_args, _gui=gui: _gui.after_idle(lambda: refresh_cleavage_panel(_gui)))
             except Exception: pass
-        gui._v2097_cleavage_controls_added = True
-    if not getattr(gui, "_v5_post_cleavage_rescue_added", False):
+        runtime_state.set_flag(gui,"cleavage_controls_added",True)
+    if not runtime_state.get_flag(gui,"post_cleavage_rescue_added"):
         install_post_cleavage_rescue_controls(gui, frame, row=1)
-        gui._v5_post_cleavage_rescue_added = True
+        runtime_state.set_flag(gui,"post_cleavage_rescue_added",True)
     tree = getattr(gui, "pm_cleavage_tree", None)
     try:
         exists = bool(tree and str(tree.winfo_exists()))

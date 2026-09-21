@@ -1,4 +1,4 @@
-"""Canonical SPPS Planner V3.0.0 desktop release surface."""
+"""Canonical SPPS Planner V6 desktop release surface."""
 from __future__ import annotations
 
 from suite_gui.controller import SPPSGui, main

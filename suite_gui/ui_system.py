@@ -1,5 +1,6 @@
 """V3 Modern/Classic visual system, responsive sizing and keyboard access."""
 from __future__ import annotations
+from suite_gui import runtime_state
 
 import tkinter as tk
 from tkinter import ttk
@@ -104,7 +105,7 @@ def apply_theme(gui: Any, density: str = "Standard") -> str:
         pass
     _style_native_children(gui)
     _style_action_buttons(gui)
-    gui._v3_density = density
+    runtime_state.set_density(gui, density)
     return density
 
 
@@ -175,7 +176,7 @@ def bind_shortcuts(gui: Any) -> dict[str, Callable[..., Any]]:
     }
     for sequence, callback in bindings.items():
         gui.bind_all(sequence, callback, add="+")
-    gui._v3_shortcuts = bindings
+    runtime_state.set_shortcuts(gui, bindings)
     return bindings
 
 

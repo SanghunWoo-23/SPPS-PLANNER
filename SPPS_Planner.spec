@@ -25,6 +25,7 @@ hiddenimports = [
     "suite_gui.execution_workflow",
     "suite_gui.experimental_data",
     "suite_gui.experimental_workflow",
+    "suite_gui.v6_features",
     "suite_gui.ml_advisor_v4",
     "suite_gui.modules.experimental_data_panel",
     "suite_gui.ml_dataset",

@@ -1,12 +1,16 @@
-"""Independent V3 Work Item editor backed by the active Classic workspace."""
+"""Independent Work Item editor backed by the canonical V6 workspace."""
 from __future__ import annotations
+from suite_gui import runtime_state
+from suite_gui.runtime_state import get_active_index
 
 import json
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Any
 
-from suite_gui import execution_workflow, ml_dataset, ui_system
+from suite_gui import execution_workflow, experimental_workflow, ml_dataset, ui_system
+from suite_gui.preflight import format_report
+from suite_gui.run_review import format_finish_review
 from suite_gui.modules import plan_workflow
 
 
@@ -68,6 +72,7 @@ class WorkItemWindow:
         self.value_var = tk.StringVar(value="")
         self.reason_var = tk.StringVar(value="")
         self.operator_note_var = tk.StringVar(value="")
+        self.execution_summary_var = tk.StringVar(value="Progress 0% | Resume N/A")
         self.material_var = tk.StringVar(value="")
         self.actual_amount_var = tk.StringVar(value="")
         self.actual_unit_var = tk.StringVar(value="mmol")
@@ -84,6 +89,7 @@ class WorkItemWindow:
         self.ml_status_var = tk.StringVar(value="No reviewed dataset yet.")
         self.ml_result_var = tk.StringVar(value="")
         self._ml_loaded_revision = -1
+        self._tab_role_by_widget: dict[str, str] = {}
         self.run_name_var = tk.StringVar(value="")
         self.run_reason_var = tk.StringVar(value="")
         self.selected_run_id = ""
@@ -100,11 +106,16 @@ class WorkItemWindow:
             )
         }
         self.data_status_var = tk.StringVar(value="")
+        self.analytical_reason_var=tk.StringVar(value="")
+        self.analytical_vars={name:tk.StringVar(value="") for name in ("analytical_result_id","analytical_type","expected_neutral_mass","expected_mh","expected_mna","observed_mz","charge","adduct","observed_assigned_mass","instrument","analyst","status","data_file_path","report_file_path","note")}
+        self.repeat_compare_var=tk.StringVar(value="Matched repeat: N/A")
+        self.analytical_completeness_var=tk.StringVar(value="Analytical completeness: N/A")
+        self.recommendation_status_var=tk.StringVar(value="Recommendation history: N/A")
         self.risk_status_var = tk.StringVar(value="Not evaluated.")
         self.risk_ack_reason_var = tk.StringVar(value="")
         self._risk_assessment: dict[str, Any] = {}
         self._build()
-        ui_system.apply_theme(self.window, getattr(gui, "_v3_density", "Standard"))
+        ui_system.apply_theme(self.window, runtime_state.get_density(gui, "Standard"))
         ui_system.fit_window_to_content(
             self.window, preferred_width=1550, preferred_height=900,
             minimum_width=1100, minimum_height=700,
@@ -116,13 +127,13 @@ class WorkItemWindow:
         self.refresh()
 
     def _title(self) -> str:
-        index = getattr(self.gui, "_v229_active_index", None)
+        index = get_active_index(self.gui, None)
         try:
             item = self.gui.pm_items[int(index)]
             label = self.gui.pm_display_name(item)
         except Exception:
             label = "Selected Work Item"
-        return f"{label} — SPPS Planner V5.0.0"
+        return f"{label} — SPPS Planner V6.0.0"
 
     def _build(self) -> None:
         outer = ttk.Frame(self.window, padding=10)
@@ -177,6 +188,7 @@ class WorkItemWindow:
             frame.rowconfigure(0, weight=1)
             frame.columnconfigure(0, weight=1)
             notebook.add(frame, text=label)
+            self._tab_role_by_widget[str(frame)] = "source:" + source_name
             source = getattr(self.gui, source_name, None)
             columns = list(source["columns"]) if source is not None else ()
             tree = ttk.Treeview(frame, columns=columns, show="headings", height=18)
@@ -224,6 +236,7 @@ class WorkItemWindow:
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(3, weight=1)
         notebook.add(frame, text="Run / Corrections")
+        self._tab_role_by_widget[str(frame)] = "execution"
 
         correction = ttk.LabelFrame(frame, text="Live Plan Correction", padding=8)
         correction.grid(row=0, column=0, sticky="ew", pady=(0, 7))
@@ -273,6 +286,15 @@ class WorkItemWindow:
                 text=status,
                 command=lambda value=status: self.record_step_status(value),
             ).pack(side="left", padx=2)
+        ttk.Separator(execution,orient="vertical").pack(side="left",fill="y",padx=8)
+        self.preflight_button = ttk.Button(execution, text="Preflight", command=self.show_preflight); self.preflight_button.pack(side="left", padx=2)
+        self.start_experiment_button = ttk.Button(execution,text="Start Experiment",command=self.start_experiment); self.start_experiment_button.pack(side="left",padx=2)
+        self.finish_experiment_button = ttk.Button(execution,text="Finish",command=self.finish_experiment); self.finish_experiment_button.pack(side="left",padx=2)
+        self.new_run_button = ttk.Button(execution,text="New Run",command=self.create_run); self.new_run_button.pack(side="left",padx=(8,2))
+        self.repeat_run_button = ttk.Button(execution,text="Repeat Run",command=self.repeat_run); self.repeat_run_button.pack(side="left",padx=2)
+        self.final_result_button = ttk.Button(execution,text="Final Result",command=self.add_final_result); self.final_result_button.pack(side="left",padx=2)
+        self.add_issue_button = ttk.Button(execution,text="Add Issue",command=self.add_issue); self.add_issue_button.pack(side="left",padx=2)
+        ttk.Label(execution,textvariable=self.execution_summary_var).pack(side="right",padx=(12,0))
 
         material = ttk.LabelFrame(frame, text="Actual Material Amount / Status", padding=8)
         material.grid(row=2, column=0, sticky="ew", pady=(0, 7))
@@ -302,6 +324,9 @@ class WorkItemWindow:
         ttk.Button(
             material, text="Record Actual", command=self.record_actual_material,
         ).grid(row=0, column=7)
+        ttk.Button(material,text="Export Simple",command=lambda:self.export_run_summary(False)).grid(row=0,column=8,padx=(8,2))
+        ttk.Button(material,text="Export Detailed",command=lambda:self.export_run_summary(True)).grid(row=0,column=9,padx=2)
+        self.run_package_button = ttk.Button(material,text="Export Run Package",command=self.export_run_package); self.run_package_button.grid(row=0,column=10,padx=2)
         material.columnconfigure(1, weight=1)
 
         history_frame = ttk.LabelFrame(frame, text="Append-only Execution History", padding=6)
@@ -332,6 +357,7 @@ class WorkItemWindow:
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(4, weight=1)
         notebook.add(frame, text="Outcome / ML")
+        self._tab_role_by_widget[str(frame)] = "outcome"
 
         outcome = ttk.LabelFrame(frame, text="Reviewed Actual Outcome", padding=8)
         outcome.grid(row=0, column=0, sticky="ew", pady=(0, 7))
@@ -415,11 +441,27 @@ class WorkItemWindow:
             history.column(column, width=220 if column == "reason" else 115, minwidth=60, stretch=False)
         self.ml_review_tree = history
 
+        rec_frame = ttk.LabelFrame(frame, text="Recommendation → Outcome History", padding=6)
+        rec_frame.grid(row=5, column=0, sticky="nsew", pady=(7, 0))
+        rec_frame.rowconfigure(0, weight=1); rec_frame.columnconfigure(0, weight=1)
+        rec_columns=("trace_id","recommendation_type","operator_decision","evidence_source","confidence","final_result_links")
+        rec_tree=ttk.Treeview(rec_frame,columns=rec_columns,show="headings",height=6)
+        for column in rec_columns:
+            rec_tree.heading(column,text=column)
+            rec_tree.column(column,width=250 if column in {"evidence_source","final_result_links"} else 140,minwidth=80,stretch=False)
+        rec_tree.grid(row=0,column=0,sticky="nsew")
+        ttk.Scrollbar(rec_frame,orient="vertical",command=rec_tree.yview).grid(row=0,column=1,sticky="ns")
+        ttk.Button(rec_frame,text="Link Selected to Current Results",command=self.link_selected_recommendation_results).grid(row=1,column=0,sticky="w",pady=(5,0))
+        ttk.Label(rec_frame,textvariable=self.recommendation_status_var,foreground="#4B5563").grid(row=1,column=0,sticky="e",pady=(5,0))
+        self.recommendation_trace_tree=rec_tree
+        frame.rowconfigure(5,weight=1)
+
     def _build_risk_tab(self, notebook: ttk.Notebook) -> None:
         frame = ttk.Frame(notebook, padding=8)
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(2, weight=1)
         notebook.add(frame, text="Risk Review")
+        self._tab_role_by_widget[str(frame)] = "risk"
 
         summary = ttk.LabelFrame(frame, text="Synthesis Risk Triage", padding=8)
         summary.grid(row=0, column=0, sticky="ew", pady=(0, 7))
@@ -456,13 +498,14 @@ class WorkItemWindow:
     def _build_data_tab(self, notebook: ttk.Notebook) -> None:
         frame = ttk.Frame(notebook, padding=8)
         frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(3, weight=1)
-        notebook.add(frame, text="Data / HPLC")
+        frame.rowconfigure(4, weight=1)
+        notebook.add(frame, text="Data / HPLC + MS")
+        self._tab_role_by_widget[str(frame)] = "data"
 
         runs = ttk.LabelFrame(frame, text="Synthesis Runs", padding=7)
         runs.grid(row=0, column=0, sticky="ew", pady=(0, 7))
         runs.columnconfigure(0, weight=1)
-        columns = ("run_id", "name", "status", "created_at", "updated_at", "lot", "event_count", "hplc_count")
+        columns = ("run_id", "name", "status", "repeat_of_run_id", "created_at", "updated_at", "lot", "event_count", "hplc_count")
         tree = ttk.Treeview(runs, columns=columns, show="headings", height=4)
         for column in columns:
             tree.heading(column, text=column)
@@ -478,6 +521,7 @@ class WorkItemWindow:
         ttk.Entry(run_actions, textvariable=self.run_reason_var, width=22).grid(row=1, column=1, padx=4, pady=(5, 0))
         ttk.Button(run_actions, text="New Run", command=self.create_run).grid(row=0, column=2, padx=3)
         ttk.Button(run_actions, text="Activate Selected", command=self.activate_run).grid(row=1, column=2, padx=3, pady=(5, 0))
+        ttk.Button(run_actions, text="Repeat Active", command=self.repeat_run).grid(row=0, column=3, rowspan=2, padx=(5, 0), sticky="ns")
 
         form = ttk.LabelFrame(frame, text="HPLC Result / File Link", padding=7)
         form.grid(row=1, column=0, sticky="ew", pady=(0, 7))
@@ -515,8 +559,22 @@ class WorkItemWindow:
         ttk.Button(form, text="Remove Selected", command=self.remove_hplc).grid(row=4, column=10, padx=3, pady=(5, 0))
         ttk.Button(form, text="Clear", command=self.clear_hplc_form).grid(row=4, column=11, padx=3, pady=(5, 0))
 
+        analytical=ttk.LabelFrame(frame,text="LC-MS / MALDI / Other Analytical Result",padding=7)
+        analytical.grid(row=2,column=0,sticky="ew",pady=(0,7))
+        fields=(("Type","analytical_type"),("Expected neutral","expected_neutral_mass"),("Observed m/z","observed_mz"),("Charge","charge"),("Adduct","adduct"),("Assigned mass","observed_assigned_mass"),("Instrument","instrument"),("Status","status"))
+        for i,(label,key) in enumerate(fields):
+            ttk.Label(analytical,text=label).grid(row=0,column=i*2,sticky="w",padx=(2,3))
+            if key=="analytical_type": ttk.Combobox(analytical,textvariable=self.analytical_vars[key],values=("LC-MS","MALDI","Other"),state="readonly",width=10).grid(row=0,column=i*2+1,padx=(0,6))
+            else: ttk.Entry(analytical,textvariable=self.analytical_vars[key],width=12).grid(row=0,column=i*2+1,padx=(0,6))
+        ttk.Label(analytical,text="Reason").grid(row=1,column=0,sticky="w",pady=(5,0)); ttk.Entry(analytical,textvariable=self.analytical_reason_var).grid(row=1,column=1,columnspan=9,sticky="ew",pady=(5,0))
+        ttk.Button(analytical,text="Save Analytical",command=self.save_analytical).grid(row=1,column=10,padx=3,pady=(5,0)); ttk.Button(analytical,text="Remove",command=self.remove_analytical).grid(row=1,column=11,padx=3,pady=(5,0)); ttk.Button(analytical,text="Import CSV/XLSX",command=self.import_analytical).grid(row=1,column=12,columnspan=2,padx=3,pady=(5,0))
+        ttk.Button(analytical,text="Use Frozen Run Mass",command=self.use_frozen_run_mass).grid(row=1,column=14,padx=3,pady=(5,0))
+        ttk.Label(analytical,textvariable=self.repeat_compare_var,foreground="#4B5563").grid(row=2,column=0,columnspan=8,sticky="w",padx=5,pady=(4,0))
+        ttk.Label(analytical,textvariable=self.analytical_completeness_var,foreground="#4B5563").grid(row=2,column=8,columnspan=8,sticky="e",padx=5,pady=(4,0))
+        analytical.columnconfigure(9,weight=1)
+
         bar = ttk.Frame(frame)
-        bar.grid(row=2, column=0, sticky="ew", pady=(0, 7))
+        bar.grid(row=3, column=0, sticky="ew", pady=(0, 7))
         ttk.Label(bar, text="Search").pack(side="left")
         search = ttk.Entry(bar, textvariable=self.hplc_search_var, width=28)
         search.pack(side="left", padx=(4, 8)); search.bind("<Return>", lambda _e: self._refresh_data())
@@ -533,10 +591,13 @@ class WorkItemWindow:
         ttk.Label(bar, textvariable=self.data_status_var, foreground="#4B5563").pack(side="right")
 
         lower = ttk.Panedwindow(frame, orient="vertical")
-        lower.grid(row=3, column=0, sticky="nsew")
+        lower.grid(row=4, column=0, sticky="nsew")
         hplc_frame = ttk.LabelFrame(lower, text="HPLC Records", padding=5)
         history_frame = ttk.LabelFrame(lower, text="Run / HPLC Change History", padding=5)
-        lower.add(hplc_frame, weight=3); lower.add(history_frame, weight=2)
+        analytical_frame=ttk.LabelFrame(lower,text="Analytical Records",padding=5)
+        lower.add(hplc_frame, weight=3); lower.add(analytical_frame,weight=2); lower.add(history_frame, weight=2)
+        analytical_columns=("analytical_result_id","analytical_type","observed_mz","charge","adduct","observed_assigned_mass","delta_da","delta_ppm","instrument","status")
+        self.analytical_tree=self._make_data_tree(analytical_frame,analytical_columns); self.analytical_tree.bind("<<TreeviewSelect>>",self._select_analytical)
         hplc_columns = ("hplc_record_id", "sample_name", "run_name", "acquired_at", "instrument", "column", "retention_time_min", "area_percent", "purity_percent", "analyst", "data_file_path")
         self.hplc_tree = self._make_data_tree(hplc_frame, hplc_columns)
         self.hplc_tree.bind("<<TreeviewSelect>>", self._select_hplc)
@@ -629,6 +690,122 @@ class WorkItemWindow:
     def _show_error(self, exc: Exception) -> None:
         messagebox.showerror("Run / Corrections", str(exc), parent=self.window)
 
+    def show_preflight(self) -> dict[str, Any] | None:
+        try:
+            report = experimental_workflow.preflight_check(self.gui)
+            text = format_report(report)
+            if report.get("ready") and not report.get("requires_review"):
+                messagebox.showinfo("Preflight", text, parent=self.window)
+            elif report.get("ready"):
+                messagebox.showwarning("Preflight", text, parent=self.window)
+            else:
+                messagebox.showerror("Preflight", text, parent=self.window)
+            return report
+        except Exception as exc:
+            self._show_error(exc)
+            return None
+
+    def start_experiment(self) -> None:
+        try:
+            report = experimental_workflow.preflight_check(self.gui)
+            if not report.get("ready"):
+                messagebox.showerror("Preflight", format_report(report), parent=self.window)
+                return
+            if report.get("requires_review") and not messagebox.askyesno(
+                "Preflight Review",
+                format_report(report) + "\n\nReview items remain. Start this Run anyway?",
+                parent=self.window,
+            ):
+                return
+            info=experimental_workflow.start_experiment(self.gui)
+            action = "already in progress; original Planner snapshot preserved" if info.get("already_started") else "started; Planner condition frozen"
+            self.execution_summary_var.set(f"Run {info.get('run_id','')} {action}")
+            self.refresh()
+        except Exception as exc:
+            self._show_error(exc)
+
+
+    def finish_experiment(self) -> None:
+        try:
+            review = experimental_workflow.finish_review(self.gui)
+            if not messagebox.askyesno("Finish Experiment Review", format_finish_review(review), parent=self.window):
+                return
+            info=experimental_workflow.finish_experiment(self.gui)
+            action = "was already completed" if info.get("already_finished") else "completed"
+            self.execution_summary_var.set(f"Run {info.get('run_id','')} {action}")
+            self.refresh()
+        except Exception as exc:
+            self._show_error(exc)
+
+    def repeat_run(self) -> None:
+        try:
+            state = experimental_workflow.run_ui_state(self.gui)
+            if not state.get("finished"):
+                raise ValueError("Finish the active Run before creating a Repeat Run.")
+            snapshot = experimental_workflow.planner_snapshot(self.gui)
+            current_scale = snapshot.get("scale_mmol") or getattr(self.gui, "pm_scale").get()
+            value = simpledialog.askstring(
+                "Repeat Run",
+                "Scale for the new Run (mmol). Leave unchanged to reuse the completed Run scale.",
+                initialvalue=str(current_scale or ""), parent=self.window,
+            )
+            if value is None:
+                return
+            scale = str(value).strip() or current_scale
+            info = experimental_workflow.repeat_experiment(self.gui, scale_mmol=scale)
+            self.execution_summary_var.set(
+                f"Repeat Run {info.get('run_id','')} created from {info.get('source_run_id','')}"
+            )
+            self.refresh()
+        except Exception as exc:
+            self._show_error(exc)
+
+    def add_final_result(self) -> None:
+        try:
+            state = experimental_workflow.run_ui_state(self.gui)
+            if not state.get("can_record_result"):
+                raise ValueError("Start Experiment first so the final result is linked to the frozen Planner condition.")
+            window=experimental_workflow.open_window(self.gui)
+            window.record_result("Cleavage / Final")
+        except Exception as exc:
+            self._show_error(exc)
+
+    def add_issue(self) -> None:
+        try:
+            state = experimental_workflow.run_ui_state(self.gui)
+            if not state.get("can_record_issue"):
+                raise ValueError("Start Experiment first so the issue is linked to the frozen Planner condition.")
+            window=experimental_workflow.open_window(self.gui)
+            window.record_issue()
+        except Exception as exc:
+            self._show_error(exc)
+
+    def export_run_summary(self, detailed: bool = False) -> None:
+        try:
+            payload = experimental_workflow.run_export_payload(self.gui, detailed=detailed)
+            run = payload.get("run") or {}
+            path=filedialog.asksaveasfilename(parent=self.window,defaultextension=".json",filetypes=[("JSON","*.json"),("Text","*.txt")],initialfile=f"SPPS_Run_{run.get('run_name') or 'summary'}_{'detailed' if detailed else 'simple'}.json")
+            if not path: return
+            with open(path,"w",encoding="utf-8") as handle:
+                json.dump(payload,handle,ensure_ascii=False,indent=2,default=str)
+        except Exception as exc:
+            self._show_error(exc)
+
+    def export_run_package(self) -> None:
+        try:
+            context = experimental_workflow.active_run_context(self.gui)
+            initial = f"SPPS_Run_{context.get('run_name') or context.get('run_id') or 'package'}.zip"
+            path = filedialog.asksaveasfilename(
+                parent=self.window, defaultextension=".zip",
+                filetypes=[("ZIP archive", "*.zip")], initialfile=initial,
+            )
+            if not path:
+                return
+            output = experimental_workflow.export_run_package(self.gui, path)
+            messagebox.showinfo("Run Package", f"Saved:\n{output}", parent=self.window)
+        except Exception as exc:
+            self._show_error(exc)
+
     def apply_live_correction(self) -> None:
         try:
             self._commit_plan_to_main()
@@ -718,6 +895,24 @@ class WorkItemWindow:
         children = self.execution_tree.get_children()
         if children:
             self.execution_tree.see(children[-1])
+        try:
+            state=experimental_workflow.run_ui_state(self.gui)
+            inventory_note=" | Inventory availability not configured"
+            self.execution_summary_var.set(
+                f"{state.get('status') or 'Not started'} | Progress {state.get('progress_percent',0)}% ({state.get('completed_steps',0)}/{state.get('total_steps',0)}) | "
+                f"Resume {state.get('resume_step','N/A')} | Hold {state.get('held_steps',0)} | Failed {state.get('failed_steps',0)}" + inventory_note
+            )
+            self.preflight_button.configure(state="normal" if state.get("can_start") else "disabled")
+            self.start_experiment_button.configure(state="normal" if state.get("can_start") else "disabled")
+            self.finish_experiment_button.configure(state="normal" if state.get("can_finish") else "disabled")
+            self.new_run_button.configure(state="normal" if state.get("can_create_new_run") else "disabled")
+            self.repeat_run_button.configure(state="normal" if state.get("finished") else "disabled")
+            record_state="normal" if state.get("can_record_result") else "disabled"
+            self.final_result_button.configure(state=record_state)
+            self.add_issue_button.configure(state="normal" if state.get("can_record_issue") else "disabled")
+            self.run_package_button.configure(state="normal" if state.get("has_run") else "disabled")
+        except Exception:
+            self.execution_summary_var.set("Execution summary unavailable")
 
     @staticmethod
     def _bool_choice(value: Any) -> str:
@@ -820,6 +1015,35 @@ class WorkItemWindow:
                 after.get("doubling_required", ""), version.get("reason", ""),
                 version.get("version_id", ""),
             ))
+        tree=getattr(self,"recommendation_trace_tree",None)
+        if tree is not None:
+            for iid in tree.get_children(): tree.delete(iid)
+            try: traces=experimental_workflow.recommendation_traces(self.gui)
+            except Exception as exc:
+                traces=[]; self.recommendation_status_var.set(f"Recommendation history unavailable: {exc}")
+            else:
+                self.recommendation_status_var.set(f"Recommendation traces: {len(traces)}")
+            for trace in traces:
+                links=trace.get("final_result_links") or []
+                if isinstance(links,str):
+                    try: links=json.loads(links)
+                    except Exception: links=[links] if links else []
+                tree.insert("","end",values=(trace.get("trace_id",""),trace.get("recommendation_type",""),trace.get("operator_decision",""),trace.get("evidence_source",""),trace.get("confidence",""),", ".join(map(str,links))))
+
+    def link_selected_recommendation_results(self) -> None:
+        tree=getattr(self,"recommendation_trace_tree",None)
+        selected=list(tree.selection()) if tree is not None else []
+        if not selected:
+            messagebox.showinfo("Recommendation History","Select a recommendation trace first.",parent=self.window); return
+        trace_id=str(tree.item(selected[0],"values")[0])
+        try:
+            context=experimental_workflow.active_run_context(self.gui); rid=str(context.get("run_id") or "")
+            results=[r for r in experimental_workflow.outcome_records(self.gui) if str(r.get("run_id") or "")==rid]
+            result_ids=[str(r.get("record_id") or r.get("result_id") or "") for r in results if str(r.get("record_id") or r.get("result_id") or "")]
+            if not result_ids: raise ValueError("No Result records are linked to the active Run yet.")
+            experimental_workflow.link_recommendation_results(self.gui,trace_id,result_ids)
+            self._refresh_ml_review()
+        except Exception as exc: self._show_error(exc)
 
     def _select_run(self, _event=None) -> None:
         selected = list(self.run_tree.selection())
@@ -902,6 +1126,40 @@ class WorkItemWindow:
             self._refresh_data()
         except Exception as exc:
             self._show_error(exc)
+
+    def use_frozen_run_mass(self) -> None:
+        try:
+            mass=experimental_workflow.frozen_run_theoretical_mass(self.gui)
+            for key,src in (("expected_neutral_mass","product_mw"),("expected_mh","mh"),("expected_mna","mna")):
+                value=mass.get(src)
+                if value not in (None,""):
+                    self.analytical_vars[key].set(str(value))
+            self.data_status_var.set(f"Expected mass loaded from {mass.get('source','frozen Run')}")
+        except Exception as exc:
+            self._show_error(exc)
+
+    def _select_analytical(self,_event=None)->None:
+        selected=list(self.analytical_tree.selection())
+        if not selected: return
+        row=dict(zip(self.analytical_tree["columns"],self.analytical_tree.item(selected[0],"values"))); record=getattr(self,"_analytical_row_by_id",{}).get(str(row.get("analytical_result_id","")),row)
+        for name,var in self.analytical_vars.items(): var.set("" if record.get(name) is None else record.get(name,""))
+
+    def save_analytical(self)->None:
+        try:
+            values={k:v.get() for k,v in self.analytical_vars.items()}; record=self.gui.upsert_analytical_record(values,self.analytical_reason_var.get()); self.analytical_vars["analytical_result_id"].set(record.get("analytical_result_id","")); self.analytical_reason_var.set(""); self._refresh_data()
+        except Exception as exc: self._show_error(exc)
+
+    def remove_analytical(self)->None:
+        try:
+            rid=self.analytical_vars["analytical_result_id"].get();
+            if not rid: raise ValueError("Select an analytical record first.")
+            self.gui.delete_analytical_record(rid,self.analytical_reason_var.get()); [v.set("") for v in self.analytical_vars.values()]; self.analytical_reason_var.set(""); self._refresh_data()
+        except Exception as exc: self._show_error(exc)
+
+    def import_analytical(self)->None:
+        try:
+            count=self.gui.import_analytical_table(reason="Imported analytical table"); self.data_status_var.set(f"Imported {count} analytical rows"); self._refresh_data()
+        except Exception as exc: self._show_error(exc)
 
     def export_data_workbook(self) -> None:
         try:
@@ -1003,7 +1261,7 @@ class WorkItemWindow:
             runs = []
         active_id = ""
         try:
-            index = int(self.gui._v229_active_index)
+            index = int(get_active_index(self.gui, -1))
             item = self.gui.pm_items[index]
             active_id = str(item.get("active_run_id", ""))
             work_item_id = str(item.get("work_item_id", ""))
@@ -1025,6 +1283,27 @@ class WorkItemWindow:
         for iid in self.hplc_tree.get_children(): self.hplc_tree.delete(iid)
         for row in rows:
             self.hplc_tree.insert("", "end", values=[row.get(column, "") for column in self.hplc_tree["columns"]])
+        try: analytical_rows=self.gui.list_analytical_records()
+        except Exception: analytical_rows=[]
+        self._analytical_row_by_id={str(r.get("analytical_result_id","")):r for r in analytical_rows}
+        for iid in self.analytical_tree.get_children(): self.analytical_tree.delete(iid)
+        for row in analytical_rows: self.analytical_tree.insert("","end",values=[row.get(c,"") for c in self.analytical_tree["columns"]])
+        try:
+            from suite_gui import data_system
+            repeat=experimental_workflow.matched_repeat_observation(self.gui)
+            if repeat.get("available"):
+                deltas=repeat.get("outcome_deltas") or {}; parts=[]
+                for label,key in (("Δpurity","purity_percentage_points"),("Δyield","yield_percentage_points")):
+                    value=deltas.get(key)
+                    if value is not None: parts.append(f"{label} {float(value):+.2f} pp")
+                suffix=" | ".join(parts) if parts else "outcome delta unavailable"
+                self.repeat_compare_var.set(f"Matched repeat: {suffix} | N={repeat.get('n_pairs',1)}; causal claim disabled")
+            else: self.repeat_compare_var.set("Matched repeat: N/A")
+            complete=experimental_workflow.analytical_completeness(self.gui)
+            items=complete.get("items") or {}; unresolved=complete.get("unresolved") or []
+            self.analytical_completeness_var.set("Analytical completeness: HPLC {0} | MS {1} | Yield {2}{3}".format("✓" if items.get("hplc") else "—","✓" if items.get("ms_identity") else "—","✓" if items.get("yield") else "—",(" | unresolved: "+", ".join(unresolved)) if unresolved else " | complete"))
+        except Exception:
+            self.repeat_compare_var.set("Matched repeat: N/A"); self.analytical_completeness_var.set("Analytical completeness: unavailable")
         for iid in self.data_history_tree.get_children(): self.data_history_tree.delete(iid)
         try:
             changes = self.gui.data_change_history()
@@ -1035,29 +1314,23 @@ class WorkItemWindow:
             display["before"] = self._display_value(row.get("before"))
             display["after"] = self._display_value(row.get("after"))
             self.data_history_tree.insert("", "end", values=[display.get(column, "") for column in self.data_history_tree["columns"]])
-        self.data_status_var.set(f"Runs {len(runs)} | HPLC {len(rows)} | Changes {len(changes)}")
+        self.data_status_var.set(f"Runs {len(runs)} | HPLC {len(rows)} | Analytical {len(analytical_rows)} | Changes {len(changes)}")
 
     def _refresh_selected_tab(self, _event=None) -> None:
         try:
-            label = str(self.notebook.tab(self.notebook.select(), "text"))
+            role = self._tab_role_by_widget.get(str(self.notebook.select()), "")
         except Exception:
-            label = "Selected Plan"
-        source_by_label = dict(TABLES)
-        source_name = source_by_label.get(label)
-        if source_name:
-            source = getattr(self.gui, source_name, None)
-            target = self.trees.get(source_name)
-            if target is not None:
-                _write_rows(target, _tree_rows(source))
+            role = ""
+        if role.startswith("source:"):
+            source_name=role.split(":",1)[1]
+            source=getattr(self.gui,source_name,None); target=self.trees.get(source_name)
+            if target is not None: _write_rows(target,_tree_rows(source))
             return
-        if label == "Run / Corrections":
-            self._refresh_execution_history()
-        elif label == "Outcome / ML":
-            self._refresh_ml_review()
-        elif label == "Risk Review":
-            self._refresh_risk()
-        elif label == "Data / HPLC":
-            self._refresh_data()
+        if role == "execution": self._refresh_execution_history()
+        elif role == "outcome": self._refresh_ml_review()
+        elif role == "risk": self._refresh_risk()
+        elif role == "data": self._refresh_data()
+
 
     def refresh(self) -> None:
         self.window.title(self._title())
@@ -1082,19 +1355,19 @@ class WorkItemWindow:
         try:
             self.save()
         finally:
-            self.gui._v3_work_item_window = None
+            runtime_state.set_work_item_window(self.gui, None)
             self.window.destroy()
 
 
 def open_selected(gui: Any) -> str:
     """Open one independent window for the currently active item."""
-    current = getattr(gui, "_v3_work_item_window", None)
+    current = runtime_state.get_work_item_window(gui)
     if current is not None:
         try:
             current.window.destroy()
         except Exception:
             pass
-    gui._v3_work_item_window = WorkItemWindow(gui)
+    runtime_state.set_work_item_window(gui, WorkItemWindow(gui))
     return "break"
 
 

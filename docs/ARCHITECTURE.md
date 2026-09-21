@@ -1,199 +1,129 @@
-# SPPS Planner V5.0.0 Architecture
+# SPPS Planner V6.0.0 Architecture
+
+> Final V6.0.0 source release (2026-09-15). This document describes the current V6 implementation; V5 names are retained only where they are persisted-data or import-compatibility contracts.
 
 ## Stable entry points
 
-- `main_launcher.py` prepares the packaged runtime and calls
-  `suite_gui.spps_tk_gui`.
-- `suite_gui.spps_tk_gui` re-exports the canonical API from
-  `suite_gui.release`.
-- `suite_gui.release` imports and validates the statically defined
-  `suite_gui.controller.SPPSGui` before launch.
+- `main_launcher.py` prepares the packaged runtime and calls `suite_gui.spps_tk_gui`.
+- `suite_gui.spps_tk_gui` re-exports the canonical API from `suite_gui.release`.
+- `suite_gui.release` validates and launches `suite_gui.controller.SPPSGui`.
+- `suite_gui.menu` is the canonical menu owner. `suite_gui.v3_menu` is compatibility-only.
 
-Existing imports through `suite_gui.classic_2094_tk_gui` remain supported.
-
-## Direct controller migration
-
-`suite_gui.controller.SPPSGui` is now the public runtime identity. Its
-operator-facing routes are regular class methods; `suite_gui.release` no
-longer runs the release-composition registry.
-
-The active UI construction path is also explicit:
+The active UI construction route is explicit and does not use runtime monkey patches:
 
 ```text
 controller.SPPSGui._build
-  -> ui_build.build_base_interface
-  -> ui_build.apply_plan_workspace
-  -> ui_build.apply_operator_workspace
-  -> ui_build.apply_final_release_ui
-  -> ui_build.apply_custom_database_ui
-  -> ui_build.bind_direct_workspace_actions
-  -> ui_system.apply_theme / fit_window / bind_shortcuts
-  -> v3_menu.install_menu
+  -> ui_build base/interface construction
+  -> modules/ui_ownership canonical finalization
+  -> release UI finalization
+  -> direct controller action binding
+  -> ui_system theme / geometry / shortcuts
+  -> menu.install_menu
 ```
 
-This replaces the active nested `_build` closures with one readable,
-testable sequence. The retained base widget builder is called exactly once.
-
-The active synthesis commands are explicit as well:
+## Core planning path
 
 ```text
-Generate / pm_generate_selected / pm_calculate_all
-  -> synthesis_workflow.generate
-  -> synchronise unified unit defaults
-  -> plan_workflow.generate
-
-Apply Change / pm_apply_change / apply_plan_mw_density
-  -> synthesis_workflow.apply_change
-  -> synchronise unified unit defaults
-  -> plan_workflow.apply_change
-
-Live correction / doubling
-  -> execution_workflow
-  -> visible Plan value
-  -> controller.apply_change
-  -> synthesis_execution append-only event ledger
-
-Step status / actual material / revert
-  -> execution_workflow
-  -> synthesis_execution append-only event ledger
-  -> persistence_workflow autosave
-
-Reviewed outcome / dataset / model
-  -> ml_workflow
-  -> ml_dataset feature projection + review revisions
-  -> immutable dataset CSV + fingerprint manifest
-  -> spps_planner.ml leakage-safe preprocessing, training and prediction
-
-Project / Work Item / Run / HPLC
-  -> data_workflow controller orchestration
-  -> data_system hierarchy, HPLC CRUD and append-only changes
-  -> persistence_workflow atomic JSON + backup/recovery/conflict guard
-  -> data_workbook multi-sheet XLSX + Column_Map round-trip
-
-Synthesis risk review
-  -> risk_workflow controller orchestration
-  -> risk_engine deterministic explained findings
-  -> optional reviewed-data classifier probability + dataset fingerprint
-  -> risk_assessment version and acknowledgement ledger
+PlanInput
+  -> SPPS calculation engine
+  -> step/material generation
+  -> one presentation/normalization layer
+  -> editable operator Plan
+  -> Materials / Checklist / Cleavage / Batch / Export
 ```
 
-The visible Generate and Apply Change buttons bind to those controller methods,
-so the UI and programmatic routes cannot drift into different calculation
-pipelines.
+The embedded engine remains chemistry-locked by golden behavior snapshots. Plan generation remains planning state; it does not become experimental evidence until an actual Result/Issue is linked to a Run.
 
-Project and data routes follow the same rule:
+## Project / Run / evidence path
 
 ```text
-Project item actions
-  -> project_workflow
-  -> plan_workflow / project_manager_workflow state helpers
-
-Save Project / Load Project / autosave / restore
-  -> persistence_workflow
-  -> state_persistence atomic JSON
-
-Batch calculate / refresh / export
-  -> batch_workflow
-  -> accepted connected Batch calculator
+Project -> Work Item -> Run
+  -> frozen Planner snapshot at Start Experiment
+  -> actual execution / correction ledger
+  -> Loading / Cleavage / Outcome / Issue / HPLC / Analytical records
+  -> reviewed evidence
+  -> explicit recommendation/model lifecycle
 ```
 
-The session/project envelope remains backward compatible and now has one
-explicit owner for Project items, selected index, Setup defaults, editable
-Batch rows, and Custom DB data.
+There is one Run hierarchy. Repeat Run uses `repeat_of_run_id`; measured Results/HPLC/Analytical records are never copied into a new repeat.
 
-The retained Classic widgets now live in `suite_gui.classic_base` as ordinary
-class definitions and static method bindings. `suite_gui.controller.SPPSGui`
-inherits that base and declares every contracted public route directly.
+## Experimental data store
 
-There is no runtime release composition, numbered compatibility-module import,
-or `legacy_controller` superclass. UI construction is an explicit sequence in
-`suite_gui.ui_build`; calculations and state changes enter through semantic
-workflow modules. Runtime controller bindings and nested `_build` wrappers are
-forbidden by the release audit.
+`suite_gui.experimental_data` owns the SQLite schema and canonical record operations.
+`suite_gui.experimental_workflow` owns GUI-facing initialization, Private seed loading, same-profile legacy DB recovery, read/write routing, data-store diagnostics, advisors and model lifecycle.
 
-## Extracted responsibilities
+R11 data-store rules:
 
-- `plan_input_factory.py`: Project/Batch calculation inputs
-- `resin_profiles.py`: resin and loading rules
-- `material_presentation.py`: user-facing material rows and ordering
-- `peptide_item_state.py`: editor/output snapshots
-- `peptide_item_collection.py`: add, duplicate, delete, and reorder operations
-- `state_persistence.py`: atomic JSON persistence
-- `session_state.py`: desktop autosave lifecycle
-- `project_workflow.py`: direct Project Manager item routes
-- `persistence_workflow.py`: direct project/session save and restore
-- `batch_workflow.py`: direct Batch calculate, refresh, and export routes
-- `custom_db_workflow.py`: custom material CRUD, lookup, selector refresh, and UI
-- `ml_workflow.py`: reviewed dataset versioning, legacy observed-run compatibility, model training, prediction, and anomaly detection
-- `ml_dataset.py`: execution-history feature engineering, outcome review revisions, inclusion/exclusion and dataset fingerprinting
-- `data_system.py`: Project/Work Item/Run compatibility hierarchy, Run snapshots, HPLC records and change history
-- `data_workflow.py`: GUI-facing Run/HPLC/search/recent-file/workbook operations
-- `data_workbook.py`: multi-sheet XLSX export/import, automatic aliases and explicit Column_Map handling
-- `risk_engine.py`: deterministic sequence/Plan/execution risk triage without automatic Plan mutation
-- `risk_assessment.py`: content-addressed assessment revisions and acknowledgement audit events
-- `risk_workflow.py`: GUI, valid real-model signal and risk-report orchestration
-- `ui_system.py`: shared palette, display density, responsive geometry and keyboard bindings
-- `export_workflow.py`: direct accepted visible-state export route
-- `modules/plan_workflow.py`: Generate and Apply Change plan workflow
-- `position_rules.py`: blank/single/range C-terminal eq and repeat rules
-- `classic_base.py`: retained Classic UI implementation without runtime patching
-- `synthesis_workflow.py`: direct Plan route and unified-default sequencing
-- `execution_workflow.py`: live Plan correction, doubling, status, actual material, and compensating revert orchestration
-- `synthesis_execution.py`: UI-independent append-only execution ledger and ML-ready row projection
-- `modules/project_manager_workflow.py`: Project Manager operator workflow
-- `release_contract.py`: active runtime route validation
-- `tools/verify_windows_release.py`: V5 identity, PyInstaller, Installer and optional PE artifact contract
+- every controller read/write initializes the same resolved database path;
+- Private historical data is recovered only from same-profile locations;
+- explicit operator/test DB paths never absorb unrelated global history;
+- a failed Private seed import is not cached as successful;
+- Loading/Cleavage writes must be observable by record ID before being reported as successful;
+- Public remains useful with an empty local DB and ships no Private SQLite/history.
 
-## V5 evidence-driven decision-support layer
+Persisted names such as `experimental_v5.sqlite`, `planner_snapshot_v6`, `model_registry_v5.json`, and existing evidence-source strings are compatibility contracts. They may retain their historical names until an explicit migration is implemented and tested.
 
-V5 keeps the Planner calculation path unchanged and adds a separate evidence layer:
+## Recommendation layer
 
-```text
-page-local STD sequence / operator lab record / material-usage workbook
-  -> experimental_data canonical raw+lookup storage
-  -> verified/parsed/incomplete/excluded evidence
-  -> condition_optimizer_v5 / ml_advisor_v5 / decision_support_v5
-  -> evidence, difficulty/risk review, bounded candidates
-  -> explicit operator Apply only when a real historical condition is eligible
-```
+The real implementations are version-neutral owners under `suite_gui/recommendation/`:
 
-Additional V5 responsibilities:
+- `loading.py`
+- `cleavage.py`
+- `coupling.py`
+- `history_base.py`
+- `coupling_base.py`
+- `decision_support.py`
+- `empirical_cleavage.py`
+- `model_registry.py`
 
-- `experimental_data.py`: schema V5, raw + canonical keys, outcomes, cleavage-usage records, V4-to-V5 local DB clone/migration.
-- `v5_material_usage.py`: unit-preserving TFA/Water/TIS/Ether usage parsing and operator unit review.
-- `decision_support_v5.py`: Sequence Difficulty Map, Stage Risk Advisor, Similar Historical Experiments, bounded cleavage-volume/workup evidence and retrospective validation snapshots.
-- `condition_optimizer_v5.py`: evidence-quality wrapper around the validated bottle-level coupling consensus engine.
-- `ml_advisor_v5.py`: evidence-first V5 advisor composition; no implicit per-advisor model training.
-- `model_registry_v5.py`: explicit Verified-data Loading model rebuild, cross-validation metadata, version history and rollback.
-- `modules/experimental_data_panel.py`: V5 operator UI for data health, usage-unit review, decision support, advisors and model controls.
+Legacy V4/V5 import modules are compatibility surfaces only. No V6 wrapper stack is added. Recommendation traces record operator decisions separately from supervised Loading/Cleavage evidence and never trigger automatic retraining.
 
-Public and Private share identical planner/decision-support runtime code. Only `build_profile.py`, bundled seed/policy material, and private-only golden tests are allowed to differ. Runtime DB directories remain isolated.
+## Version-neutral runtime state
 
-## Behaviour compatibility
+`suite_gui.runtime_state.PlannerUIState` owns active UI state. Current execution modules use stable accessors for active index, switching, editors, Generate/Apply guards, drag state, batch state, density, Work Item window, and preview state. Historical `_v###` attributes exist only inside the compatibility boundary so older tests/extensions/project state can still be read intentionally.
 
-The V5 release preserves the validated planner behavior carried forward from V4, resin choices, project/session
-JSON keys, visible Plan editing behaviour, Apply Change synchronization,
-materials/checklist/total outputs, Batch calculation, CSV/XLSX export, Custom
-DB, and Windows build entry points.
+## Canonical support modules
 
-Calculation contracts are covered by fixed engine snapshots and focused tests
-for 2-CTC loading, C-terminal behaviour, doubling, repeat cycles, material
-ordering, resin volume, preset buttons, project item state, and persistence.
+- `menu.py`: menu construction
+- `issue_parser.py`: deterministic Korean/English Issue parser
+- `material_usage.py`: unit-preserving material-usage import/review
+- `decision_support.py`: provenance, A/B, analytics and quality helpers
+- `persistence_workflow.py`: atomic project/session persistence
+- `data_system.py`: Work Item/Run/HPLC/Analytical hierarchy
+- `data_workbook.py`: workbook round-trip
+- `execution_workflow.py` / `synthesis_execution.py`: actual execution ledger
+- `risk_engine.py` / `risk_workflow.py`: warning/review-only risk triage
+- `ui_system.py`: theme, geometry and shortcuts
+
+Historical files `v3_menu.py`, `natural_language_issue_v5.py`, `v5_material_usage.py`, and `v6_features.py` are compatibility shims and do not own current implementation.
+
+## Current analytical and feedback extensions
+
+- Recommendation trace: recommendation -> operator decision -> actual condition -> Result links.
+- Matched Repeat: descriptive changed variables plus yield/purity deltas; single pairs never imply causation.
+- Structured LC-MS/MALDI/Other records linked to Runs.
+- Expected mass can be loaded from the frozen Run Planner snapshot; observed m/z is never used to invent missing neutral mass identity.
+- Analytical completeness reports whether HPLC, MS identity and yield have been recorded; it is not an automatic scientific pass/fail.
+
+## Performance policy
+
+FAST_OPEN is protected with deterministic initialization counters rather than fragile wall-clock gates. Repeated `initialize()` must not redo full schema migration/backfill when the DB has already been initialized and remains healthy. Heavy history views remain candidates for lazy population.
+
+## Public / Private boundary
+
+Public and Private use the same functional source wherever practical. Private may contain operator seed/history and Private-only regression data. Public must contain no Private DB, seed rows, model files, secrets or local paths.
 
 ## Verification
 
-Run the complete release verification from the repository root:
+From repository root:
 
 ```bat
 python -m pip install -r requirements.txt -r requirements-dev.txt
-python tools\verify_release.py --passes 5
-```
-
-Audit only the routes that are active in the final controller:
-
-```bat
+pytest -q
+python tools\verify_v6_integrity.py
+python tools\verify_windows_release.py
+python tools\verify_release.py --passes 1
 python tools\audit_monkey_patches.py --active-release
 ```
 
-The historical source-binding count is intentionally separate from the active
-runtime audit.
+The governing rule is: **fix the canonical owner; do not stack another patch/version layer.**

@@ -272,19 +272,9 @@ def load_selected(gui: Any, _event: Any = None) -> dict[str, str] | None:
 
 
 def _setup_notebook(gui: Any) -> Any:
-    def walk(widget: Any) -> Any:
-        for child in widget.winfo_children():
-            if isinstance(child, ttk.Notebook):
-                labels = [str(child.tab(tab_id, "text")) for tab_id in child.tabs()]
-                if "Unit defaults" in labels and "Reagents" in labels:
-                    return child
-            result = walk(child)
-            if result is not None:
-                return result
-        return None
-
-    return walk(gui)
-
+    """Return the canonical Project Manager setup notebook."""
+    notebook = getattr(gui, "pm_setup_notebook", None)
+    return notebook if isinstance(notebook, ttk.Notebook) else None
 
 def restore_tab(gui: Any) -> Any:
     """Build the accepted Custom DB tab without legacy patch callbacks."""
@@ -292,16 +282,19 @@ def restore_tab(gui: Any) -> Any:
     notebook = _setup_notebook(gui)
     if notebook is None:
         return None
-    for tab_id in notebook.tabs():
-        if str(notebook.tab(tab_id, "text")) == "Custom DB":
-            gui._v245_custom_tab_added = True
-            refresh_tree(gui)
-            refresh_setup_comboboxes(gui)
-            return tab_id
+    frame = getattr(gui, "custom_db_tab", None)
+    if frame is not None:
+        try:
+            if str(frame) in notebook.tabs():
+                refresh_tree(gui)
+                refresh_setup_comboboxes(gui)
+                return str(frame)
+        except Exception:
+            pass
 
     frame = ttk.Frame(notebook, padding=6)
     notebook.add(frame, text="Custom DB")
-    gui._v245_custom_tab_added = True
+    gui.custom_db_tab = frame
     for column in range(8):
         frame.columnconfigure(column, weight=1)
     ttk.Label(frame, text="Material name").grid(row=0, column=0, sticky="w", padx=4, pady=3)

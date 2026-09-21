@@ -1,6 +1,6 @@
 # SPPS Planner Public / GitHub Data Policy
 
-SPPS Planner V5.0.0 is distributed as a **sanitized public build**.
+SPPS Planner v6.0.0 Public/GitHub is distributed as a **sanitized public build**. This package corresponds to the finalized V6 public source release; historical R7–R17 development notes are retained only as development/validation records.
 
 The public repository is intended to provide the complete public planner, recording, recommendation, model-management, and release code without publishing internal/private experimental history.
 

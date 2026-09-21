@@ -1,6 +1,6 @@
 # Contributing to SPPS Planner
 
-SPPS Planner V5.0.0 is the current public release. Contributions should improve the existing application **in place** while preserving accepted calculation, workflow, evidence, privacy, and Windows release contracts.
+SPPS Planner v6.0.0 is the current public release. Contributions should improve the existing application **in place** while preserving accepted calculation, workflow, evidence, privacy, and Windows release contracts. Historical R7–R16 development notes document how the final V6 release was stabilized.
 
 ## Development setup
 

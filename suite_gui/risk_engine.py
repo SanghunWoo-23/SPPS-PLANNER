@@ -13,7 +13,7 @@ from typing import Any, Iterable, Mapping
 from spps_planner.parser import parse_sequence
 
 
-ENGINE_VERSION = "3.0.0-rules.1"
+ENGINE_VERSION = "6.0.0-rules.1"
 SEVERITY_WEIGHT = {"INFO": 5, "WARNING": 12, "HIGH": 24, "CRITICAL": 40}
 HYDROPHOBIC = set("AVILMFWY")
 BETA_BRANCHED = set("ITV")
@@ -114,6 +114,46 @@ def evaluate_rules(item: Mapping[str, Any]) -> dict[str, Any]:
             f"Met/Trp positions: {', '.join(map(str, oxidation))}",
             "Oxidation-sensitive residues can contribute to mass or purity variants during handling and cleavage.",
             "Review exposure and scavenger/handling choices under the approved SOP and verify by analytical data.",
+        ))
+
+    # V6 risk-map additions are review flags only. They intentionally avoid
+    # asserting secondary structure or changing coupling/cleavage conditions.
+    beta_like = []
+    for start in range(max(0, len(natural) - 5)):
+        window = natural[start:start + 6]
+        if len(window) == 6 and sum(aa in (HYDROPHOBIC | BETA_BRANCHED) for aa in window) >= 5:
+            beta_like.extend(range(start + 1, start + 7))
+    if beta_like:
+        findings.append(_finding(
+            "SEQ-BETA-AGGREGATION-REVIEW", "WARNING", "Aggregation", "Extended hydrophobic / beta-branched stretch review", beta_like,
+            "A six-residue window is strongly enriched in hydrophobic or beta-branched residues.",
+            "Such local composition can be associated with resin-bound chain association; this rule does not predict a beta-sheet structure.",
+            "Review coupling-test evidence, mixing, solvent/swelling and resin loading. Automatic doubling is not applied.",
+        ))
+
+    if natural and natural[0] in {"Q", "E"}:
+        findings.append(_finding(
+            "SEQ-NTERM-QE", "INFO", "Post-cleavage", "N-terminal Gln/Glu cyclization review", [1],
+            f"N-terminal residue is {natural[0]}.",
+            "N-terminal Gln, and in some conditions Glu, can form pyroglutamate during processing/storage.",
+            "Check the intended product identity and analytical mass; no condition is changed automatically.",
+        ))
+
+    amide_sensitive = [i + 1 for i, aa in enumerate(natural) if aa in {"N", "Q"}]
+    if amide_sensitive:
+        findings.append(_finding(
+            "SEQ-DEAMIDATION-REVIEW", "INFO", "Post-synthesis", "Asn/Gln handling review", amide_sensitive,
+            f"Asn/Gln positions: {', '.join(map(str, amide_sensitive))}",
+            "Asn/Gln-containing products can require attention to sequence- and condition-dependent deamidation during downstream handling/storage.",
+            "Use analytical evidence and the approved handling SOP; this is a post-synthesis review flag, not an SPPS failure diagnosis.",
+        ))
+
+    if len(natural) >= 18:
+        findings.append(_finding(
+            "SEQ-LONG-DOUBLING-REVIEW", "INFO", "Coupling", "Long-sequence doubling review zone", range(18, len(natural) + 1),
+            f"Sequence length={len(natural)}; positions 18+ enter the configured long-sequence review zone.",
+            "Longer resin-bound chains may become more difficult to couple depending on sequence and resin behavior.",
+            "Review observed coupling tests/issues before using repeat or double coupling. No repeat is added automatically.",
         ))
 
     early_dkp = [i + 1 for i in range(min(3, len(natural) - 1)) if natural[i + 1] == "P"]

@@ -1,15 +1,17 @@
-"""SPPS Planner V5.0.0 release UI normalization.
+"""SPPS Planner V6.0.0 release UI normalization.
 
 This layer keeps the validated workflow intact while normalizing startup,
 cleavage-preset display names, resin aliases, and release labeling.
 """
 from __future__ import annotations
+from suite_gui import runtime_state
+from suite_gui.runtime_state import set_active_index, get_calculation_namespace
 
 import tkinter as tk
 from tkinter import ttk
 
-APP_VERSION = "V5.0.0"
-VERSION_LABEL = "SPPS Planner V5.0.0"
+APP_VERSION = "V6.0.0"
+VERSION_LABEL = "SPPS Planner V6.0.0"
 
 
 ACTIVE_RESINS = [
@@ -71,7 +73,7 @@ def _enforce_resin_choices(gui):
             pass
 
     try:
-        if not getattr(gui, "_v200_resin_alias_trace", False):
+        if not runtime_state.get_flag(gui,"resin_alias_trace"):
             def _migrate_removed_alias(*_args):
                 try:
                     value = str(gui.pm_resin.get() or "").strip()
@@ -84,7 +86,7 @@ def _enforce_resin_choices(gui):
                 except Exception:
                     pass
             gui.pm_resin.trace_add("write", _migrate_removed_alias)
-            gui._v200_resin_alias_trace = True
+            runtime_state.set_flag(gui,"resin_alias_trace",True)
     except Exception:
         pass
 
@@ -138,7 +140,7 @@ def _ensure_one_start_item(gui):
         gui.pm_list.insert("end", label)
         # Keep the editor/results empty at startup; the item is loaded only when
         # the operator clicks or double-clicks it.
-        gui._v229_active_index = None
+        set_active_index(gui, None)
     except Exception:
         pass
 
@@ -262,8 +264,8 @@ def _ensure_solvent_basis_controls(gui):
     ttk.Entry(box, textvariable=gui.solvent_molarity_m, width=8).grid(
         row=1, column=2, sticky="w",
     )
-    gui._v257_volume_preview_label = ttk.Label(box, text="")
-    gui._v257_volume_preview_label.grid(
+    runtime_state.set_volume_preview_label(gui,ttk.Label(box, text=""))
+    runtime_state.get_volume_preview_label(gui).grid(
         row=2, column=0, columnspan=7, sticky="w", padx=6, pady=(4, 2),
     )
     gui._volume_basis_controls_ready = True
@@ -292,7 +294,7 @@ def _update_volume_preview(gui):
             f"Current 1-use mL = {_numstr(volume)} mL  "
             f"({family}: scale × {_numstr(factor)} mL/mmol)"
         )
-    label = getattr(gui, "_v257_volume_preview_label", None)
+    label = runtime_state.get_volume_preview_label(gui)
     if label is not None:
         label.configure(text=text)
 
@@ -315,23 +317,23 @@ def _bind_resin_live_preview(gui, ns):
             _update_volume_preview(gui)
         except Exception:
             pass
-        pending = getattr(gui, "_v3_volume_preview_after_id", None)
+        pending = runtime_state.get_volume_preview_after_id(gui)
         if pending:
             return
 
         def run():
-            gui._v3_volume_preview_after_id = None
+            runtime_state.set_volume_preview_after_id(gui,None)
             try:
                 _update_volume_preview(gui)
             except Exception:
                 pass
 
         try:
-            gui._v3_volume_preview_after_id = gui.after_idle(run)
+            runtime_state.set_volume_preview_after_id(gui,gui.after_idle(run))
         except Exception:
             run()
 
-    if not getattr(gui, "_v200_resin_preview_traces", None):
+    if not runtime_state.get_resin_preview_traces(gui):
         traces = []
         for variable in (
             getattr(gui, "pm_resin", None),
@@ -347,7 +349,7 @@ def _bind_resin_live_preview(gui, ns):
                 traces.append((variable, variable.trace_add("write", refresh)))
             except Exception:
                 pass
-        gui._v200_resin_preview_traces = traces
+        runtime_state.set_resin_preview_traces(gui,traces)
 
     target_var = str(getattr(gui, "pm_resin", ""))
     for widget in _walk(gui):
@@ -356,36 +358,18 @@ def _bind_resin_live_preview(gui, ns):
         try:
             if str(widget.cget("textvariable")) != target_var:
                 continue
-            if not getattr(widget, "_v200_resin_preview_bound", False):
+            if not runtime_state.get_resin_preview_bound(widget):
                 widget.bind("<<ComboboxSelected>>", refresh, add="+")
-                widget._v200_resin_preview_bound = True
+                runtime_state.set_resin_preview_bound(widget,True)
         except Exception:
             pass
     refresh()
 
 
 def apply_post_build(gui, ns):
-    """Apply the accepted V3.0.0 display/startup corrections."""
+    """Apply final release-owned display/startup configuration exactly once."""
     _ensure_one_start_item(gui)
     _enforce_resin_choices(gui)
     _bind_resin_live_preview(gui, ns)
     _configure_cleavage_preset(gui)
     _apply_title(gui)
-    # Reassert after legacy idle callbacks that may repopulate combobox values.
-    try:
-        gui.after_idle(
-            lambda _gui=gui: (
-                _enforce_resin_choices(_gui),
-                _bind_resin_live_preview(_gui, ns),
-            )
-        )
-        for delay in (100, 400, 1000):
-            gui.after(
-                delay,
-                lambda _gui=gui: (
-                    _enforce_resin_choices(_gui),
-                    _bind_resin_live_preview(_gui, ns),
-                ),
-            )
-    except Exception:
-        pass

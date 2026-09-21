@@ -50,7 +50,7 @@ def test_session_state_keeps_the_accepted_json_shape(tmp_path):
     state = harness._collect_state()
 
     assert harness.synced == 1
-    assert state["app_version"] == "V5.0.0"
+    assert state["app_version"] == "V6.0.0"
     assert state["selected_pm_index"] == 1
     assert state["pm_items"] == harness.pm_items
     assert state["batch_rows"] == [
@@ -66,9 +66,21 @@ def test_session_save_is_atomic_and_close_saves_before_destroy(tmp_path):
 
     harness.save_autosave_state()
     saved = json.loads(path.read_text(encoding="utf-8"))
-    assert saved["app_version"] == "V5.0.0"
+    assert saved["app_version"] == "V6.0.0"
     assert not path.with_suffix(".tmp").exists()
 
     harness.on_close()
     assert harness.closed == 1
     assert path.exists()
+
+
+def test_r17_none_active_index_stays_none_across_legacy_aliases():
+    from types import SimpleNamespace
+    from suite_gui import runtime_state
+
+    gui = SimpleNamespace()
+    runtime_state.set_active_index(gui, None)
+    assert runtime_state.get_active_index(gui, None) is None
+    assert gui._v229_active_index is None
+    assert gui._v228_active_index is None
+    assert gui._v2097_active_index is None

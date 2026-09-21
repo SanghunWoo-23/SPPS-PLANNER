@@ -21,7 +21,7 @@ SHEET_ALIASES = {
     "Runs": ("runs",), "Plan": ("plan", "selectedplan"),
     "Execution_Events": ("executionevents", "events"),
     "ML_Current": ("mlcurrent", "outcomes"), "ML_Revisions": ("mlrevisions",),
-    "HPLC": ("hplc", "chromatography"), "Materials": ("materials",), "Totals": ("totals", "totalmaterials"),
+    "HPLC": ("hplc", "chromatography"), "Analytical": ("analytical", "lcms", "maldi", "massspec"), "Materials": ("materials",), "Totals": ("totals", "totalmaterials"),
     "Checklist": ("checklist",), "Cleavage": ("cleavage",),
     "Change_History": ("changehistory", "history"),
     "Risk_Assessments": ("riskassessments", "riskreviews"),
@@ -66,7 +66,7 @@ def _frame(rows: Iterable[Mapping[str, Any]], columns: Iterable[str] = ()) -> pd
 
 def workbook_tables(items: list[dict[str, Any]], *, project_id: str = "") -> dict[str, pd.DataFrame]:
     work_items, runs, plan, events, ml_current, ml_revisions = [], [], [], [], [], []
-    hplc, materials, totals, checklist, cleavage, changes = [], [], [], [], [], []
+    hplc, analytical, materials, totals, checklist, cleavage, changes = [], [], [], [], [], [], []
     risk_versions, risk_findings, risk_acknowledgements = [], [], []
     for item in items:
         data_system.sync_active_run(item)
@@ -94,6 +94,12 @@ def workbook_tables(items: list[dict[str, Any]], *, project_id: str = "") -> dic
                 row.update({f"data_file_{key}": value for key, value in data_meta.items() if key != "path"})
                 row.update({f"method_file_{key}": value for key, value in method_meta.items() if key != "path"})
                 hplc.append({**base, **row})
+            for record in run.get("analytical_records", []):
+                row=dict(record)
+                data_meta=dict(row.pop("data_file",{}) or {}); report_meta=dict(row.pop("report_file",{}) or {})
+                row.update({f"data_file_{key}":value for key,value in data_meta.items() if key!="path"})
+                row.update({f"report_file_{key}":value for key,value in report_meta.items() if key!="path"})
+                analytical.append({**base,**row})
             for event in run.get("change_history", []):
                 row = dict(event); row["before"] = _json(row.get("before")); row["after"] = _json(row.get("after")); changes.append({**base, **row})
             risk = risk_assessment.ensure_review(run)
@@ -112,7 +118,7 @@ def workbook_tables(items: list[dict[str, Any]], *, project_id: str = "") -> dic
                 risk_acknowledgements.append({**base, **dict(acknowledgement)})
     project_names = sorted({str(item.get("project", "")) for item in items if str(item.get("project", ""))})
     project = [{
-        "app_version": "V5.0.0", "data_schema_version": data_system.SCHEMA_VERSION,
+        "app_version": "V6.0.0", "data_schema_version": data_system.SCHEMA_VERSION,
         "project_id": project_id, "project_names": " | ".join(project_names),
         "work_item_count": len(items), "exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }]
@@ -122,7 +128,7 @@ def workbook_tables(items: list[dict[str, Any]], *, project_id: str = "") -> dic
         "Runs": _frame(runs, ("work_item_id", "run_id", "name", "status", "created_at", "updated_at", "lot")),
         "Plan": _frame(plan), "Execution_Events": _frame(events),
         "ML_Current": _frame(ml_current), "ML_Revisions": _frame(ml_revisions),
-        "HPLC": _frame(hplc), "Materials": _frame(materials), "Totals": _frame(totals),
+        "HPLC": _frame(hplc), "Analytical": _frame(analytical), "Materials": _frame(materials), "Totals": _frame(totals),
         "Checklist": _frame(checklist), "Cleavage": _frame(cleavage),
         "Change_History": _frame(changes),
         "Risk_Assessments": _frame(risk_versions),
@@ -210,7 +216,7 @@ def import_workbook(path: str | Path, *, column_mapping: Mapping[str, Mapping[st
         if item is None:
             continue
         run = {key: row.get(key, "") for key in ("run_id", "name", "status", "created_at", "updated_at", "lot")}
-        run.update({"snapshots": {key: [] for key in data_system.RUN_SNAPSHOT_KEYS}, "synthesis_execution": {"schema_version": 1, "events": []}, "ml_review": {"schema_version": 1, "revision": 0, "current": {}, "versions": []}, "risk_review": {"schema_version": 1, "revision": 0, "current": {}, "versions": [], "acknowledgements": []}, "hplc_records": [], "change_history": []})
+        run.update({"snapshots": {key: [] for key in data_system.RUN_SNAPSHOT_KEYS}, "synthesis_execution": {"schema_version": 1, "events": []}, "ml_review": {"schema_version": 1, "revision": 0, "current": {}, "versions": []}, "risk_review": {"schema_version": 1, "revision": 0, "current": {}, "versions": [], "acknowledgements": []}, "hplc_records": [], "analytical_records": [], "change_history": []})
         item["runs"].append(run)
     run_index = {(item["work_item_id"], str(run.get("run_id"))): run for item in items for run in item["runs"]}
     sheet_snapshots = {"Plan": "selected_plan_rows", "Materials": "selected_material_rows", "Totals": "selected_total_rows", "Checklist": "selected_checklist_rows", "Cleavage": "selected_cleavage_rows"}
@@ -247,6 +253,13 @@ def import_workbook(path: str | Path, *, column_mapping: Mapping[str, Mapping[st
                 "sha256": row.get("method_file_sha256", ""),
             }
             run["hplc_records"].append(row)
+    analytical_frame=_apply_mapping(_sheet(frames,"Analytical"),mapping.get("Analytical"))
+    for row in _records(analytical_frame):
+        run=run_index.get((str(row.pop("work_item_id","")),str(row.get("run_id",""))))
+        if run is not None:
+            row["data_file"]={"path":row.get("data_file_path",""),"exists":row.get("data_file_exists",False),"size_bytes":row.get("data_file_size_bytes",""),"modified_at":row.get("data_file_modified_at",""),"sha256":row.get("data_file_sha256","")}
+            row["report_file"]={"path":row.get("report_file_path",""),"exists":row.get("report_file_exists",False),"size_bytes":row.get("report_file_size_bytes",""),"modified_at":row.get("report_file_modified_at",""),"sha256":row.get("report_file_sha256","")}
+            run["analytical_records"].append(row)
     for row in _records(_apply_mapping(_sheet(frames, "Change_History"), mapping.get("Change_History"))):
         run = run_index.get((str(row.pop("work_item_id", "")), str(row.get("run_id", ""))))
         if run is not None:

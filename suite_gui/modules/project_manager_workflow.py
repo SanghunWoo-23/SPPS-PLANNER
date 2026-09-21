@@ -10,6 +10,9 @@ settings:
 - Selected Total Materials are grouped in the requested operating order.
 """
 from __future__ import annotations
+from suite_gui import runtime_state
+from suite_gui.runtime_state import (get_active_index, set_active_index, set_switching, is_switching,
+    get_calculation_namespace, get_dirty_columns, clear_dirty_columns, get_drag_state, update_drag_state)
 
 from typing import Any
 import re
@@ -17,8 +20,8 @@ import tkinter as tk
 from tkinter import ttk
 from suite_gui import peptide_item_collection
 
-APP_VERSION = "V5.0.0"
-VERSION_LABEL = "SPPS Planner V5.0.0"
+APP_VERSION = "V6.0.0"
+VERSION_LABEL = "SPPS Planner V6.0.0"
 
 
 def _walk(widget):
@@ -47,7 +50,7 @@ def _safe_set(var, value):
 
 def _active_index(gui):
     try:
-        idx = int(getattr(gui, "_v229_active_index", -1))
+        idx = int(get_active_index(gui, -1))
         if 0 <= idx < len(getattr(gui, "pm_items", []) or []):
             return idx
     except Exception:
@@ -103,7 +106,7 @@ def _refresh_label(gui, index: int):
 def _empty_editor_outputs(gui):
     """Empty the peptide editor and all result panes when no item remains."""
     try:
-        gui._v229_switching = True
+        set_switching(gui, True)
     except Exception:
         pass
     try:
@@ -144,11 +147,11 @@ def _empty_editor_outputs(gui):
             gui.checklist_progress_label.configure(text="Progress: 0/0 (0.0%)")
         except Exception:
             pass
-        gui._v229_active_index = None
-        gui._v229_dirty_columns = {}
+        set_active_index(gui, None)
+        clear_dirty_columns(gui)
     finally:
         try:
-            gui._v229_switching = False
+            set_switching(gui, False)
         except Exception:
             pass
 
@@ -170,7 +173,7 @@ def _sync_modifier_to_aa(gui):
 
 
 def _save_active(gui, v229, include_outputs=True):
-    if getattr(gui, "_v2212_switching", False):
+    if is_switching(gui):
         return
     _sync_modifier_to_aa(gui)
     try:
@@ -200,16 +203,16 @@ def _restore(gui, v229, ns: dict[str, Any], index: int):
     if not (0 <= int(index) < len(getattr(gui, "pm_items", []) or [])):
         _empty_editor_outputs(gui)
         return
-    gui._v2212_switching = True
+    set_switching(gui, True)
     try:
         v229._restore_item(gui, int(index), ns)
-        gui._v229_active_index = int(index)
+        set_active_index(gui, int(index))
     finally:
-        gui._v2212_switching = False
+        set_switching(gui, False)
 
 
 def single_select(gui, v229, ns: dict[str, Any], _event=None):
-    if getattr(gui, "_v2212_switching", False) or getattr(gui, "_v2212_dragging", False):
+    if is_switching(gui) or get_drag_state(gui).dragging:
         return None
     try:
         selected = [int(i) for i in gui.pm_list.curselection()]
@@ -226,9 +229,9 @@ def single_select(gui, v229, ns: dict[str, Any], _event=None):
         # Snapshot the large output tables only when a Plan cell is actually
         # being edited; ordinary switching saves the small editor payload only.
         tree = getattr(gui, "pm_selected_plan_tree", None)
-        editor = getattr(tree, "_v229_editor", None) if tree is not None else None
+        editor = runtime_state.get_tree_editor(tree) if tree is not None else None
         include_outputs = bool(
-            getattr(gui, "_v229_dirty_columns", {})
+            get_dirty_columns(gui)
             or editor is not None
         )
         _save_active(gui, v229, include_outputs=include_outputs)
@@ -242,7 +245,7 @@ def single_select(gui, v229, ns: dict[str, Any], _event=None):
 def double_click(gui, v229, ns: dict[str, Any], _event=None):
     # Explicit reload path: same behaviour as single-select, but forced even when
     # the selected item equals the active index.
-    if getattr(gui, "_v2212_dragging", False):
+    if get_drag_state(gui).dragging:
         return "break"
     try:
         selected = [int(i) for i in gui.pm_list.curselection()]
@@ -275,7 +278,7 @@ def delete_items(gui, v229, ns: dict[str, Any]):
         return
     gui.pm_items = result.items
     if not result.items:
-        gui._v229_active_index = None
+        set_active_index(gui, None)
         _rebuild_listbox(gui, [], None)
         _empty_editor_outputs(gui)
     else:
@@ -290,24 +293,17 @@ def delete_items(gui, v229, ns: dict[str, Any]):
 
 def _start_drag(gui, event):
     try:
-        gui._v2212_drag_start_y = int(event.y)
-        gui._v2212_drag_last_target = int(gui.pm_list.nearest(event.y))
-        gui._v2212_drag_selection = sorted({int(i) for i in gui.pm_list.curselection()})
+        update_drag_state(gui, drag_start_y=int(event.y), drag_last_target=int(gui.pm_list.nearest(event.y)),
+                          drag_selection=sorted({int(i) for i in gui.pm_list.curselection()}), dragging=False)
     except Exception:
-        gui._v2212_drag_selection = []
-    gui._v2212_dragging = False
+        update_drag_state(gui, drag_selection=[], dragging=False)
     return None
 
 
 def _move_block(gui, selected: list[int], target: int):
-    result = peptide_item_collection.move_block(
-        getattr(gui, "pm_items", []),
-        selected,
-        target,
-        _active_index(gui),
-    )
+    result = peptide_item_collection.move_block(getattr(gui, "pm_items", []), selected, target, _active_index(gui))
     gui.pm_items = result.items
-    gui._v229_active_index = result.active_index
+    set_active_index(gui, result.active_index)
     new_selected = list(result.selected_indices)
     _rebuild_listbox(gui, new_selected, result.active_index)
     return new_selected
@@ -315,40 +311,31 @@ def _move_block(gui, selected: list[int], target: int):
 
 def _drag_motion(gui, event):
     try:
-        if abs(int(event.y) - int(getattr(gui, "_v2212_drag_start_y", event.y))) < 4:
+        state=get_drag_state(gui)
+        if abs(int(event.y) - int(state.drag_start_y if state.drag_start_y is not None else event.y)) < 4:
             return None
-        gui._v2212_dragging = True
-        target = int(gui.pm_list.nearest(event.y))
-        last = getattr(gui, "_v2212_drag_last_target", None)
-        if target == last:
-            return None
-        selected = sorted({int(i) for i in gui.pm_list.curselection()}) or list(getattr(gui, "_v2212_drag_selection", []) or [])
-        if not selected:
-            return None
-        gui._v2212_drag_last_target = target
-        new_selected = _move_block(gui, selected, target)
-        gui._v2212_drag_selection = new_selected
+        update_drag_state(gui, dragging=True)
+        state=get_drag_state(gui); target=int(gui.pm_list.nearest(event.y))
+        if target == state.drag_last_target: return None
+        selected=sorted({int(i) for i in gui.pm_list.curselection()}) or list(state.drag_selection or [])
+        if not selected: return None
+        new_selected=_move_block(gui,selected,target)
+        update_drag_state(gui, drag_last_target=target, drag_selection=new_selected)
     except Exception:
         pass
     return "break"
 
 
 def _end_drag(gui, event):
-    if getattr(gui, "_v2212_dragging", False):
-        try:
-            gui.schedule_autosave()
-        except Exception:
-            pass
-        # Do not immediately load during reorder; preserve editor unless exactly
-        # one reordered item is explicitly selected after the drag finishes.
-        try:
-            gui.after(120, lambda: setattr(gui, "_v2212_dragging", False))
-        except Exception:
-            gui._v2212_dragging = False
+    state=get_drag_state(gui)
+    if state.dragging:
+        try: gui.schedule_autosave()
+        except Exception: pass
+        # no delayed re-assert: release ownership synchronously after reorder event
+        update_drag_state(gui, dragging=False)
         return "break"
-    gui._v2212_dragging = False
+    update_drag_state(gui, dragging=False)
     return None
-
 
 def _install_item_bindings(gui, v229, ns: dict[str, Any]):
     try:
@@ -366,15 +353,9 @@ def _install_item_bindings(gui, v229, ns: dict[str, Any]):
         gui.pm_list.bind("<ButtonRelease-1>", lambda e, _g=gui: _end_drag(_g, e), add=False)
     except Exception:
         pass
-    try:
-        parent = gui.pm_list.master
-        for widget in _walk(parent):
-            if isinstance(widget, ttk.Button):
-                text = str(widget.cget("text"))
-                if text == "Delete":
-                    widget.configure(command=gui.pm_delete_peptide)
-    except Exception:
-        pass
+    delete_button = getattr(gui, "pm_delete_button", None)
+    if delete_button is not None:
+        delete_button.configure(command=gui.pm_delete_peptide)
 
 
 def _find_setup_notebook(gui):
@@ -417,6 +398,9 @@ def _install_unit_defaults_ui(gui):
         gui.use_default_aa_eq = tk.BooleanVar(value=True)
     if not hasattr(gui, "use_default_aa_repeat"):
         gui.use_default_aa_repeat = tk.BooleanVar(value=True)
+    if getattr(gui, "_unit_defaults_ui_native", False):
+        _sync_modifier_to_aa(gui)
+        return
     nb = _find_setup_notebook(gui)
     if nb is None:
         return
@@ -459,14 +443,14 @@ def _install_unit_defaults_ui(gui):
                     child.configure(text="Default AA doubling")
             except Exception:
                 pass
-    if getattr(gui, "_v2212_unit_ui_installed", False):
+    if runtime_state.get_flag(gui,"unit_ui_installed"):
         return
     row = _grid_next_row(frame) + 1
     ttk.Checkbutton(frame, text="Use default AA eq for generated units", variable=gui.use_default_aa_eq).grid(row=row, column=0, columnspan=3, sticky="w", padx=2, pady=(8, 2))
     ttk.Checkbutton(frame, text="Use default doubling/repeat", variable=gui.use_default_aa_repeat).grid(row=row+1, column=0, columnspan=3, sticky="w", padx=2, pady=2)
     ttk.Checkbutton(frame, text="Use the same eq/doubling system for AA, Ac-AA-OH, modifier, label, and chemical", variable=gui.unit_defaults_unified, command=lambda _g=gui: _sync_modifier_to_aa(_g)).grid(row=row+2, column=0, columnspan=8, sticky="w", padx=2, pady=2)
     ttk.Label(frame, text="Manual per-unit values are still edited directly in Selected Plan, then applied with Apply Change.").grid(row=row+3, column=0, columnspan=8, sticky="w", padx=2, pady=(2, 0))
-    gui._v2212_unit_ui_installed = True
+    runtime_state.set_flag(gui,"unit_ui_installed",True)
     _sync_modifier_to_aa(gui)
 
 
@@ -497,7 +481,7 @@ def _install_title(gui):
 
 
 def apply_post_build(gui, v229, ns):
-    gui._v2212_ns = ns
+    runtime_state.set_calculation_namespace(gui,ns)
     _install_title(gui)
     _install_unit_defaults_ui(gui)
     _install_checklist_widths(gui)
@@ -510,7 +494,7 @@ def apply_post_build(gui, v229, ns):
         _empty_editor_outputs(gui)
     elif _active_index(gui) is None:
         try:
-            gui._v229_active_index = 0
+            set_active_index(gui, 0)
             gui.pm_list.selection_clear(0, "end")
             gui.pm_list.selection_set(0)
             gui.pm_list.activate(0)

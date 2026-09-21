@@ -5,14 +5,15 @@ It only restores user-visible controls/options that were lost by the aggressive
 V2.2.10 cleanup and makes the active V2.2.9 controller expose them clearly.
 """
 from __future__ import annotations
+from suite_gui import runtime_state
 import re
 from typing import Any
 import tkinter as tk
 from tkinter import ttk
 from suite_gui import catalogs
 
-APP_VERSION = "V5.0.0"
-VERSION_LABEL = "SPPS Planner V5.0.0"
+APP_VERSION = "V6.0.0"
+VERSION_LABEL = "SPPS Planner V6.0.0"
 
 def _walk(widget):
     try:
@@ -43,13 +44,12 @@ def _dedupe(seq):
 
 def _all_unit_options(gui, ns: dict[str, Any], column: str) -> list[str]:
     base = []
-    for name in ("_v251_options_for_col", "_v250_options_for_col", "_v249_options_for_col"):
-        fn = ns.get(name)
-        if callable(fn):
-            try:
-                base += list(fn(gui, column))
-            except Exception:
-                pass
+    fn = runtime_state.namespace_callable(ns, "options_for_column")
+    if callable(fn):
+        try:
+            base += list(fn(gui, column))
+        except Exception:
+            pass
     try:
         base += list(getattr(gui, "UNIT_VALUES", []) or [])
     except Exception:

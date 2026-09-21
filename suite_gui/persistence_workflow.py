@@ -1,5 +1,6 @@
-"""Direct project/session persistence for SPPS Planner V5.0.0."""
+"""Direct project/session persistence for SPPS Planner V6.0.0."""
 from __future__ import annotations
+from suite_gui.runtime_state import get_active_index, set_active_index, get_calculation_namespace
 
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +14,7 @@ from suite_gui.modules.release_ui import _normalize_resin
 from suite_gui.session_state import DEFAULT_STATE_FIELDS
 
 
-VERSION = "V5.0.0"
+VERSION = "V6.0.0"
 EXTRA_DEFAULT_FIELDS = (
     "solvent_volume_mode",
     "amide_ml_per_mmol",
@@ -70,7 +71,7 @@ def _migrate_volume_defaults(defaults: Mapping[str, Any] | None) -> dict[str, An
 
 def _active_index(gui: Any) -> int:
     try:
-        index = int(getattr(gui, "_v229_active_index", 0))
+        index = int(get_active_index(gui, 0))
     except Exception:
         index = 0
     items = list(getattr(gui, "pm_items", []) or [])
@@ -94,14 +95,14 @@ def collect_state(gui: Any, *, sync_runs: bool = True) -> dict[str, Any]:
     """Collect the complete portable state without inherited patch callbacks."""
     try:
         plan_workflow._save_active(gui, include_outputs=True)
-    except Exception:
-        pass
+    except Exception as exc:
+        raise RuntimeError("Could not capture the active Planner state before project save.") from exc
     if sync_runs:
         for item in getattr(gui, "pm_items", []) or []:
             try:
                 data_system.sync_active_run(item)
-            except Exception:
-                pass
+            except Exception as exc:
+                raise RuntimeError("Could not synchronize active Run linkage before project save.") from exc
     if not str(getattr(gui, "_project_id", "")).strip():
         gui._project_id = uuid4().hex
 
@@ -158,17 +159,23 @@ def _save_project_path(gui: Any, path: Path, show: bool) -> Path:
             raise RuntimeError(
                 "Project file changed outside SPPS Planner. Reload it or use Save Project As to avoid overwriting another edit."
             )
-    revision = int(getattr(gui, "_project_revision", 0) or 0) + 1
-    gui._project_revision = revision
-    history = list(getattr(gui, "_project_change_history", []) or [])
+    # Capture first. A failed editor/Run capture or failed file publication must
+    # not mutate the in-memory revision/history and then report an unsaved state.
+    previous_revision = int(getattr(gui, "_project_revision", 0) or 0)
+    previous_history = list(getattr(gui, "_project_change_history", []) or [])
+    state = collect_state(gui)
+    revision = previous_revision + 1
+    history = list(previous_history)
     history.append({
         "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
         "action": "save", "revision": revision, "path": str(path),
     })
-    gui._project_change_history = history
-    state = collect_state(gui)
     state["project_revision"] = revision
+    state["project_change_history"] = history
     state_persistence.atomic_write_json_with_backup(path, state)
+    # Publish in-memory metadata only after the atomic file write succeeds.
+    gui._project_revision = revision
+    gui._project_change_history = history
     gui._loaded_project_path = path
     gui._loaded_project_fingerprint = state_persistence.file_sha256(path)
     gui.last_outdir = path.parent
@@ -205,13 +212,18 @@ def save_project_as(gui: Any, path: str | Path | None = None, show: bool = True)
         if not selected:
             return None
         path = selected
+    previous_path = getattr(gui, "_loaded_project_path", None)
+    previous_fingerprint = str(getattr(gui, "_loaded_project_fingerprint", "") or "")
     try:
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         gui._loaded_project_path = None
         gui._loaded_project_fingerprint = ""
-        return _save_project_path(gui, destination, show)
+        saved = _save_project_path(gui, destination, show)
+        return saved
     except Exception as exc:
+        gui._loaded_project_path = previous_path
+        gui._loaded_project_fingerprint = previous_fingerprint
         try:
             messagebox.showerror("Save Project As", str(exc))
         except Exception:
@@ -338,10 +350,10 @@ def _restore_state(gui: Any, data: Mapping[str, Any]) -> bool:
         )
         if all(hasattr(gui, name) for name in required):
             project_manager_workflow._restore(
-                gui, plan_workflow, getattr(gui, "_v229_ns", {}), index,
+                gui, plan_workflow, get_calculation_namespace(gui, {}), index,
             )
         else:
-            gui._v229_active_index = index
+            set_active_index(gui, index)
 
         if legacy_flat and hasattr(gui, "generate_update_plan"):
             try:

@@ -64,5 +64,5 @@ def test_static_unit_key_remains_static_through_final_class_inheritance():
 
     instance = object.__new__(ClassicControllerBase)
     assert instance._unit_key("Ac / acetyl cap") == "ACACETYLCAP"
-    assert instance._normalize_unit_display_name("Ac") == "Ac"
+    assert instance._normalize_unit_display_name("Ac") == "Acetic anhydride (Ac2O)"
     assert instance._is_ac_unit("Ac") is True

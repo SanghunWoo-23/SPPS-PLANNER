@@ -58,6 +58,8 @@ def canonical(value: Any) -> str:
         "dic": "DIC",
         "diea": "DIEA",
         "dipea": "DIEA",
+        "ac": "Acetic anhydride (Ac2O)",
+        "acetyl": "Acetic anhydride (Ac2O)",
         "ac2o": "Acetic anhydride (Ac2O)",
         "aceticanhydride": "Acetic anhydride (Ac2O)",
         "aceticanhydrideac2o": "Acetic anhydride (Ac2O)",
@@ -79,7 +81,12 @@ def canonical(value: Any) -> str:
         "propiolicacidpropioloylcoupling": "Propiolic acid",
         "cholesterylhemisuccinatechems": "Cholesteryl hemisuccinate",
     }
-    return aliases.get(key, raw)
+    if key in aliases:
+        return aliases[key]
+    # Legacy saved rows may still contain a purpose suffix.  It is not part of
+    # the material identity and must not surface as a Unit/Material name.
+    cleaned = re.sub(r"\s+(?:route\s+)?for\s+N[- ]terminal\b.*$", "", raw, flags=re.IGNORECASE).strip()
+    return cleaned or raw
 
 
 def material_lookup(name: Any) -> tuple[float, float]:

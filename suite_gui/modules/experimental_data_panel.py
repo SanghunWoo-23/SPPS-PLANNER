@@ -1,4 +1,4 @@
-"""Operator-facing Experimental Data and Advisor window for V5.0.0."""
+"""Operator-facing Experimental Data and Advisor window for V6.0.0."""
 from __future__ import annotations
 
 import json
@@ -8,6 +8,9 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from suite_gui import experimental_data, experimental_workflow, ui_system
+from suite_gui.modules import evidence_detail_dialog
+from suite_gui.preflight import format_report
+from suite_gui.run_review import format_finish_review
 
 # Legacy UI labels retained only as searchable compatibility notes for regression
 # contracts; the visible V4 labels below are intentionally shorter.
@@ -35,17 +38,50 @@ class ExperimentalDataWindow(tk.Toplevel):
     def __init__(self, gui: Any) -> None:
         super().__init__(gui)
         self.gui = gui
-        self.title("Recommendations & Lab History — SPPS Planner V5.0.0")
-        self._configure_v5_styles()
+        self.title("Recommendations & Lab History — SPPS Planner V6.0.0")
+        self._configure_styles()
         try:
             self.transient(gui)
         except Exception as exc:
             self._transient_error = exc
+        self._pending_after_ids: set[str] = set()
         self._build()
         ui_system.fit_window(self, preferred_width=1180, preferred_height=760, minimum_width=1040, minimum_height=680)
         # Paint the window first; load DB-backed history immediately afterward.
-        # This keeps the button click responsive without changing any feature.
-        self.after(60, self._refresh_after_open)
+        # Track the callback so a closed recommendation window cannot leave a
+        # Tcl job behind during application/test shutdown.
+        self._schedule(60, self._refresh_after_open)
+
+    def _schedule(self, delay_ms: int, callback, *, idle: bool = False) -> str | None:
+        holder: dict[str, str] = {}
+        def run() -> None:
+            token = holder.get("id")
+            if token:
+                self._pending_after_ids.discard(token)
+            try:
+                if self.winfo_exists():
+                    callback()
+            except tk.TclError:
+                return
+        try:
+            token = self.after_idle(run) if idle else self.after(max(0, int(delay_ms)), run)
+            holder["id"] = str(token)
+            self._pending_after_ids.add(str(token))
+            return str(token)
+        except tk.TclError:
+            return None
+
+    def destroy(self) -> None:
+        for token in list(getattr(self, "_pending_after_ids", set())):
+            try:
+                self.after_cancel(token)
+            except (tk.TclError, ValueError):
+                pass
+        self._pending_after_ids = set()
+        try:
+            super().destroy()
+        except tk.TclError:
+            return
 
     def _refresh_after_open(self) -> None:
         try:
@@ -54,33 +90,33 @@ class ExperimentalDataWindow(tk.Toplevel):
         except tk.TclError:
             return
 
-    def _configure_v5_styles(self) -> None:
-        """Apply the restrained SPPS Planner V5 visual language.
+    def _configure_styles(self) -> None:
+        """Apply the restrained SPPS Planner visual language.
 
         Styles are local names so the existing Planner UI is not destructively
         restyled.  Segoe UI is the Windows-first font; Tk falls back naturally on
         non-Windows test hosts.
         """
-        self._v5_colors = {
+        self.recommendation_colors = {
             "bg": "#f4f8ff", "card": "#ffffff", "line": "#cfe0fb",
             "text": "#18324d", "muted": "#5d7793", "lavender": "#deebff",
             "lavender_active": "#c6dcff", "accent": "#2f6fe4", "soft": "#ebf3ff",
         }
-        self.configure(background=self._v5_colors["bg"])
+        self.configure(background=self.recommendation_colors["bg"])
         style = ttk.Style(self)
-        style.configure("V5.Root.TFrame", background=self._v5_colors["bg"])
-        style.configure("V5.Card.TFrame", background=self._v5_colors["card"])
-        style.configure("V5.Title.TLabel", background=self._v5_colors["bg"], foreground=self._v5_colors["text"], font=("Segoe UI Semibold", 14))
-        style.configure("V5.Subtitle.TLabel", background=self._v5_colors["bg"], foreground=self._v5_colors["muted"], font=("Segoe UI", 9))
-        style.configure("V5.Section.TLabel", background=self._v5_colors["bg"], foreground=self._v5_colors["text"], font=("Segoe UI Semibold", 10))
-        style.configure("V5.Muted.TLabel", background=self._v5_colors["bg"], foreground=self._v5_colors["muted"], font=("Segoe UI", 9))
-        style.configure("V5.Card.TLabelframe", background=self._v5_colors["card"], bordercolor=self._v5_colors["line"], relief="solid", borderwidth=1)
-        style.configure("V5.Card.TLabelframe.Label", background=self._v5_colors["bg"], foreground=self._v5_colors["text"], font=("Segoe UI Semibold", 10))
-        style.configure("V5.TNotebook", background=self._v5_colors["bg"], borderwidth=0, tabmargins=(0, 2, 0, 0))
-        style.configure("V5.TNotebook.Tab", font=("Segoe UI Semibold", 9), padding=(13, 8), foreground=self._v5_colors["text"])
-        style.map("V5.TNotebook.Tab", background=[("selected", self._v5_colors["lavender_active"]), ("active", self._v5_colors["lavender"])], foreground=[("selected", self._v5_colors["accent"])])
-        style.configure("V5.Primary.TButton", font=("Segoe UI Semibold", 9), padding=(12, 7))
-        style.configure("V5.Secondary.TButton", font=("Segoe UI", 9), padding=(10, 6))
+        style.configure("SPPS.Root.TFrame", background=self.recommendation_colors["bg"])
+        style.configure("SPPS.Card.TFrame", background=self.recommendation_colors["card"])
+        style.configure("SPPS.Title.TLabel", background=self.recommendation_colors["bg"], foreground=self.recommendation_colors["text"], font=("Segoe UI Semibold", 14))
+        style.configure("SPPS.Subtitle.TLabel", background=self.recommendation_colors["bg"], foreground=self.recommendation_colors["muted"], font=("Segoe UI", 9))
+        style.configure("SPPS.Section.TLabel", background=self.recommendation_colors["bg"], foreground=self.recommendation_colors["text"], font=("Segoe UI Semibold", 10))
+        style.configure("SPPS.Muted.TLabel", background=self.recommendation_colors["bg"], foreground=self.recommendation_colors["muted"], font=("Segoe UI", 9))
+        style.configure("SPPS.Card.TLabelframe", background=self.recommendation_colors["card"], bordercolor=self.recommendation_colors["line"], relief="solid", borderwidth=1)
+        style.configure("SPPS.Card.TLabelframe.Label", background=self.recommendation_colors["bg"], foreground=self.recommendation_colors["text"], font=("Segoe UI Semibold", 10))
+        style.configure("SPPS.TNotebook", background=self.recommendation_colors["bg"], borderwidth=0, tabmargins=(0, 2, 0, 0))
+        style.configure("SPPS.TNotebook.Tab", font=("Segoe UI Semibold", 9), padding=(13, 8), foreground=self.recommendation_colors["text"])
+        style.map("SPPS.TNotebook.Tab", background=[("selected", self.recommendation_colors["lavender_active"]), ("active", self.recommendation_colors["lavender"])], foreground=[("selected", self.recommendation_colors["accent"])])
+        style.configure("SPPS.Primary.TButton", font=("Segoe UI Semibold", 9), padding=(12, 7))
+        style.configure("SPPS.Secondary.TButton", font=("Segoe UI", 9), padding=(10, 6))
         style.configure("Treeview", font=("Segoe UI", 9), rowheight=24)
         style.configure("Treeview.Heading", font=("Segoe UI Semibold", 9))
 
@@ -95,55 +131,110 @@ class ExperimentalDataWindow(tk.Toplevel):
             widget.configure(height=8)
 
     def _build(self) -> None:
-        header = ttk.Frame(self, padding=(14, 12, 14, 5), style="V5.Root.TFrame"); header.pack(fill="x")
-        left = ttk.Frame(header, style="V5.Root.TFrame"); left.pack(side="left", fill="x", expand=True)
-        ttk.Label(left, text="Recommendations & Lab History", style="V5.Title.TLabel").pack(anchor="w")
-        ttk.Label(left, text="Add measured results or issues; Planner conditions are attached automatically.", style="V5.Subtitle.TLabel").pack(anchor="w", pady=(1,0))
-        self.status = ttk.Label(header, text="Experimental knowledge base", style="V5.Subtitle.TLabel", anchor="e")
+        header = ttk.Frame(self, padding=(14, 12, 14, 5), style="SPPS.Root.TFrame"); header.pack(fill="x")
+        left = ttk.Frame(header, style="SPPS.Root.TFrame"); left.pack(side="left", fill="x", expand=True)
+        ttk.Label(left, text="Recommendations & Lab History", style="SPPS.Title.TLabel").pack(anchor="w")
+        ttk.Label(left, text="Add measured results or issues; Planner conditions are attached automatically.", style="SPPS.Subtitle.TLabel").pack(anchor="w", pady=(1,0))
+        self.status = ttk.Label(header, text="Experimental knowledge base", style="SPPS.Subtitle.TLabel", anchor="e")
         self.status.pack(side="right", padx=(12,0))
 
-        top = ttk.Frame(self, padding=(14, 5, 14, 7), style="V5.Root.TFrame"); top.pack(fill="x")
-        ttk.Button(top, text="Add Result", command=self.record_result, style="V5.Primary.TButton").pack(side="left")
-        ttk.Button(top, text="Add Issue", command=self.record_issue, style="V5.Secondary.TButton").pack(side="left", padx=(6,0))
-        ttk.Button(top, text="Refresh", command=self.refresh_all, style="V5.Secondary.TButton").pack(side="left", padx=(12,0))
-        ttk.Label(top, text="Planner conditions are saved with results automatically.", style="V5.Muted.TLabel").pack(side="left", padx=(14,0))
+        top = ttk.Frame(self, padding=(14, 5, 14, 4), style="SPPS.Root.TFrame"); top.pack(fill="x")
+        self.add_result_button = ttk.Button(top, text="Add Result", command=self.record_result, style="SPPS.Primary.TButton"); self.add_result_button.pack(side="left")
+        self.final_result_button = ttk.Button(top, text="Final Result", command=lambda: self.record_result("Cleavage / Final"), style="SPPS.Secondary.TButton"); self.final_result_button.pack(side="left", padx=(6,0))
+        self.add_issue_button = ttk.Button(top, text="Add Issue", command=self.record_issue, style="SPPS.Secondary.TButton"); self.add_issue_button.pack(side="left", padx=(6,0))
+        self.preflight_button = ttk.Button(top, text="Preflight", command=self._show_preflight, style="SPPS.Secondary.TButton"); self.preflight_button.pack(side="left", padx=(12,0))
+        self.start_experiment_button = ttk.Button(top, text="Start Experiment", command=self._start_experiment, style="SPPS.Secondary.TButton"); self.start_experiment_button.pack(side="left", padx=(6,0))
+        self.finish_experiment_button = ttk.Button(top, text="Finish", command=self._finish_experiment, style="SPPS.Secondary.TButton"); self.finish_experiment_button.pack(side="left", padx=(6,0))
+        self.repeat_run_button = ttk.Button(top, text="Repeat Run", command=self._repeat_run, style="SPPS.Secondary.TButton"); self.repeat_run_button.pack(side="left", padx=(6,0))
+        ttk.Button(top, text="Refresh", command=self.refresh_all, style="SPPS.Secondary.TButton").pack(side="left", padx=(12,0))
+        self.data_store_button = ttk.Button(top, text="Data Store", command=self._show_data_store, style="SPPS.Secondary.TButton")
+        self.data_store_button.pack(side="left", padx=(6,0))
+        self.backup_store_button = ttk.Button(top, text="Backup DB", command=self._backup_data_store, style="SPPS.Secondary.TButton")
+        self.backup_store_button.pack(side="left", padx=(6,0))
+        ttk.Label(top, text="Start freezes the Planner condition; measured records reuse that frozen Run context.", style="SPPS.Muted.TLabel").pack(side="left", padx=(14,0))
+
+        runbar = ttk.Frame(self, padding=(14, 0, 14, 6), style="SPPS.Root.TFrame"); runbar.pack(fill="x")
+        self.run_context_var = tk.StringVar(value="Run context not loaded")
+        ttk.Label(runbar, textvariable=self.run_context_var, style="SPPS.Muted.TLabel").pack(side="left")
 
         # Legacy top-level labels retained only as code-search notes for old tests:
         # text="Records"  text="Risk & Evidence"  text="Recommended Conditions"  text="Data Health"
         # The operator-facing surface is now Recommendations + Advanced. Existing
         # history/risk/health functionality is improved in-place, not duplicated.
-        nb = ttk.Notebook(self, style="V5.TNotebook"); nb.pack(fill="both", expand=True, padx=14, pady=(3, 12))
+        nb = ttk.Notebook(self, style="SPPS.TNotebook"); nb.pack(fill="both", expand=True, padx=14, pady=(3, 12))
         self.notebook = nb
-        self.recommend_tab = ttk.Frame(nb, padding=8, style="V5.Root.TFrame"); nb.add(self.recommend_tab, text="Recommendations")
-        self.advanced_tab = ttk.Frame(nb, padding=8, style="V5.Root.TFrame"); nb.add(self.advanced_tab, text="Advanced")
+        self.recommend_tab = ttk.Frame(nb, padding=8, style="SPPS.Root.TFrame"); nb.add(self.recommend_tab, text="Recommendations")
+        self.advanced_tab = ttk.Frame(nb, padding=8, style="SPPS.Root.TFrame"); nb.add(self.advanced_tab, text="Advanced")
 
-        advbar = ttk.Frame(self.advanced_tab, style="V5.Root.TFrame"); advbar.pack(fill="x", pady=(0,6))
-        ttk.Button(advbar, text="Import Lab Data", command=self.import_file, style="V5.Secondary.TButton").pack(side="left")
-        ttk.Label(advbar, text="History, evidence audit and model/data checks", style="V5.Muted.TLabel").pack(side="left", padx=(10,0))
-        advanced_nb = ttk.Notebook(self.advanced_tab, style="V5.TNotebook"); advanced_nb.pack(fill="both", expand=True)
+        advbar = ttk.Frame(self.advanced_tab, style="SPPS.Root.TFrame"); advbar.pack(fill="x", pady=(0,6))
+        ttk.Button(advbar, text="Import Lab Data", command=self.import_file, style="SPPS.Secondary.TButton").pack(side="left")
+        ttk.Label(advbar, text="History, evidence audit and model/data checks", style="SPPS.Muted.TLabel").pack(side="left", padx=(10,0))
+        advanced_nb = ttk.Notebook(self.advanced_tab, style="SPPS.TNotebook"); advanced_nb.pack(fill="both", expand=True)
         self.advanced_notebook = advanced_nb
-        self.records_tab = ttk.Frame(advanced_nb, padding=8, style="V5.Root.TFrame"); advanced_nb.add(self.records_tab, text="History")
-        self.decision_tab = ttk.Frame(advanced_nb, padding=10, style="V5.Root.TFrame"); advanced_nb.add(self.decision_tab, text="Risk & Evidence")
-        self.health_tab = ttk.Frame(advanced_nb, padding=10, style="V5.Root.TFrame"); advanced_nb.add(self.health_tab, text="Data Health")
+        self.records_tab = ttk.Frame(advanced_nb, padding=8, style="SPPS.Root.TFrame"); advanced_nb.add(self.records_tab, text="History")
+        self.decision_tab = ttk.Frame(advanced_nb, padding=10, style="SPPS.Root.TFrame"); advanced_nb.add(self.decision_tab, text="Risk & Evidence")
+        self.health_tab = ttk.Frame(advanced_nb, padding=10, style="SPPS.Root.TFrame"); advanced_nb.add(self.health_tab, text="Data Health")
+        self.analytics_tab = ttk.Frame(advanced_nb, padding=10, style="SPPS.Root.TFrame"); advanced_nb.add(self.analytics_tab, text="Analytics")
 
-        records_nb = ttk.Notebook(self.records_tab, style="V5.TNotebook"); records_nb.pack(fill="both", expand=True)
+        records_nb = ttk.Notebook(self.records_tab, style="SPPS.TNotebook"); records_nb.pack(fill="both", expand=True)
         self.records_notebook = records_nb
-        self.issue_tab = ttk.Frame(records_nb, padding=10, style="V5.Root.TFrame"); records_nb.add(self.issue_tab, text="Issues")
-        self.loading_tab = ttk.Frame(records_nb, padding=10, style="V5.Root.TFrame"); records_nb.add(self.loading_tab, text="Loading")
-        self.cleavage_tab = ttk.Frame(records_nb, padding=10, style="V5.Root.TFrame"); records_nb.add(self.cleavage_tab, text="Cleavage")
-        self.sequence_tab = ttk.Frame(records_nb, padding=10, style="V5.Root.TFrame"); records_nb.add(self.sequence_tab, text="Sequence STD")
-        self.usage_tab = ttk.Frame(records_nb, padding=10, style="V5.Root.TFrame"); records_nb.add(self.usage_tab, text="Cleavage Usage")
-        self.outcome_tab = ttk.Frame(records_nb, padding=10, style="V5.Root.TFrame"); records_nb.add(self.outcome_tab, text="Outcomes")
+        self.issue_tab = ttk.Frame(records_nb, padding=10, style="SPPS.Root.TFrame"); records_nb.add(self.issue_tab, text="Issues")
+        self.loading_tab = ttk.Frame(records_nb, padding=10, style="SPPS.Root.TFrame"); records_nb.add(self.loading_tab, text="Loading")
+        self.cleavage_tab = ttk.Frame(records_nb, padding=10, style="SPPS.Root.TFrame"); records_nb.add(self.cleavage_tab, text="Cleavage")
+        self.sequence_tab = ttk.Frame(records_nb, padding=10, style="SPPS.Root.TFrame"); records_nb.add(self.sequence_tab, text="Sequence STD")
+        self.usage_tab = ttk.Frame(records_nb, padding=10, style="SPPS.Root.TFrame"); records_nb.add(self.usage_tab, text="Cleavage Usage")
+        self.outcome_tab = ttk.Frame(records_nb, padding=10, style="SPPS.Root.TFrame"); records_nb.add(self.outcome_tab, text="Outcomes")
 
-        recommend_nb = ttk.Notebook(self.recommend_tab, style="V5.TNotebook"); recommend_nb.pack(fill="both", expand=True)
+        recommend_nb = ttk.Notebook(self.recommend_tab, style="SPPS.TNotebook"); recommend_nb.pack(fill="both", expand=True)
         self.recommend_notebook = recommend_nb
-        self.loading_advisor_tab = ttk.Frame(recommend_nb, padding=10, style="V5.Root.TFrame"); recommend_nb.add(self.loading_advisor_tab, text="Loading")
-        self.cleavage_advisor_tab = ttk.Frame(recommend_nb, padding=10, style="V5.Root.TFrame"); recommend_nb.add(self.cleavage_advisor_tab, text="Cleavage")
-        self.condition_optimizer_tab = ttk.Frame(recommend_nb, padding=10, style="V5.Root.TFrame"); recommend_nb.add(self.condition_optimizer_tab, text="All Conditions")
+        self.loading_advisor_tab = ttk.Frame(recommend_nb, padding=10, style="SPPS.Root.TFrame"); recommend_nb.add(self.loading_advisor_tab, text="Loading")
+        self.cleavage_advisor_tab = ttk.Frame(recommend_nb, padding=10, style="SPPS.Root.TFrame"); recommend_nb.add(self.cleavage_advisor_tab, text="Cleavage")
+        self.condition_optimizer_tab = ttk.Frame(recommend_nb, padding=10, style="SPPS.Root.TFrame"); recommend_nb.add(self.condition_optimizer_tab, text="All Conditions")
+        self.compare_tab = ttk.Frame(recommend_nb, padding=10, style="SPPS.Root.TFrame"); recommend_nb.add(self.compare_tab, text="Compare A/B")
 
         self._build_loading_history(); self._build_cleavage_history(); self._build_sequence_history()
         self._build_cleavage_usage_history(); self._build_outcome_history(); self._build_issue_history(); self._build_decision_support()
-        self._build_data_health(); self._build_loading_advisor(); self._build_cleavage_advisor(); self._build_condition_optimizer()
+        self._build_data_health(); self._build_analytics(); self._build_loading_advisor(); self._build_cleavage_advisor(); self._build_condition_optimizer(); self._build_ab_compare()
+
+    def _show_data_store(self) -> None:
+        try:
+            info = experimental_workflow.data_store_status(self.gui)
+            counts = info.get("counts") or {}
+            lines = [
+                f"Build: {info.get('build_flavor','')}",
+                f"SQLite: {info.get('path','')}",
+                f"Exists: {'Yes' if info.get('exists') else 'No'}",
+                f"Seed: {'enabled' if info.get('seed_enabled') else 'not bundled'} / {'ready' if info.get('seed_complete') else 'incomplete'}",
+                "",
+                f"Loading: {counts.get('loading',0)}",
+                f"Cleavage: {counts.get('cleavage',0)}",
+                f"Sequence STD: {counts.get('sequence',0)}",
+                f"Cleavage Usage: {counts.get('cleavage_usage',0)}",
+                f"Outcomes: {counts.get('outcome',0)}",
+                f"Issues: {counts.get('issue',0)}",
+                f"Recommendation traces: {counts.get('recommendation_trace',0)}",
+            ]
+            legacy = list(info.get("legacy_candidates_found") or [])
+            if legacy:
+                lines += ["", "Historical same-profile DB file(s) detected:"] + [f"• {path}" for path in legacy]
+            if info.get("last_backup"):
+                lines += ["", "Last automatic recovery backup:", str(info.get("last_backup"))]
+            if info.get("last_recovery"):
+                lines += ["", "Last legacy recovery:", str(info.get("last_recovery"))]
+            if info.get("last_recovery_error"):
+                lines += ["", "Recovery warning:", str(info.get("last_recovery_error"))]
+            if info.get("error"):
+                lines += ["", "Initialization warning:", str(info.get("error"))]
+            messagebox.showinfo("Experimental Data Store", "\n".join(lines), parent=self)
+        except Exception as exc:
+            messagebox.showerror("Experimental Data Store", str(exc), parent=self)
+
+    def _backup_data_store(self) -> None:
+        try:
+            backup = experimental_workflow.backup_data_store(self.gui)
+            messagebox.showinfo("Experimental Data Backup", f"Backup created:\n{backup}", parent=self)
+        except Exception as exc:
+            messagebox.showerror("Experimental Data Backup", str(exc), parent=self)
 
     def focus_advisor(self, kind: str) -> None:
         """Open an advisor already synchronized to the active Planner item.
@@ -159,7 +250,7 @@ class ExperimentalDataWindow(tk.Toplevel):
         self._sync_advisor_from_planner("loading" if loading else "cleavage")
         self.deiconify(); self.lift()
         ui_system.fit_window(self, preferred_width=1180, preferred_height=760, minimum_width=1040, minimum_height=680)
-        self.after_idle(self.run_loading_advisor if loading else self.run_cleavage_advisor)
+        self._schedule(0, self.run_loading_advisor if loading else self.run_cleavage_advisor, idle=True)
 
     def focus_optimizer(self) -> None:
         self.notebook.select(self.recommend_tab)
@@ -168,7 +259,7 @@ class ExperimentalDataWindow(tk.Toplevel):
         self._sync_advisor_from_planner("cleavage")
         self.deiconify(); self.lift()
         ui_system.fit_window(self, preferred_width=1180, preferred_height=760, minimum_width=1040, minimum_height=680)
-        self.after_idle(self.run_condition_optimizer)
+        self._schedule(0, self.run_condition_optimizer, idle=True)
 
     def _sync_advisor_from_planner(self, kind: str) -> None:
         if str(kind).lower().startswith("load"):
@@ -205,8 +296,9 @@ class ExperimentalDataWindow(tk.Toplevel):
         ttk.Button(bar, text="Edit Selected", command=lambda: self._edit_selected("loading")).pack(side="right", padx=2)
         ttk.Button(bar, text="Mark Verified", command=lambda: self._mark("loading", "verified")).pack(side="right", padx=2)
         ttk.Button(bar, text="Mark Excluded", command=lambda: self._mark("loading", "excluded")).pack(side="right", padx=2)
-        columns = ["status", "date", "resin_type", "amino_acid_normalized", "aa_eq", "base_eq", "loading_time_h", "absorbance", "loading_rate_mmol_g", "outlier_flag", "run_id", "raw_note", "record_id"]
+        columns = ["record_state", "status", "date", "resin_type", "amino_acid_normalized", "aa_eq", "base_eq", "loading_time_h", "absorbance", "loading_rate_mmol_g", "outlier_flag", "source_locator", "run_id", "raw_note", "record_id"]
         self.loading_tree = self._tree(self.loading_tab, columns)
+        self.loading_tree.column("source_locator", width=220)
         self.loading_tree.column("record_id", width=80)
 
     def _build_cleavage_history(self) -> None:
@@ -215,7 +307,7 @@ class ExperimentalDataWindow(tk.Toplevel):
         ttk.Button(bar, text="Edit Selected", command=lambda: self._edit_selected("cleavage")).pack(side="right", padx=2)
         ttk.Button(bar, text="Mark Verified", command=lambda: self._mark("cleavage", "verified")).pack(side="right", padx=2)
         ttk.Button(bar, text="Mark Excluded", command=lambda: self._mark("cleavage", "excluded")).pack(side="right", padx=2)
-        columns = ["status", "product", "scale_mmol", "tfa_ml", "tis_ml", "water_ml", "cleavage_eq", "cleavage_time_h", "ether_ratio", "filter_speed", "crude_g", "run_id", "raw_observation", "record_id"]
+        columns = ["record_state", "status", "product", "scale_mmol", "tfa_ml", "tis_ml", "water_ml", "cleavage_eq", "cleavage_time_h", "ether_ratio", "filter_speed", "crude_g", "run_id", "raw_observation", "record_id"]
         self.cleavage_tree = self._tree(self.cleavage_tab, columns)
         self.cleavage_tree.column("raw_observation", width=360)
         self.cleavage_tree.column("record_id", width=80)
@@ -254,17 +346,20 @@ class ExperimentalDataWindow(tk.Toplevel):
         ttk.Label(bar,text="Outcome-aware records connect actual conditions to yield/purity/failure observations.").pack(side="left")
         ttk.Button(bar,text="Mark Verified",command=lambda:self._mark("outcome","verified")).pack(side="right",padx=2)
         ttk.Button(bar,text="Mark Excluded",command=lambda:self._mark("outcome","excluded")).pack(side="right",padx=2)
-        columns=["status","stage","product","sequence","result","success_flag","yield_percent","purity_percent","doubling_required","observation","work_item_id","run_id","record_id"]
+        ttk.Button(bar,text="Failed + Informative",command=lambda:self._mark_state("outcome","failed_informative")).pack(side="right",padx=2)
+        ttk.Button(bar,text="Completed",command=lambda:self._mark_state("outcome","completed")).pack(side="right",padx=2)
+        columns=["record_state","status","stage","product","sequence","result","success_flag","yield_percent","purity_percent","crude_g","doubling_required","observation","work_item_id","run_id","record_id"]
         self.outcome_tree=self._tree(self.outcome_tab,columns)
         self.outcome_tree.column("sequence",width=260); self.outcome_tree.column("observation",width=320)
 
     def _build_issue_history(self) -> None:
-        bar=ttk.Frame(self.issue_tab, style="V5.Root.TFrame"); bar.pack(fill="x", pady=(0,6))
-        ttk.Label(bar,text="Quick issue history. Product/sequence are linked automatically from the active Planner item.", style="V5.Muted.TLabel").pack(side="left")
-        ttk.Button(bar,text="Record Issue",command=self.record_issue,style="V5.Primary.TButton").pack(side="right",padx=2)
-        ttk.Button(bar,text="Mark Verified",command=lambda:self._mark("issue","verified"),style="V5.Secondary.TButton").pack(side="right",padx=2)
-        ttk.Button(bar,text="Mark Excluded",command=lambda:self._mark("issue","excluded"),style="V5.Secondary.TButton").pack(side="right",padx=2)
-        columns=["recorded_at","stage","issue_type","position","residue","severity","resolution","action_taken","observation","product","run_id","record_id"]
+        bar=ttk.Frame(self.issue_tab, style="SPPS.Root.TFrame"); bar.pack(fill="x", pady=(0,6))
+        ttk.Label(bar,text="Quick issue history. Product/sequence are linked automatically from the active Planner item.", style="SPPS.Muted.TLabel").pack(side="left")
+        ttk.Button(bar,text="Record Issue",command=self.record_issue,style="SPPS.Primary.TButton").pack(side="right",padx=2)
+        ttk.Button(bar,text="Mark Verified",command=lambda:self._mark("issue","verified"),style="SPPS.Secondary.TButton").pack(side="right",padx=2)
+        ttk.Button(bar,text="Mark Excluded",command=lambda:self._mark("issue","excluded"),style="SPPS.Secondary.TButton").pack(side="right",padx=2)
+        ttk.Button(bar,text="Completed",command=lambda:self._mark_state("issue","completed"),style="SPPS.Secondary.TButton").pack(side="right",padx=2)
+        columns=["record_state","recorded_at","stage","issue_type","position","residue","severity","resolution","action_taken","observation","product","run_id","record_id"]
         self.issue_tree=self._tree(self.issue_tab,columns)
         self.issue_tree.column("product",width=150); self.issue_tree.column("issue_type",width=190)
         self.issue_tree.column("action_taken",width=210); self.issue_tree.column("observation",width=260); self.issue_tree.column("record_id",width=80)
@@ -272,11 +367,14 @@ class ExperimentalDataWindow(tk.Toplevel):
     def _build_decision_support(self) -> None:
         bar=ttk.Frame(self.decision_tab); bar.pack(fill="x",pady=(0,6))
         ttk.Label(bar,text="Residue difficulty is a deterministic review score; similar experiments are evidence, not automatic plan changes.").pack(side="left")
-        ttk.Button(bar,text="Analyze Current Sequence",command=self.run_v5_decision_support).pack(side="right")
+        ttk.Button(bar,text="Analyze Current Sequence",command=self.run_decision_support).pack(side="right")
         self.decision_summary=tk.Text(self.decision_tab,height=7,wrap="word"); self.decision_summary.pack(fill="x",pady=(0,8)); self._style_text(self.decision_summary, compact=True)
         ttk.Label(self.decision_tab,text="Stage Risk Advisor").pack(anchor="w")
         self.stage_risk_tree=self._tree(self.decision_tab,["stage","level","evidence_count","reasons"])
         self.stage_risk_tree.column("reasons",width=620)
+        ttk.Label(self.decision_tab,text="Sequence Risk Map").pack(anchor="w",pady=(8,0))
+        self.sequence_risk_tree=self._tree(self.decision_tab,["severity","category","positions","title","impact","review","automatic_action"])
+        self.sequence_risk_tree.column("title",width=230); self.sequence_risk_tree.column("impact",width=360); self.sequence_risk_tree.column("review",width=430)
         ttk.Label(self.decision_tab,text="Sequence Difficulty Map").pack(anchor="w",pady=(8,0))
         self.difficulty_tree=self._tree(self.decision_tab,["position","token","score","level","reasons"])
         self.difficulty_tree.column("reasons",width=520)
@@ -287,7 +385,7 @@ class ExperimentalDataWindow(tk.Toplevel):
         self.risk_issue_tree=self._tree(self.decision_tab,["stage","position","residue","issue_type","severity","resolution","action_taken","observation"])
         self.risk_issue_tree.column("issue_type",width=180); self.risk_issue_tree.column("action_taken",width=240); self.risk_issue_tree.column("observation",width=300)
 
-    def run_v5_decision_support(self) -> None:
+    def run_decision_support(self) -> None:
         sequence=_value(getattr(self.gui,"pm_sequence",""))
         try:
             difficulty=experimental_workflow.sequence_difficulty(self.gui,sequence)
@@ -298,6 +396,15 @@ class ExperimentalDataWindow(tk.Toplevel):
                 row=dict(item); row["reasons"]="; ".join(item.get("reasons") or []); risk_rows.append(row)
             self._fill(self.stage_risk_tree,risk_rows)
             self._fill(self.risk_issue_tree, risks.get("issues") or [])
+            risk_map=[]
+            for finding in (risks.get("rule_report") or {}).get("findings",[]) or []:
+                risk_map.append({
+                    "severity":finding.get("severity"), "category":finding.get("category"),
+                    "positions":",".join(map(str,finding.get("sequence_positions") or [])),
+                    "title":finding.get("title"), "impact":finding.get("impact"),
+                    "review":finding.get("recommendation"), "automatic_action":"None",
+                })
+            self._fill(self.sequence_risk_tree,risk_map)
             rows=[]
             for item in difficulty.get("positions",[]):
                 row=dict(item); row["reasons"]="; ".join(item.get("reasons") or []); rows.append(row)
@@ -313,6 +420,92 @@ class ExperimentalDataWindow(tk.Toplevel):
             self.decision_summary.delete("1.0","end"); self.decision_summary.insert("1.0","\n".join(lines))
         except Exception as exc:
             messagebox.showerror("Risk & Evidence",str(exc),parent=self)
+
+    def _refresh_run_context(self) -> None:
+        """Synchronize lifecycle labels and action states with the active Run."""
+        try:
+            state = experimental_workflow.run_ui_state(self.gui)
+            run_name = state.get("run_name") or state.get("run_id") or "No active Run"
+            status = state.get("status") or ("Not started" if state.get("has_run") else "No Run")
+            started = state.get("started_at") or "—"
+            progress = state.get("progress_percent", 0)
+            done = state.get("completed_steps", 0); total = state.get("total_steps", 0)
+            resume = state.get("resume_step") or "N/A"
+            self.run_context_var.set(
+                f"Run {run_name}  •  {status}  •  started {started}  •  progress {progress}% ({done}/{total})  •  resume {resume}"
+            )
+            self.preflight_button.configure(state="normal" if state.get("can_start") else "disabled")
+            self.start_experiment_button.configure(state="normal" if state.get("can_start") else "disabled")
+            self.finish_experiment_button.configure(state="normal" if state.get("can_finish") else "disabled")
+            self.repeat_run_button.configure(state="normal" if state.get("can_repeat") else "disabled")
+            record_state = "normal" if state.get("can_record_result") else "disabled"
+            self.add_result_button.configure(state=record_state)
+            self.final_result_button.configure(state=record_state)
+            self.add_issue_button.configure(state="normal" if state.get("can_record_issue") else "disabled")
+        except Exception as exc:
+            self.run_context_var.set(f"Run context unavailable: {exc}")
+
+    def _show_preflight(self) -> None:
+        try:
+            report = experimental_workflow.preflight_check(self.gui)
+            text = format_report(report)
+            if report.get("ready") and not report.get("requires_review"):
+                messagebox.showinfo("Preflight", text, parent=self)
+            elif report.get("ready"):
+                messagebox.showwarning("Preflight", text, parent=self)
+            else:
+                messagebox.showerror("Preflight", text, parent=self)
+        except Exception as exc:
+            messagebox.showerror("Preflight", str(exc), parent=self)
+
+    def _start_experiment(self) -> None:
+        try:
+            report = experimental_workflow.preflight_check(self.gui)
+            if not report.get("ready"):
+                messagebox.showerror("Preflight", format_report(report), parent=self)
+                return
+            if report.get("requires_review") and not messagebox.askyesno(
+                "Preflight Review", format_report(report) + "\n\nReview items remain. Start this Run anyway?", parent=self
+            ):
+                return
+            info=experimental_workflow.start_experiment(self.gui)
+            if info.get("already_started"):
+                self.status.configure(text=f"Experiment already in progress — {info.get('run_id','')} (original Planner snapshot preserved)")
+            else:
+                self.status.configure(text=f"Experiment started — {info.get('run_id','')} (Planner condition frozen)")
+            self.refresh_all()
+        except Exception as exc:
+            messagebox.showerror("Start Experiment",str(exc),parent=self)
+
+    def _finish_experiment(self) -> None:
+        try:
+            review = experimental_workflow.finish_review(self.gui)
+            if not messagebox.askyesno("Finish Experiment Review", format_finish_review(review), parent=self):
+                return
+            info=experimental_workflow.finish_experiment(self.gui)
+            suffix="already completed" if info.get("already_finished") else "completed"
+            self.status.configure(text=f"Experiment {suffix} — {info.get('run_id','')}")
+            self.refresh_all()
+        except Exception as exc:
+            messagebox.showerror("Finish Experiment",str(exc),parent=self)
+
+    def _repeat_run(self) -> None:
+        try:
+            info = experimental_workflow.repeat_experiment(self.gui)
+            self.status.configure(text=f"Repeat Run created — {info.get('run_id','')} from {info.get('source_run_id','')}")
+            self.refresh_all()
+        except Exception as exc:
+            messagebox.showerror("Repeat Run", str(exc), parent=self)
+
+    def _mark_state(self, kind: str, state: str) -> None:
+        tree={"outcome":getattr(self,"outcome_tree",None),"issue":getattr(self,"issue_tree",None)}.get(kind)
+        if tree is None: return
+        ids=[tree.set(iid,"record_id") for iid in tree.selection()]
+        if not ids:
+            messagebox.showinfo("Record State","Select one or more records first.",parent=self); return
+        count=experimental_data.set_record_state(kind,ids,state,experimental_workflow.db_path(self.gui))
+        self.status.configure(text=f"Updated {count} {kind} lifecycle record(s) → {state}")
+        self.refresh_all()
 
     def _review_usage_units(self) -> None:
         selected=list(self.usage_tree.selection())
@@ -346,6 +539,93 @@ class ExperimentalDataWindow(tk.Toplevel):
         self.health_text = tk.Text(self.health_tab, height=28, wrap="word")
         self.health_text.pack(fill="both", expand=True); self._style_text(self.health_text)
 
+    def _build_analytics(self) -> None:
+        top=ttk.Frame(self.analytics_tab); top.pack(fill="x",pady=(0,6))
+        ttk.Label(top,text="Descriptive lab trends with sample size shown for every group; n<3 is never presented as a reliable trend.").pack(side="left")
+        ttk.Button(top,text="Refresh Analytics",command=self._refresh_analytics).pack(side="right")
+        self.analytics_text=tk.Text(self.analytics_tab,height=28,wrap="word"); self.analytics_text.pack(fill="both",expand=True); self._style_text(self.analytics_text)
+
+    def _refresh_analytics(self) -> None:
+        data=experimental_workflow.analytics(self.gui)
+        lines=["V6 EXPERIMENT ANALYTICS", data.get("small_sample_note", ""), "", f"Counts: {data.get('counts',{})}"]
+        for title,key,metric in (("Loading by resin","loading_by_resin","mean"),("Loading by loaded AA","loading_by_loaded_aa","mean"),("Yield by stage","yield_by_stage","mean"),("Purity by stage","purity_by_stage","mean"),("Success by sequence length","outcome_success_by_length","success_percent")):
+            lines += ["", title]
+            rows=data.get(key) or []
+            if not rows: lines.append("• No data")
+            for row in rows:
+                value=row.get(metric)
+                suffix="" if row.get("trend_ready") else " — sample too small for trend"
+                lines.append(f"• {row.get('group')}: n={row.get('n')} | {metric}={_fmt(value,2) if value is not None else 'N/A'}{suffix}")
+        for title,key in (("Same-sequence re-synthesis history","same_sequence_history"),("Outcome by coupling repeats","outcome_by_coupling_repeats"),("Cleavage conditions recorded","cleavage_condition_counts"),("Issue stages","issue_stages"),("Sensitive cleavage/sequence issues","sensitive_issue_counts"),("Outcome records by month","outcome_by_month")):
+            lines += ["", title]
+            rows=data.get(key) or []
+            if not rows: lines.append("• No data")
+            for row in rows[:20]:
+                extras=[]
+                for metric in ("success_percent","mean_yield","mean_purity"):
+                    if row.get(metric) is not None: extras.append(f"{metric}={_fmt(row.get(metric),2)}")
+                suffix="" if row.get("trend_ready") else " — sample too small for trend"
+                lines.append(f"• {row.get('group')}: n={row.get('n')}" + (" | " + " | ".join(extras) if extras else "") + suffix)
+        lines += ["", "Issue types"]
+        for row in data.get("issue_types") or []:
+            suffix="" if row.get("trend_ready") else " — sample too small for trend"
+            lines.append(f"• {row.get('group')}: n={row.get('n')}{suffix}")
+        self.analytics_text.delete("1.0","end"); self.analytics_text.insert("1.0","\n".join(lines))
+
+    def _build_ab_compare(self) -> None:
+        intro=ttk.Frame(self.compare_tab); intro.pack(fill="x",pady=(0,8))
+        ttk.Label(intro,text="Compare two operator-defined conditions. No scenario is applied automatically; costs remain N/A without explicit price data.").pack(side="left")
+        form=ttk.Frame(self.compare_tab); form.pack(fill="x")
+        self.ab_vars={}
+        fields=[("resin","Resin"),("loading_mmol_g","Loading (mmol/g)"),("coupling_eq","Coupling AA eq"),("coupling_repeats","Coupling repeats"),("coupling_time_min","Coupling time (min)"),("cleavage_eq","Cleavage eq"),("cleavage_time_h","Cleavage time (h)"),("estimated_cost","Estimated cost (optional)")]
+        for col,(prefix,label) in enumerate((("a","A — Baseline"),("b","B — Alternative"))):
+            card=ttk.LabelFrame(form,text=label,padding=10,style="SPPS.Card.TLabelframe"); card.grid(row=0,column=col,sticky="nsew",padx=(0,6) if col==0 else (6,0)); form.columnconfigure(col,weight=1)
+            for r,(key,text) in enumerate(fields):
+                ttk.Label(card,text=text).grid(row=r,column=0,sticky="w",pady=3)
+                var=tk.StringVar(); self.ab_vars[f"{prefix}_{key}"]=var; ttk.Entry(card,textvariable=var,width=18).grid(row=r,column=1,sticky="ew",pady=3)
+            card.columnconfigure(1,weight=1)
+        ttk.Button(self.compare_tab,text="Compare A/B",command=self.run_ab_compare,style="SPPS.Primary.TButton").pack(anchor="w",pady=8)
+        self.ab_result=tk.Text(self.compare_tab,height=20,wrap="word"); self.ab_result.pack(fill="both",expand=True); self._style_text(self.ab_result)
+        self._sync_ab_from_planner()
+
+    def _sync_ab_from_planner(self) -> None:
+        try:
+            seq=_value(getattr(self.gui,"pm_sequence","")); aa_steps=max(0,len([c for c in seq if c.isalpha() and c.isupper()]))
+            defaults={
+                "resin":_value(getattr(self.gui,"pm_resin","")),
+                "loading_mmol_g":_value(getattr(self.gui,"pm_loading","")),
+                "coupling_eq":_value(getattr(self.gui,"coupling_eq","")),
+                "coupling_repeats":_value(getattr(self.gui,"coupling_repeats","")) or "1",
+                "coupling_time_min":str((self._optional_float(_value(getattr(self.gui,"coupling_time_h",""))) or 0)*60) if _value(getattr(self.gui,"coupling_time_h","")) else "",
+                "cleavage_eq":_value(getattr(self.gui,"cleavage_eq_override","")),
+                "cleavage_time_h":_value(getattr(self.gui,"cleavage_time_h","")),
+            }
+            for key,value in defaults.items():
+                if f"a_{key}" in self.ab_vars: self.ab_vars[f"a_{key}"].set(value)
+                if f"b_{key}" in self.ab_vars: self.ab_vars[f"b_{key}"].set(value)
+            self._ab_aa_steps=aa_steps
+        except Exception:
+            self._ab_aa_steps=0
+
+    def run_ab_compare(self) -> None:
+        def scenario(prefix):
+            values={key.split("_",1)[1]:var.get() for key,var in self.ab_vars.items() if key.startswith(prefix+"_")}
+            values.update({"scale_mmol":_value(getattr(self.gui,"pm_scale","")),"aa_steps":getattr(self,"_ab_aa_steps",0)})
+            return values
+        a=scenario("a"); b=scenario("b")
+        try:
+            seq=_value(getattr(self.gui,"pm_sequence","")); similar=experimental_workflow.similar_experiments(self.gui,seq,limit=50)
+            risks=experimental_workflow.stage_risks(self.gui,seq); levels=[str(r.get("level") or "INFO") for r in risks.get("stages",[])]
+            order={"INFO":0,"LOW":1,"WARNING":2,"MEDIUM":3,"HIGH":4,"CRITICAL":5}; risk=max(levels,key=lambda x:order.get(x.upper(),0),default="INFO")
+            historical_successes=sum(1 for item in similar for outcome in (item.get("outcomes") or []) if outcome.get("success_flag") == 1 or str(outcome.get("result") or "").strip().lower() in {"success","successful","completed","pass","passed"})
+            for values in (a,b): values.update({"historical_support":len(similar),"historical_successes":historical_successes,"risk_level":risk,"evidence_level":"sequence/history context"})
+        except Exception:
+            pass
+        result=experimental_workflow.compare_conditions(self.gui,a,b)
+        a=result.get("scenario_a") or {}; b=result.get("scenario_b") or {}; d=result.get("delta_b_minus_a") or {}
+        lines=["CONDITION A/B COMPARISON","",f"A resin/loading: {a.get('resin') or '—'} / {_fmt(a.get('loading_mmol_g'),3) or '—'} mmol/g",f"B resin/loading: {b.get('resin') or '—'} / {_fmt(b.get('loading_mmol_g'),3) or '—'} mmol/g",f"Risk context (sequence/history): A {a.get('risk_level')} / B {b.get('risk_level')}",f"Historical support candidates: A {a.get('historical_support',0)} / B {b.get('historical_support',0)}",f"Historical successful outcomes in support set: A {a.get('historical_successes',0)} / B {b.get('historical_successes',0)}","",f"A reagent burden index: {_fmt(a.get('relative_reagent_burden'),2)}",f"B reagent burden index: {_fmt(b.get('relative_reagent_burden'),2)}",f"Δ B-A: {_fmt(d.get('relative_reagent_burden'),2)}","",f"A estimated process time: {_fmt(a.get('estimated_process_time_min'),1)} min",f"B estimated process time: {_fmt(b.get('estimated_process_time_min'),1)} min",f"Δ B-A: {_fmt(d.get('estimated_process_time_min'),1)} min","",f"A estimated cost: {_fmt(a.get('estimated_cost'),2) if a.get('estimated_cost') is not None else 'N/A'}",f"B estimated cost: {_fmt(b.get('estimated_cost'),2) if b.get('estimated_cost') is not None else 'N/A'}",result.get("cost_note",""),"",result.get("disclaimer","")]
+        self.ab_result.delete("1.0","end"); self.ab_result.insert("1.0","\n".join(lines))
+
     def _rebuild_loading_model(self) -> None:
         try:
             result = experimental_workflow.rebuild_loading_model(self.gui)
@@ -356,7 +636,7 @@ class ExperimentalDataWindow(tk.Toplevel):
                 if result.get("compared_to_mae_mmol_g") is not None:
                     compare=f"\nPrevious active MAE: {_fmt(result.get('compared_to_mae_mmol_g'),4)} mmol/g"
                 messagebox.showinfo(
-                    "V5 Loading Model",
+                    "Loading Model",
                     f"Model rebuilt from {result.get('training_count',0)} Verified measured results.\n"
                     f"Candidate CV MAE: {_fmt(result.get('cross_validated_mae_mmol_g'),4)} mmol/g" + compare +
                     f"\nStatus: {state}\n\n{result.get('promotion_reason','')}\n\n"
@@ -364,32 +644,32 @@ class ExperimentalDataWindow(tk.Toplevel):
                     parent=self,
                 )
             else:
-                messagebox.showinfo("V5 Loading Model", str(result.get("reason") or "Model was not rebuilt."), parent=self)
+                messagebox.showinfo("Loading Model", str(result.get("reason") or "Model was not rebuilt."), parent=self)
             self._refresh_health(); self._refresh_loading_rebuild_notice()
         except Exception as exc:
-            messagebox.showerror("V5 Loading Model", str(exc), parent=self)
+            messagebox.showerror("Loading Model", str(exc), parent=self)
 
     def _promote_loading_candidate(self) -> None:
         try:
             result=experimental_workflow.promote_latest_loading_candidate(self.gui)
             if result.get("activated"):
-                messagebox.showinfo("V5 Loading Model",f"Promoted stored candidate:\n{result.get('model_id','')}",parent=self)
+                messagebox.showinfo("Loading Model",f"Promoted stored candidate:\n{result.get('model_id','')}",parent=self)
             else:
-                messagebox.showinfo("V5 Loading Model",str(result.get("reason") or "No candidate was promoted."),parent=self)
+                messagebox.showinfo("Loading Model",str(result.get("reason") or "No candidate was promoted."),parent=self)
             self._refresh_health(); self._refresh_loading_rebuild_notice()
         except Exception as exc:
-            messagebox.showerror("V5 Loading Model",str(exc),parent=self)
+            messagebox.showerror("Loading Model",str(exc),parent=self)
 
     def _rollback_loading_model(self) -> None:
         try:
             result=experimental_workflow.rollback_loading_model(self.gui)
             if result.get("activated"):
-                messagebox.showinfo("V5 Loading Model",f"Activated earlier model:\n{result.get('model_id','')}",parent=self)
+                messagebox.showinfo("Loading Model",f"Activated earlier model:\n{result.get('model_id','')}",parent=self)
             else:
-                messagebox.showinfo("V5 Loading Model",str(result.get("reason") or "No earlier model was activated."),parent=self)
+                messagebox.showinfo("Loading Model",str(result.get("reason") or "No earlier model was activated."),parent=self)
             self._refresh_health(); self._refresh_loading_rebuild_notice()
         except Exception as exc:
-            messagebox.showerror("V5 Loading Model",str(exc),parent=self)
+            messagebox.showerror("Loading Model",str(exc),parent=self)
 
     def _refresh_health(self) -> None:
         health = experimental_workflow.data_health(self.gui)
@@ -410,7 +690,10 @@ class ExperimentalDataWindow(tk.Toplevel):
             f"Status — Sequence {status.get('sequence',{})}",
             f"Status — Cleavage Usage {status.get('cleavage_usage',{})}",
             f"Status — Synthesis Issues {status.get('issue',{})}",
-            f"Status — Outcomes {status.get('outcome',{})}", "",
+            f"Status — Outcomes {status.get('outcome',{})}",
+            f"Lifecycle — {health.get('record_state_counts',{})}",
+            f"Quality review flags: {health.get('quality_findings_count',0)}",
+            *[f"  • {row.get('kind')} / {row.get('code')}: {row.get('detail')}" for row in (health.get('quality_findings') or [])[:12]], "",
             f"Cleavage usage normalized: {health.get('cleavage_usage_normalized_records',0)} / unit review required: {health.get('cleavage_usage_unit_review_required',0)}",
             f"Canonical-key gaps — Loading {missing.get('loading',0)} / Cleavage {missing.get('cleavage',0)} / Sequence {missing.get('sequence',0)}",
             f"Distinct sequence products: {health.get('sequence_products',0)}",
@@ -421,7 +704,7 @@ class ExperimentalDataWindow(tk.Toplevel):
             f"Loading exact-group leave-one-out MAE: {_fmt(mae,4) if mae is not None else 'N/A'} mmol/g (n={health.get('loading_leave_one_out_evaluated',0)})",
             f"Cleavage product eq/time replay agreement: {_fmt(agreement,1) if agreement is not None else 'N/A'}% (n={health.get('cleavage_eq_time_replay_evaluated',0)})",
             f"Cleavage amount leave-one-out MAE: {_fmt(amount_mae,4) if amount_mae is not None else 'N/A'} mL/mmol (n={validation.get('cleavage_amount_leave_one_out_evaluated',0)})",
-            "", "Explicit V5 Loading Model",
+            "", "Explicit V6 Loading Model",
             f"Built: {'YES' if model_info.get('built') else 'NO'}",
             f"Training records: {model_info.get('training_count',0) if model_info else 0}",
             f"Cross-validated MAE: {_fmt(model_info.get('cross_validated_mae_mmol_g'),4) if model_info.get('cross_validated_mae_mmol_g') is not None else 'N/A'} mmol/g",
@@ -446,34 +729,66 @@ class ExperimentalDataWindow(tk.Toplevel):
         messagebox.showinfo("Sequence History", f"Verified {changed} page-local STD observation(s) for {product}.", parent=self)
 
     def _build_loading_advisor(self) -> None:
-        form = ttk.LabelFrame(self.loading_advisor_tab, text="Target Loading", padding=10, style="V5.Card.TLabelframe"); form.pack(fill="x")
+        form = ttk.LabelFrame(self.loading_advisor_tab, text="Target Loading", padding=10, style="SPPS.Card.TLabelframe"); form.pack(fill="x")
         self.load_resin = tk.StringVar(value=_value(getattr(self.gui, "pm_resin", "")))
         self.load_aa = tk.StringVar(value=self._current_cterm_compound())
         self.load_aa_eq = tk.StringVar(value=_value(getattr(self.gui, "loading_aa_eq", "")))
         self.load_base_eq = tk.StringVar(value=_value(getattr(self.gui, "loading_diea_eq", "")))
         self.load_time = tk.StringVar(value=_value(getattr(self.gui, "loading_time_h", "")) or "4")
         self.load_target = tk.StringVar(value=_value(getattr(self.gui, "pm_loading", "")))
-        fields = [("Target (mmol/g)", self.load_target, 12), ("Resin", self.load_resin, 24), ("C-terminal AA", self.load_aa, 26), ("DIEA eq", self.load_base_eq, 8), ("Time (h)", self.load_time, 8)]
+        fields = [("Target (mmol/g)", self.load_target, 12), ("Resin", self.load_resin, 24), ("C-terminal AA / block", self.load_aa, 28), ("DIEA eq", self.load_base_eq, 8), ("Time (h)", self.load_time, 8)]
+        try:
+            observed_aa = experimental_data.observed_loading_amino_acid_identities(
+                experimental_workflow.loading_records(self.gui)
+            )
+        except Exception:
+            observed_aa = []
+        current_norm = experimental_data.normalize_amino_acid(self.load_aa.get())
+        if current_norm and current_norm not in observed_aa:
+            observed_aa.insert(0, current_norm)
         for index, (label, var, width) in enumerate(fields):
             ttk.Label(form, text=label).grid(row=0, column=index * 2, sticky="w", padx=(0, 4))
-            ttk.Entry(form, textvariable=var, width=width).grid(row=0, column=index * 2 + 1, sticky="ew", padx=(0, 10))
-        ttk.Button(form, text="Recommend", command=self.run_loading_advisor, style="V5.Secondary.TButton").grid(row=0, column=len(fields) * 2, padx=(4, 0))
-        ttk.Button(form, text="Apply & Generate", command=self.apply_loading_recommendation, style="V5.Primary.TButton").grid(row=0, column=len(fields) * 2 + 1, padx=(6, 0))
+            if var is self.load_aa:
+                self.load_aa_combo = ttk.Combobox(form, textvariable=var, width=width, values=observed_aa, state="normal")
+                self.load_aa_combo.grid(row=0, column=index * 2 + 1, sticky="ew", padx=(0, 10))
+            else:
+                ttk.Entry(form, textvariable=var, width=width).grid(row=0, column=index * 2 + 1, sticky="ew", padx=(0, 10))
+        ttk.Button(form, text="Recommend", command=self.run_loading_advisor, style="SPPS.Secondary.TButton").grid(row=0, column=len(fields) * 2, padx=(4, 0))
+        ttk.Button(form, text="Apply & Generate", command=self.apply_loading_recommendation, style="SPPS.Primary.TButton").grid(row=0, column=len(fields) * 2 + 1, padx=(6, 0))
         self._last_loading_advice = None
-        self.load_result = tk.Text(self.loading_advisor_tab, height=10, wrap="word"); self.load_result.pack(fill="x", pady=(8, 8)); self._style_text(self.load_result)
-        quick=ttk.LabelFrame(self.loading_advisor_tab, text="Measured Result", padding=8, style="V5.Card.TLabelframe"); quick.pack(fill="x", pady=(0,8))
-        ttk.Label(quick, text="Measured Loading", style="V5.Muted.TLabel").pack(side="left")
+        self.load_result = tk.Text(self.loading_advisor_tab, height=17, wrap="word"); self.load_result.pack(fill="x", pady=(8, 8)); self._style_text(self.load_result)
+        quick=ttk.LabelFrame(self.loading_advisor_tab, text="Measured Result", padding=8, style="SPPS.Card.TLabelframe"); quick.pack(fill="x", pady=(0,8))
+        ttk.Label(quick, text="Measured Loading", style="SPPS.Muted.TLabel").pack(side="left")
         self.quick_measured_loading=tk.StringVar(value="")
         quick_entry=ttk.Entry(quick, textvariable=self.quick_measured_loading, width=12); quick_entry.pack(side="left", padx=(6,4))
-        ttk.Label(quick, text="mmol/g", style="V5.Muted.TLabel").pack(side="left")
-        ttk.Button(quick, text="Save Measured", command=self._save_quick_loading_result, style="V5.Primary.TButton").pack(side="left", padx=(10,0))
-        self.loading_rebuild_notice=ttk.Label(quick, text="", style="V5.Muted.TLabel"); self.loading_rebuild_notice.pack(side="right", padx=(12,0))
+        ttk.Label(quick, text="mmol/g", style="SPPS.Muted.TLabel").pack(side="left")
+        ttk.Button(quick, text="Save Measured", command=self._save_quick_loading_result, style="SPPS.Primary.TButton").pack(side="left", padx=(10,0))
+        self.loading_rebuild_notice=ttk.Label(quick, text="", style="SPPS.Muted.TLabel"); self.loading_rebuild_notice.pack(side="right", padx=(12,0))
         quick_entry.bind("<Return>", lambda _event: self._save_quick_loading_result())
-        evbar=ttk.Frame(self.loading_advisor_tab, style="V5.Root.TFrame"); evbar.pack(fill="x")
+        evbar=ttk.Frame(self.loading_advisor_tab, style="SPPS.Root.TFrame"); evbar.pack(fill="x")
         self.loading_evidence_visible=False
-        self.loading_evidence_button=ttk.Button(evbar,text="Show Evidence",style="V5.Secondary.TButton",command=self._toggle_loading_evidence); self.loading_evidence_button.pack(side="left")
-        self.loading_evidence_box=ttk.LabelFrame(self.loading_advisor_tab,text="Historical Evidence",padding=6,style="V5.Card.TLabelframe")
-        self.load_evidence = self._tree(self.loading_evidence_box, ["date", "resin_type", "amino_acid_normalized", "aa_eq", "base_eq", "loading_time_h", "loading_rate_mmol_g", "status", "raw_note"])
+        self.loading_evidence_button=ttk.Button(evbar,text="Show Evidence",style="SPPS.Secondary.TButton",command=self._toggle_loading_evidence); self.loading_evidence_button.pack(side="left")
+        ttk.Button(evbar,text="Evidence Detail",style="SPPS.Secondary.TButton",command=self.show_loading_evidence_detail).pack(side="left", padx=(6,0))
+        self.loading_evidence_box=ttk.LabelFrame(self.loading_advisor_tab,text="Historical Evidence",padding=6,style="SPPS.Card.TLabelframe")
+        self.load_evidence = self._tree(self.loading_evidence_box, ["date", "resin_type", "amino_acid_normalized", "aa_eq", "base_eq", "loading_time_h", "loading_rate_mmol_g", "capping_performed", "status", "source_locator", "raw_note"])
+
+    def show_loading_evidence_detail(self) -> None:
+        result = self._last_loading_advice or {}
+        evidence_detail_dialog.show(self, "Loading Evidence Detail", [("Loading", result)])
+
+    def show_cleavage_evidence_detail(self) -> None:
+        result = self._last_cleavage_advice or {}
+        evidence_detail_dialog.show(self, "Cleavage Evidence Detail", [("Cleavage", result)])
+
+    def show_optimizer_evidence_detail(self) -> None:
+        evidence_detail_dialog.show(
+            self, "All Conditions Evidence Detail",
+            [
+                ("Loading", self._last_optimizer_loading or {}),
+                ("Coupling", self._last_coupling_advice or {}),
+                ("Cleavage", self._last_optimizer_cleavage or {}),
+            ],
+        )
 
     def _toggle_loading_evidence(self) -> None:
         if self.loading_evidence_visible:
@@ -482,11 +797,12 @@ class ExperimentalDataWindow(tk.Toplevel):
             self.loading_evidence_box.pack(fill="both",expand=True,pady=(6,0)); self.loading_evidence_visible=True; self.loading_evidence_button.configure(text="Hide Evidence")
 
     def _build_cleavage_advisor(self) -> None:
-        intro = ttk.Frame(self.cleavage_advisor_tab, style="V5.Root.TFrame"); intro.pack(fill="x", pady=(0,8))
-        ttk.Label(intro, text="Cleavage recommendation", style="V5.Section.TLabel").pack(side="left")
-        ttk.Label(intro, text="Condition, current-scale amount and precipitation/workup are kept separate.", style="V5.Muted.TLabel").pack(side="left", padx=(10,0))
+        intro = ttk.Frame(self.cleavage_advisor_tab, style="SPPS.Root.TFrame"); intro.pack(fill="x", pady=(0,8))
+        ttk.Label(intro, text="Cleavage recommendation", style="SPPS.Section.TLabel").pack(side="left")
+        ttk.Label(intro, text="Condition, current-scale amount and precipitation/workup are kept separate.", style="SPPS.Muted.TLabel").pack(side="left", padx=(10,0))
+        ttk.Button(intro, text="Evidence Detail", command=self.show_cleavage_evidence_detail, style="SPPS.Secondary.TButton").pack(side="right")
 
-        form = ttk.LabelFrame(self.cleavage_advisor_tab, text="Current sequence & scale", padding=10, style="V5.Card.TLabelframe"); form.pack(fill="x")
+        form = ttk.LabelFrame(self.cleavage_advisor_tab, text="Current sequence & scale", padding=10, style="SPPS.Card.TLabelframe"); form.pack(fill="x")
         self.clv_sequence = tk.StringVar(value=_value(getattr(self.gui, "pm_sequence", "")))
         self.clv_product = tk.StringVar(value=_value(getattr(self.gui, "pm_peptide", "")))
         self.clv_resin = tk.StringVar(value=_value(getattr(self.gui, "pm_resin", "")))
@@ -497,23 +813,23 @@ class ExperimentalDataWindow(tk.Toplevel):
         for index, (label, var, width) in enumerate(fields):
             ttk.Label(form, text=label).grid(row=0, column=index * 2, sticky="w", padx=(0, 4))
             ttk.Entry(form, textvariable=var, width=width).grid(row=0, column=index * 2 + 1, sticky="ew", padx=(0, 12))
-        ttk.Button(form, text="Analyze", command=self.run_cleavage_advisor, style="V5.Secondary.TButton").grid(row=0, column=len(fields) * 2, padx=(4,0))
-        ttk.Button(form, text="Apply & Update", command=self.apply_cleavage_recommendation, style="V5.Primary.TButton").grid(row=0, column=len(fields) * 2 + 1, padx=(6, 0))
+        ttk.Button(form, text="Analyze", command=self.run_cleavage_advisor, style="SPPS.Secondary.TButton").grid(row=0, column=len(fields) * 2, padx=(4,0))
+        ttk.Button(form, text="Apply & Update", command=self.apply_cleavage_recommendation, style="SPPS.Primary.TButton").grid(row=0, column=len(fields) * 2 + 1, padx=(6, 0))
         form.columnconfigure(1, weight=1)
 
-        cards = ttk.Frame(self.cleavage_advisor_tab, style="V5.Root.TFrame"); cards.pack(fill="x", pady=(10,8))
+        cards = ttk.Frame(self.cleavage_advisor_tab, style="SPPS.Root.TFrame"); cards.pack(fill="x", pady=(10,8))
         cards.columnconfigure(0, weight=1); cards.columnconfigure(1, weight=1); cards.columnconfigure(2, weight=1)
-        condition = ttk.LabelFrame(cards, text="1. Cleavage Condition", padding=8, style="V5.Card.TLabelframe"); condition.grid(row=0,column=0,sticky="nsew",padx=(0,5))
-        amount = ttk.LabelFrame(cards, text="2. Amount at Current Scale", padding=8, style="V5.Card.TLabelframe"); amount.grid(row=0,column=1,sticky="nsew",padx=5)
-        workup = ttk.LabelFrame(cards, text="3. Precipitation / Workup", padding=8, style="V5.Card.TLabelframe"); workup.grid(row=0,column=2,sticky="nsew",padx=(5,0))
+        condition = ttk.LabelFrame(cards, text="1. Cleavage Condition", padding=8, style="SPPS.Card.TLabelframe"); condition.grid(row=0,column=0,sticky="nsew",padx=(0,5))
+        amount = ttk.LabelFrame(cards, text="2. Amount at Current Scale", padding=8, style="SPPS.Card.TLabelframe"); amount.grid(row=0,column=1,sticky="nsew",padx=5)
+        workup = ttk.LabelFrame(cards, text="3. Precipitation / Workup", padding=8, style="SPPS.Card.TLabelframe"); workup.grid(row=0,column=2,sticky="nsew",padx=(5,0))
         self.clv_result = tk.Text(condition, wrap="word", height=9); self.clv_result.pack(fill="both", expand=True); self._style_text(self.clv_result, compact=True)
         self.clv_amount_result = tk.Text(amount, wrap="word", height=9); self.clv_amount_result.pack(fill="both", expand=True); self._style_text(self.clv_amount_result, compact=True)
         self.clv_workup_result = tk.Text(workup, wrap="word", height=9); self.clv_workup_result.pack(fill="both", expand=True); self._style_text(self.clv_workup_result, compact=True)
 
-        rescue = ttk.LabelFrame(self.cleavage_advisor_tab, text="4. Post-cleavage Rescue", padding=8, style="V5.Card.TLabelframe"); rescue.pack(fill="x", pady=(0,8))
+        rescue = ttk.LabelFrame(self.cleavage_advisor_tab, text="4. Post-cleavage Rescue", padding=8, style="SPPS.Card.TLabelframe"); rescue.pack(fill="x", pady=(0,8))
         self.clv_rescue_result = tk.Text(rescue, wrap="word", height=5); self.clv_rescue_result.pack(fill="x"); self._style_text(self.clv_rescue_result, compact=True)
 
-        evidence = ttk.LabelFrame(self.cleavage_advisor_tab, text="Historical Evidence", padding=8, style="V5.Card.TLabelframe"); evidence.pack(fill="both", expand=True)
+        evidence = ttk.LabelFrame(self.cleavage_advisor_tab, text="Historical Evidence", padding=8, style="SPPS.Card.TLabelframe"); evidence.pack(fill="both", expand=True)
         self.clv_evidence = self._tree(evidence, ["product", "scale_mmol", "tfa_ml", "tis_ml", "water_ml", "cleavage_eq", "cleavage_time_h", "ether_ratio", "filter_speed", "status", "raw_observation"])
         self._last_cleavage_advice = None
 
@@ -525,6 +841,7 @@ class ExperimentalDataWindow(tk.Toplevel):
         ttk.Button(buttons, text="Apply Loading + Generate", command=self.apply_optimizer_loading).pack(side="left", padx=(0, 5))
         ttk.Button(buttons, text="Apply Coupling + Generate", command=self.apply_coupling_recommendation).pack(side="left", padx=5)
         ttk.Button(buttons, text="Apply Cleavage + Update", command=self.apply_optimizer_cleavage).pack(side="left", padx=5)
+        ttk.Button(buttons, text="Evidence Detail", command=self.show_optimizer_evidence_detail).pack(side="right", padx=5)
         self.optimizer_result = tk.Text(self.condition_optimizer_tab, wrap="word", height=30)
         self.optimizer_result.pack(fill="both", expand=True); self._style_text(self.optimizer_result)
         self._last_coupling_advice = None
@@ -675,6 +992,7 @@ class ExperimentalDataWindow(tk.Toplevel):
         except Exception as exc:
             messagebox.showerror("Loading Recommend", f"Recommendation was written, but regeneration failed.\n\n{exc}", parent=self)
             return
+        self._trace_recommendation("Loading", result, "Applied as recommended", {"aa_eq": rec.get("aa_eq"), "base_eq": rec.get("base_eq"), "loading_time_h": rec.get("loading_time_h")})
         self.status.configure(text="Loading recommendation applied and regenerated.")
         self.run_condition_optimizer()
 
@@ -703,6 +1021,7 @@ class ExperimentalDataWindow(tk.Toplevel):
             parent=self,
         )
         if not ok:
+            self._trace_recommendation("Cleavage", result, "Rejected")
             return
         if rec.get("cleavage_eq") is not None:
             self.gui.cleavage_eq_override.set(str(rec["cleavage_eq"])); self.clv_eq.set(str(rec["cleavage_eq"]))
@@ -725,6 +1044,7 @@ class ExperimentalDataWindow(tk.Toplevel):
         except Exception as exc:
             messagebox.showerror("Cleavage Recommend", f"Recommendation was written, but Apply Change failed.\n\n{exc}", parent=self)
             return
+        self._trace_recommendation("Cleavage", result, "Applied as recommended", {"cleavage_eq": rec.get("cleavage_eq"), "cleavage_time_h": rec.get("cleavage_time_h"), "composition_pct": comp})
         self.status.configure(text="Cleavage recommendation applied and updated.")
         self.run_condition_optimizer()
 
@@ -762,6 +1082,7 @@ class ExperimentalDataWindow(tk.Toplevel):
             parent=self,
         )
         if not ok:
+            self._trace_recommendation("Coupling", self._last_coupling_advice or {}, "Rejected")
             return
         for attr, _label, _old, proposed in changes:
             var = getattr(self.gui, attr, None)
@@ -776,24 +1097,50 @@ class ExperimentalDataWindow(tk.Toplevel):
         except Exception as exc:
             messagebox.showerror("Coupling Optimizer", f"The confirmed condition was written, but regeneration failed.\n\n{exc}", parent=self)
             return
+        self._trace_recommendation("Coupling", self._last_coupling_advice or {}, "Applied as recommended", {attr: proposed for attr, _label, _old, proposed in changes})
         self.status.configure(text="Confirmed reviewed coupling condition applied and regenerated.")
         self.run_condition_optimizer()
 
+
+    def _trace_recommendation(self, kind: str, result: dict[str, Any], decision: str = "", actual: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        """Persist an operator decision without turning the trace into supervised truth."""
+        try:
+            from suite_gui import data_system
+            from suite_gui.runtime_state import get_active_index
+            idx=int(get_active_index(self.gui,-1)); item=self.gui.pm_items[idx]; run=data_system.ensure_hierarchy(item)
+            rec=(result or {}).get('target_recommendation') or (result or {}).get('recommended_condition') or {}
+            if not rec: return None
+            db=experimental_workflow.initialize(self.gui)
+            trace=experimental_data.add_recommendation_trace({
+                'work_item_id':item.get('work_item_id',''),'run_id':run.get('run_id',''),'recommendation_type':kind,
+                'evidence_source':rec.get('basis') or (result or {}).get('method') or '',
+                'confidence':rec.get('confidence') or (result or {}).get('confidence') or '',
+                'evidence_count':rec.get('evidence_count') or rec.get('condition_evidence_count') or 0,
+                'recommended_condition':rec,'apply_allowed':bool(rec.get('apply_allowed',True)),
+            }, db)
+            if decision:
+                trace=experimental_data.resolve_recommendation_trace(trace['trace_id'],decision,actual_condition=actual or {},db_path=db)
+            return trace
+        except Exception as exc:
+            self._recommendation_trace_error=exc
+            messagebox.showwarning("Recommendation Audit",f"The Planner action can continue, but its recommendation audit trace could not be recorded.\n\n{exc}",parent=self)
+            return None
+
     def _entry_dialog(self, title: str, fields, on_save, *, note: str = "") -> None:
         dialog = tk.Toplevel(self); dialog.title(title); dialog.transient(self); dialog.grab_set(); ui_system.fit_window(dialog, preferred_width=900, preferred_height=680, minimum_width=780, minimum_height=600)
-        dialog.configure(background=self._v5_colors["bg"])
-        shell = ttk.Frame(dialog, padding=14, style="V5.Root.TFrame"); shell.pack(fill="both", expand=True)
-        ttk.Label(shell, text=title, style="V5.Section.TLabel").pack(anchor="w")
+        dialog.configure(background=self.recommendation_colors["bg"])
+        shell = ttk.Frame(dialog, padding=14, style="SPPS.Root.TFrame"); shell.pack(fill="both", expand=True)
+        ttk.Label(shell, text=title, style="SPPS.Section.TLabel").pack(anchor="w")
         if note:
-            ttk.Label(shell, text=note, style="V5.Muted.TLabel").pack(anchor="w", pady=(2, 10))
-        body = ttk.Frame(shell, padding=12, style="V5.Card.TFrame"); body.pack(fill="both", expand=True)
+            ttk.Label(shell, text=note, style="SPPS.Muted.TLabel").pack(anchor="w", pady=(2, 10))
+        body = ttk.Frame(shell, padding=12, style="SPPS.Card.TFrame"); body.pack(fill="both", expand=True)
         vars: dict[str, tk.StringVar] = {}
         for idx, spec in enumerate(fields):
             if len(spec) >= 4:
                 key, label, initial, options = spec[:4]
             else:
                 key, label, initial = spec[:3]; options = None
-            ttk.Label(body, text=label, width=24, style="V5.Muted.TLabel").grid(row=idx, column=0, sticky="w", padx=(0,8), pady=5)
+            ttk.Label(body, text=label, width=24, style="SPPS.Muted.TLabel").grid(row=idx, column=0, sticky="w", padx=(0,8), pady=5)
             var = tk.StringVar(value=str(initial or "")); vars[key] = var
             if options:
                 w = ttk.Combobox(body, textvariable=var, values=list(options), width=50, state="readonly")
@@ -807,9 +1154,9 @@ class ExperimentalDataWindow(tk.Toplevel):
                 dialog.destroy(); self.refresh_all()
             except Exception as exc:
                 messagebox.showerror(title, str(exc), parent=dialog)
-        row = ttk.Frame(shell, style="V5.Root.TFrame"); row.pack(fill="x", pady=(12,0))
-        ttk.Button(row, text="Cancel", command=dialog.destroy, style="V5.Secondary.TButton").pack(side="right")
-        ttk.Button(row, text="Save Lab Result", command=save, style="V5.Primary.TButton").pack(side="right", padx=6)
+        row = ttk.Frame(shell, style="SPPS.Root.TFrame"); row.pack(fill="x", pady=(12,0))
+        ttk.Button(row, text="Cancel", command=dialog.destroy, style="SPPS.Secondary.TButton").pack(side="right")
+        ttk.Button(row, text="Save Lab Result", command=save, style="SPPS.Primary.TButton").pack(side="right", padx=6)
 
     @staticmethod
     def _optional_float(value: str):
@@ -887,36 +1234,41 @@ class ExperimentalDataWindow(tk.Toplevel):
 
     def record_result(self, default_kind: str = "Loading") -> None:
         """Record only bench results; Planner-known conditions are attached automatically."""
+        state = experimental_workflow.run_ui_state(self.gui)
+        if not state.get("can_record_result"):
+            messagebox.showinfo("Add Result", "Start Experiment first so the Planner condition is frozen before measured results are recorded.", parent=self)
+            return
         try:
             from suite_gui.modules import gui_common
             gui_common.save_active(self.gui)
-        except Exception:
-            pass
+        except Exception as exc:
+            messagebox.showerror("Add Result", f"Could not capture the current Planner state. No result was recorded.\n\n{exc}", parent=self)
+            return
         product=_value(getattr(self.gui,"pm_peptide","")) or "(unnamed peptide)"
         sequence=_value(getattr(self.gui,"pm_sequence",""))
         scale=_value(getattr(self.gui,"pm_scale",""))
         dialog=tk.Toplevel(self); dialog.title("Add Result"); dialog.transient(self); dialog.grab_set()
-        dialog.configure(background=self._v5_colors["bg"])
-        shell=ttk.Frame(dialog,padding=16,style="V5.Root.TFrame"); shell.pack(fill="both",expand=True)
-        ttk.Label(shell,text="Add Result",style="V5.Title.TLabel").pack(anchor="w")
+        dialog.configure(background=self.recommendation_colors["bg"])
+        shell=ttk.Frame(dialog,padding=16,style="SPPS.Root.TFrame"); shell.pack(fill="both",expand=True)
+        ttk.Label(shell,text="Add Result",style="SPPS.Title.TLabel").pack(anchor="w")
         summary=product + (f"  •  {scale} mmol" if scale else "")
-        ttk.Label(shell,text=summary,style="V5.Section.TLabel").pack(anchor="w",pady=(4,0))
-        if sequence: ttk.Label(shell,text=sequence,style="V5.Muted.TLabel").pack(anchor="w",pady=(1,8))
-        ttk.Label(shell,text="Current Planner conditions will be saved automatically with this result.",style="V5.Muted.TLabel").pack(anchor="w",pady=(0,10))
+        ttk.Label(shell,text=summary,style="SPPS.Section.TLabel").pack(anchor="w",pady=(4,0))
+        if sequence: ttk.Label(shell,text=sequence,style="SPPS.Muted.TLabel").pack(anchor="w",pady=(1,8))
+        ttk.Label(shell,text="Current Planner conditions will be saved automatically with this result.",style="SPPS.Muted.TLabel").pack(anchor="w",pady=(0,10))
 
         kind=tk.StringVar(value=default_kind if default_kind in {"Loading","Cleavage / Final"} else "Loading")
-        selector=ttk.Frame(shell,style="V5.Root.TFrame"); selector.pack(fill="x",pady=(0,8))
-        ttk.Label(selector,text="Result type",style="V5.Muted.TLabel").pack(side="left",padx=(0,8))
+        selector=ttk.Frame(shell,style="SPPS.Root.TFrame"); selector.pack(fill="x",pady=(0,8))
+        ttk.Label(selector,text="Result type",style="SPPS.Muted.TLabel").pack(side="left",padx=(0,8))
         combo=ttk.Combobox(selector,textvariable=kind,values=["Loading","Cleavage / Final"],state="readonly",width=22); combo.pack(side="left")
 
-        card=ttk.LabelFrame(shell,text="Result",padding=12,style="V5.Card.TLabelframe"); card.pack(fill="both",expand=True)
+        card=ttk.LabelFrame(shell,text="Result",padding=12,style="SPPS.Card.TLabelframe"); card.pack(fill="both",expand=True)
         vars={
             "loading":tk.StringVar(),"crude":tk.StringVar(),"yield":tk.StringVar(),"purity":tk.StringVar(),
             "outcome":tk.StringVar(value="Unknown"),"note":tk.StringVar(),
         }
         widgets={}
         def row(name,label,rownum,widget=None):
-            l=ttk.Label(card,text=label,style="V5.Muted.TLabel"); l.grid(row=rownum,column=0,sticky="w",pady=5,padx=(0,8))
+            l=ttk.Label(card,text=label,style="SPPS.Muted.TLabel"); l.grid(row=rownum,column=0,sticky="w",pady=5,padx=(0,8))
             w=widget or ttk.Entry(card,textvariable=vars[name],width=42); w.grid(row=rownum,column=1,sticky="ew",pady=5); widgets[name]=(l,w)
         row("loading","Measured loading (mmol/g)",0)
         row("crude","Crude (g)",1)
@@ -954,49 +1306,55 @@ class ExperimentalDataWindow(tk.Toplevel):
                 low=outcome.lower(); success_flag=1 if low=="success" else 0 if low=="fail" else None
                 experimental_workflow.add_outcome_record(self.gui,{
                     "stage":"cleavage","product":snap.get("product"),"sequence":snap.get("sequence"),"result":outcome,
-                    "success_flag":success_flag,"yield_percent":yld,"purity_percent":purity,"observation":note,
+                    "success_flag":success_flag,"yield_percent":yld,"purity_percent":purity,"crude_g":crude,"observation":note,
+                    "record_state":"failed_informative" if low=="fail" else "verified" if low in {"success","partial"} else "completed",
                 },status="verified" if low in {"success","partial","fail"} or yld is not None or purity is not None else "incomplete")
                 self.status.configure(text="Cleavage/final result saved. Planner cleavage conditions were attached automatically.")
             dialog.destroy(); self.refresh_all()
 
-        footer=ttk.Frame(shell,style="V5.Root.TFrame"); footer.pack(fill="x",pady=(10,0))
-        ttk.Button(footer,text="Cancel",command=dialog.destroy,style="V5.Secondary.TButton").pack(side="right")
-        ttk.Button(footer,text="Save",command=save,style="V5.Primary.TButton").pack(side="right",padx=6)
+        footer=ttk.Frame(shell,style="SPPS.Root.TFrame"); footer.pack(fill="x",pady=(10,0))
+        ttk.Button(footer,text="Cancel",command=dialog.destroy,style="SPPS.Secondary.TButton").pack(side="right")
+        ttk.Button(footer,text="Save",command=save,style="SPPS.Primary.TButton").pack(side="right",padx=6)
         ui_system.fit_window_to_content(dialog, preferred_width=820, preferred_height=560, minimum_width=720, minimum_height=500)
 
     def record_issue(self) -> None:
         """Natural-language-first issue logging for Korean, English, or mixed notes."""
+        state = experimental_workflow.run_ui_state(self.gui)
+        if not state.get("can_record_issue"):
+            messagebox.showinfo("Record Issue", "Start Experiment first so the issue is linked to a frozen Planner Run condition.", parent=self)
+            return
         try:
             from suite_gui.modules import gui_common
             gui_common.save_active(self.gui)
             items=list(getattr(self.gui,"pm_items",[]) or []); idx=gui_common.active_index(self.gui)
             item=items[int(idx)] if idx is not None and 0 <= int(idx) < len(items) else {}
-        except Exception:
-            item={}
+        except Exception as exc:
+            messagebox.showerror("Record Issue",f"Could not capture current Planner state. No issue was recorded.\n\n{exc}",parent=self)
+            return
         product=str(item.get("peptide") or _value(getattr(self.gui,"pm_peptide","")))
         sequence=str(item.get("sequence") or _value(getattr(self.gui,"pm_sequence","")))
         scale=str(item.get("scale") or _value(getattr(self.gui,"pm_scale","")))
 
-        from suite_gui.natural_language_issue_v5 import parse_issue_note
+        from suite_gui.issue_parser import parse_issue_note
 
         dialog=tk.Toplevel(self); dialog.title("Record Issue"); dialog.transient(self); dialog.grab_set()
-        dialog.configure(background=self._v5_colors["bg"])
-        shell=ttk.Frame(dialog,padding=16,style="V5.Root.TFrame"); shell.pack(fill="both",expand=True)
-        ttk.Label(shell,text="What happened?",style="V5.Title.TLabel").pack(anchor="w")
+        dialog.configure(background=self.recommendation_colors["bg"])
+        shell=ttk.Frame(dialog,padding=16,style="SPPS.Root.TFrame"); shell.pack(fill="both",expand=True)
+        ttk.Label(shell,text="What happened?",style="SPPS.Title.TLabel").pack(anchor="w")
 
         summary=product or "(unnamed peptide)"
         if scale: summary += f"  •  {scale} mmol"
-        ttk.Label(shell,text=summary,style="V5.Section.TLabel").pack(anchor="w")
+        ttk.Label(shell,text=summary,style="SPPS.Section.TLabel").pack(anchor="w")
         if sequence:
-            ttk.Label(shell,text=sequence,style="V5.Muted.TLabel").pack(anchor="w",pady=(1,10))
+            ttk.Label(shell,text=sequence,style="SPPS.Muted.TLabel").pack(anchor="w",pady=(1,10))
 
-        note_card=ttk.LabelFrame(shell,text="Note",padding=10,style="V5.Card.TLabelframe"); note_card.pack(fill="both",expand=True)
+        note_card=ttk.LabelFrame(shell,text="Note",padding=10,style="SPPS.Card.TLabelframe"); note_card.pack(fill="both",expand=True)
         # Legacy UX test phrase: Write one sentence
         observation=tk.Text(note_card,height=9,wrap="word",font=("Segoe UI",11)); observation.pack(fill="both",expand=True)
         self._style_text(observation)
 
-        examples=ttk.Frame(note_card,style="V5.Card.TFrame"); examples.pack(fill="x",pady=(8,0))
-        ttk.Label(examples,text="Quick examples:",style="V5.Muted.TLabel").pack(side="left",padx=(0,6))
+        examples=ttk.Frame(note_card,style="SPPS.Card.TFrame"); examples.pack(fill="x",pady=(8,0))
+        ttk.Label(examples,text="Quick examples:",style="SPPS.Muted.TLabel").pack(side="left",padx=(0,6))
         example_rows=[
             ("Kaiser positive", "Kaiser test was positive after Val coupling, so I repeated the coupling once and the retest was negative."),
             ("Resin clumping", "The resin clumped during coupling. I added a little more DMF and manually dispersed it; the resin returned to normal."),
@@ -1006,10 +1364,10 @@ class ExperimentalDataWindow(tk.Toplevel):
         def use_example(text: str):
             observation.delete("1.0","end"); observation.insert("1.0",text); observation.focus_set()
         for label,example in example_rows:
-            ttk.Button(examples,text=label,command=lambda x=example:use_example(x),style="V5.Secondary.TButton").pack(side="left",padx=3)
+            ttk.Button(examples,text=label,command=lambda x=example:use_example(x),style="SPPS.Secondary.TButton").pack(side="left",padx=3)
 
         result_line=tk.StringVar(value="The program will structure the note automatically when you save it.")
-        ttk.Label(shell,textvariable=result_line,style="V5.Muted.TLabel").pack(anchor="w",pady=(8,0))
+        ttk.Label(shell,textvariable=result_line,style="SPPS.Muted.TLabel").pack(anchor="w",pady=(8,0))
 
         detail_vars={
             "stage":tk.StringVar(value=""), "issue_type":tk.StringVar(value=""),
@@ -1022,7 +1380,7 @@ class ExperimentalDataWindow(tk.Toplevel):
         resolution_values=["Unknown","Resolved","Improved","Not Resolved"]
         severity_values=["Low","Medium","High","Critical"]
 
-        details=ttk.LabelFrame(shell,text="Review details (optional)",padding=10,style="V5.Card.TLabelframe")
+        details=ttk.LabelFrame(shell,text="Review details (optional)",padding=10,style="SPPS.Card.TLabelframe")
         detail_visible={"value":False}
         def set_details(parsed):
             detail_vars["stage"].set(parsed.get("stage") or "Other")
@@ -1058,17 +1416,17 @@ class ExperimentalDataWindow(tk.Toplevel):
         ]
         for i,(label,key,values) in enumerate(rows):
             r=i//3; c=(i%3)*2
-            ttk.Label(details,text=label,style="V5.Muted.TLabel").grid(row=r*2,column=c,sticky="w",padx=4,pady=(2,0))
+            ttk.Label(details,text=label,style="SPPS.Muted.TLabel").grid(row=r*2,column=c,sticky="w",padx=4,pady=(2,0))
             ttk.Combobox(details,textvariable=detail_vars[key],values=values,state="readonly",width=22).grid(row=r*2+1,column=c,sticky="ew",padx=4,pady=(1,5))
-        ttk.Label(details,text="Position",style="V5.Muted.TLabel").grid(row=4,column=0,sticky="w",padx=4)
+        ttk.Label(details,text="Position",style="SPPS.Muted.TLabel").grid(row=4,column=0,sticky="w",padx=4)
         ttk.Entry(details,textvariable=detail_vars["position"],width=12).grid(row=5,column=0,sticky="ew",padx=4)
-        ttk.Label(details,text="Residue",style="V5.Muted.TLabel").grid(row=4,column=2,sticky="w",padx=4)
+        ttk.Label(details,text="Residue",style="SPPS.Muted.TLabel").grid(row=4,column=2,sticky="w",padx=4)
         ttk.Entry(details,textvariable=detail_vars["residue"],width=16).grid(row=5,column=2,sticky="ew",padx=4)
         for c in (0,2,4): details.columnconfigure(c,weight=1)
 
-        footer=ttk.Frame(shell,style="V5.Root.TFrame"); footer.pack(fill="x",pady=(10,0))
-        details_btn=ttk.Button(footer,text="Review details",command=toggle_details,style="V5.Secondary.TButton"); details_btn.pack(side="left")
-        ttk.Button(footer,text="Analyze",command=lambda:analyze(reveal=False),style="V5.Secondary.TButton").pack(side="left",padx=6)
+        footer=ttk.Frame(shell,style="SPPS.Root.TFrame"); footer.pack(fill="x",pady=(10,0))
+        details_btn=ttk.Button(footer,text="Review details",command=toggle_details,style="SPPS.Secondary.TButton"); details_btn.pack(side="left")
+        ttk.Button(footer,text="Analyze",command=lambda:analyze(reveal=False),style="SPPS.Secondary.TButton").pack(side="left",padx=6)
 
         def save_issue(*,keep_open=False):
             note=observation.get("1.0","end").strip()
@@ -1136,9 +1494,9 @@ class ExperimentalDataWindow(tk.Toplevel):
             else:
                 dialog.destroy()
 
-        ttk.Button(footer,text="Cancel",command=dialog.destroy,style="V5.Secondary.TButton").pack(side="right")
-        ttk.Button(footer,text="Save & Add Another",command=lambda:save_issue(keep_open=True),style="V5.Secondary.TButton").pack(side="right",padx=6)
-        ttk.Button(footer,text="Save",command=save_issue,style="V5.Primary.TButton").pack(side="right",padx=6)
+        ttk.Button(footer,text="Cancel",command=dialog.destroy,style="SPPS.Secondary.TButton").pack(side="right")
+        ttk.Button(footer,text="Save & Add Another",command=lambda:save_issue(keep_open=True),style="SPPS.Secondary.TButton").pack(side="right",padx=6)
+        ttk.Button(footer,text="Save",command=save_issue,style="SPPS.Primary.TButton").pack(side="right",padx=6)
         ui_system.fit_window(dialog, preferred_width=820, preferred_height=560, minimum_width=720, minimum_height=500)
 
     def record_loading(self) -> None:
@@ -1269,6 +1627,7 @@ class ExperimentalDataWindow(tk.Toplevel):
 
     def refresh_all(self) -> None:
         try:
+            self._refresh_run_context()
             loading = experimental_workflow.loading_records(self.gui)
             cleavage = experimental_workflow.cleavage_records(self.gui)
             sequence = experimental_workflow.sequence_records(self.gui)
@@ -1276,9 +1635,17 @@ class ExperimentalDataWindow(tk.Toplevel):
             outcomes = experimental_workflow.outcome_records(self.gui)
             issues = experimental_workflow.issue_records(self.gui)
             self._fill(self.loading_tree, loading); self._fill(self.cleavage_tree, cleavage); self._fill(self.sequence_tree, sequence); self._fill(self.usage_tree, usage); self._fill(self.outcome_tree, outcomes); self._fill(self.issue_tree, issues)
+            if hasattr(self, "load_aa_combo"):
+                observed_aa = experimental_data.observed_loading_amino_acid_identities(loading)
+                current_norm = experimental_data.normalize_amino_acid(self.load_aa.get())
+                if current_norm and current_norm not in observed_aa:
+                    observed_aa.insert(0, current_norm)
+                self.load_aa_combo.configure(values=observed_aa)
             self.status.configure(text=f"Records  Loading {len(loading)}  •  Cleavage {len(cleavage)}  •  Issues {len(issues)}")
             if hasattr(self, "health_text"):
                 self._refresh_health()
+            if hasattr(self, "analytics_text"):
+                self._refresh_analytics()
             self._refresh_loading_rebuild_notice()
         except Exception as exc:
             self.status.configure(text=f"Experimental DB error: {exc}")
@@ -1293,27 +1660,113 @@ class ExperimentalDataWindow(tk.Toplevel):
             )
             self._last_loading_advice = result
             rec=result.get("target_recommendation") or {}
-            lines=[f"Target loading  {_fmt(self.load_target.get()) or '—'} mmol/g"]
-            if rec:
-                raw_conf=str(rec.get('confidence') or result.get('confidence','LOW')).upper()
-                confidence_label=("Experimental estimate" if rec.get('provisional') or raw_conf=="LOW" else "High confidence" if raw_conf=="HIGH" else "Medium confidence")
+            trace=result.get("evidence_trace") or {}
+            profile=result.get("exact_evidence_profile") or {}
+            identity=result.get("amino_acid_identity") or experimental_data.describe_amino_acid_identity(self.load_aa.get())
+            kind=str(rec.get('recommendation_kind') or '').upper()
+            kind_labels={
+                'OBSERVED REPEATED CONDITION':'Observed repeated condition',
+                'BOUNDED TARGET INTERPOLATION':'Bounded interpolation',
+                'TARGET OUTSIDE OBSERVED RANGE':'Outside observed range',
+                'INSUFFICIENT MONOTONIC EVIDENCE':'Insufficient monotonic evidence',
+                'CHEMISTRY DEFAULT':'Chemistry default',
+            }
+            normalized_identity=identity.get('normalized') or self.load_aa.get() or '—'
+            identity_category=identity.get('category') or 'unknown'
+            identity_n=int(identity.get('exact_history_count') or profile.get('exact_record_count') or 0)
+            lines=[
+                f"Target loading  {_fmt(self.load_target.get()) or '—'} mmol/g",
+                f"Loaded-AA identity  {normalized_identity}  |  {identity_category}  |  exact history n={identity_n}",
+                f"Identity recognition  {identity.get('identity_origin') or 'literal identity'}; recognition alone is not experimental support",
+                f"Recommendation type  {kind_labels.get(kind, kind.title() if kind else 'No actionable recommendation')}",
+                f"Evidence source  {trace.get('source','Unknown')} | confidence {trace.get('confidence','LOW')} | n={trace.get('evidence_count',0)}",
+            ]
+            if identity.get('stereochemistry') == 'D':
+                lines.append("Stereo guard  D-form evidence is kept separate from the corresponding L-form.")
+            if identity_category == 'non-natural / special building block':
+                lines.append("Identity guard  Special/non-natural building blocks use only their exact normalized loading history.")
+
+            exact_n=int(profile.get('exact_record_count') or 0)
+            if exact_n == 0 and identity_category in {'D-form', 'non-natural / special building block'}:
+                lines.append("Evidence status  Identity recognized, but no exact same-resin experimental Loading history is available.")
+            elif exact_n == 1 and identity_category in {'D-form', 'non-natural / special building block'}:
+                lines.append("Evidence status  One exact record is available as context; repeated-condition evidence requires additional measurements.")
+            if exact_n:
+                date_min=profile.get('date_min') or '—'; date_max=profile.get('date_max') or '—'
                 lines += [
                     "",
-                    f"Recommended AA eq  {_fmt(rec.get('aa_eq')) or '—'}",
+                    "Exact resin + C-terminal AA history",
+                    f"Records  {exact_n}  |  Verified {int(profile.get('verified_record_count') or 0)}  |  Parsed {int(profile.get('parsed_record_count') or 0)}",
+                    f"Distinct conditions  {int(profile.get('distinct_condition_count') or 0)}  |  Repeated conditions {int(profile.get('repeated_condition_count') or 0)}",
+                    f"Date coverage  {date_min} → {date_max}",
+                    f"Observed loading  {_fmt(profile.get('observed_loading_min'))} – {_fmt(profile.get('observed_loading_max'))} mmol/g  |  median {_fmt(profile.get('observed_loading_median'))}",
+                ]
+                if profile.get('observed_aa_eq_min') is not None:
+                    lines.append(f"Observed AA eq  {_fmt(profile.get('observed_aa_eq_min'))} – {_fmt(profile.get('observed_aa_eq_max'))}")
+            else:
+                lines += ["", "Exact resin + C-terminal AA history  none"]
+
+            if rec:
+                raw_conf=str(rec.get('confidence') or result.get('confidence','LOW')).upper()
+                confidence_label=("Experimental estimate" if rec.get('provisional') or raw_conf=="LOW" else "High evidence" if raw_conf=="HIGH" else "Medium evidence")
+                lines += [
+                    "",
+                    "Recommended condition",
+                    f"AA eq  {_fmt(rec.get('aa_eq')) or '—'}",
                     f"DIEA eq  {_fmt(rec.get('base_eq')) or _fmt(self.load_base_eq.get()) or '—'}",
                     f"Time  {_fmt(rec.get('loading_time_h')) or _fmt(self.load_time.get()) or '—'} h",
                     f"Expected loading  {_fmt(rec.get('predicted_loading_mmol_g')) or '—'} mmol/g",
                 ]
                 if rec.get('expected_low_mmol_g') is not None and rec.get('expected_high_mmol_g') is not None:
-                    lines.append(f"Expected range  {_fmt(rec.get('expected_low_mmol_g'))} – {_fmt(rec.get('expected_high_mmol_g'))} mmol/g")
+                    lines.append(f"Expected / observed support range  {_fmt(rec.get('expected_low_mmol_g'))} – {_fmt(rec.get('expected_high_mmol_g'))} mmol/g")
+                if rec.get('target_delta_mmol_g') is not None:
+                    delta=float(rec.get('target_delta_mmol_g') or 0.0)
+                    lines.append(f"Target delta  {delta:+.4f} mmol/g  |  absolute gap {_fmt(rec.get('target_abs_gap_mmol_g'),4)}")
                 lines += [
-                    f"Confidence  {confidence_label}",
-                    f"Based on  {rec.get('verified_evidence_count',0) if not rec.get('provisional') else rec.get('evidence_count',0)} similar measured/history result(s)",
+                    f"Evidence grade  {confidence_label}",
+                    f"Recommendation evidence  {rec.get('evidence_count',0)} exact resin+AA record(s) used by this recommendation path",
                 ]
+
+                support=rec.get('condition_support') or {}
+                if support:
+                    lines += [
+                        "",
+                        "Exact selected-condition repeatability",
+                        f"n={support.get('evidence_count',0)}  |  Verified {support.get('verified_count',0)} / Parsed {support.get('parsed_count',0)}",
+                        f"Measured median  {_fmt(support.get('loading_median_mmol_g'))} mmol/g  |  range {_fmt(support.get('loading_min_mmol_g'))} – {_fmt(support.get('loading_max_mmol_g'))}",
+                        f"Recorded dates  {support.get('date_min') or '—'} → {support.get('date_max') or '—'}",
+                    ]
+                    cap_n=int(support.get('capping_observed_count') or 0); cap_known=int(support.get('capping_known_count') or 0)
+                    if cap_known:
+                        cap_methods=', '.join(str(x) for x in (support.get('capping_methods') or []) if str(x).strip())
+                        lines.append(f"Capping yes / recorded  {cap_n}/{cap_known}" + (f"  |  {cap_methods}" if cap_methods else ""))
+                    locators=[str(x) for x in (support.get('source_locators') or []) if str(x).strip()]
+                    if locators:
+                        lines.append("Source examples  " + " ; ".join(locators[:2]))
+
+                nearest=rec.get('nearest_observed_conditions') or profile.get('nearest_conditions') or []
+                if nearest:
+                    lines += ["", "Nearest observed same-resin + same-AA conditions"]
+                    for item in nearest[:3]:
+                        aa=_fmt(item.get('aa_eq')) or '—'; base=_fmt(item.get('base_eq')) or '—'; time=_fmt(item.get('loading_time_h')) or '—'
+                        lines.append(
+                            f"• AA {aa} eq / DIEA {base} eq / {time} h → median {_fmt(item.get('loading_median_mmol_g'))} "
+                            f"[{_fmt(item.get('loading_min_mmol_g'))}–{_fmt(item.get('loading_max_mmol_g'))}] mmol/g, n={item.get('evidence_count',0)}"
+                        )
+
                 if not rec.get('apply_allowed'):
-                    lines.append("Apply  Not available for this evidence range")
+                    lines += ["", "Apply  NOT AVAILABLE — recommendation remains outside supported evidence or otherwise non-actionable."]
+                elif kind == 'CHEMISTRY DEFAULT':
+                    lines += ["", "Interpretation  Chemistry planning default only. It does not predict that the requested target will be reached."]
+                elif kind == 'OBSERVED REPEATED CONDITION':
+                    lines += ["", "Interpretation  The exact recorded condition was repeated and the requested target lies inside its measured range. No extrapolation."]
+                elif kind == 'BOUNDED TARGET INTERPOLATION':
+                    lines += ["", "Interpretation  Interpolation is bounded by exact same-resin + same-AA history. No out-of-range extrapolation."]
                 if rec.get('provisional'):
-                    lines.append("Parsed history was required; new measured results should replace this estimate over time.")
+                    lines.append("Parsed history was required; verified measured results should supersede this estimate when available.")
+                basis=rec.get('basis')
+                if basis:
+                    lines += ["", f"Basis  {basis}"]
             else:
                 lines += ["", "No bounded target-loading estimate is available yet.", "Add measured loading results for this resin + C-terminal AA to improve the recommendation."]
             if result.get('warnings'):
@@ -1331,6 +1784,7 @@ class ExperimentalDataWindow(tk.Toplevel):
             )
             self._last_cleavage_advice = result
             rec = result.get("recommended_condition") or {}
+            trace = result.get("evidence_trace") or {}
             amount = result.get("amount_evidence") or {}
             arec = amount.get("recommended_amount") or {}
 
@@ -1338,7 +1792,8 @@ class ExperimentalDataWindow(tk.Toplevel):
             # unrelated amount records into a historical condition.
             condition_lines = [
                 f"{result.get('method') or 'Cleavage advisor'}",
-                f"Confidence  {result.get('confidence', 'LOW')}",
+                f"Evidence source  {trace.get('source','Unknown')} | n={trace.get('evidence_count',0)}",
+                f"Confidence  {trace.get('confidence') or result.get('confidence', 'LOW')}",
             ]
             if rec:
                 comp = rec.get("composition_pct") or {}
@@ -1349,7 +1804,7 @@ class ExperimentalDataWindow(tk.Toplevel):
                     "recommended_exact_sequence_record": "Historical consensus",
                     "historical_match_incomplete": "Historical incomplete",
                     "operator_approved_anchor": "Operator-approved anchor",
-                    "empirical_v5_fallback": "Empirical V5 estimate",
+                    "empirical_v5_fallback": "Empirical estimate",
                     "operator_cys_rule": "Operator Cys rule",
                     "chemistry_rule_reference": "Chemistry reference",
                 }
@@ -1493,7 +1948,9 @@ class ExperimentalDataWindow(tk.Toplevel):
             f"Expected range: {_fmt(rec.get('expected_low_mmol_g'))} – {_fmt(rec.get('expected_high_mmol_g'))} mmol/g\n"
             f"Evidence: {rec.get('evidence_count',0)} exact resin+AA record(s)\n"
             f"Basis: {rec.get('basis') or rec.get('recommendation_kind')}\n\n"
-            "This is bounded to observed history; no out-of-range extrapolation is applied.",
+            + ("This is a chemistry planning default; it does not predict that the requested loading will be achieved."
+             if rec.get("recommendation_kind") == "CHEMISTRY DEFAULT"
+             else "This is bounded to observed history; no out-of-range extrapolation is applied."),
             parent=self,
         )
         if not ok:
@@ -1517,6 +1974,7 @@ class ExperimentalDataWindow(tk.Toplevel):
         except Exception as exc:
             messagebox.showerror("Loading Advisor", f"The recommendation was written, but regeneration failed.\n\n{exc}", parent=self)
             return
+        self._trace_recommendation("loading", result, "Applied as recommended", {"aa_eq":rec.get("aa_eq"),"base_eq":rec.get("base_eq"),"loading_time_h":rec.get("loading_time_h"),"loading_solvent":rec.get("loading_solvent")})
         text = f"Applied target-loading recommendation: AA {self.load_aa_eq.get()} eq / DIEA {self.load_base_eq.get()} eq / {self.load_time.get()} h."
         self.status.configure(text=text); self._append_result_status(self.load_result, "✓ " + text)
 
@@ -1589,6 +2047,7 @@ class ExperimentalDataWindow(tk.Toplevel):
             messagebox.showerror("Cleavage Advisor", f"The confirmed condition was written, but Apply Change failed.\n\n{exc}", parent=self)
             return
         composition = _value(getattr(self.gui, "cleavage_components_text", "")) or _value(getattr(self.gui, "cleavage_preset", ""))
+        self._trace_recommendation("cleavage", result, "Applied as recommended", {"cleavage_eq":eq,"cleavage_time_h":rec.get("cleavage_time_h"),"composition_pct":comp,"scaled_total_ml":scaled_total})
         text = f"Applied: {self.clv_eq.get()} eq / {self.clv_time.get()} h / {composition}; current-scale cocktail {amount_text}."
         self.status.configure(text=text); self._append_result_status(self.clv_result, "✓ " + text)
 

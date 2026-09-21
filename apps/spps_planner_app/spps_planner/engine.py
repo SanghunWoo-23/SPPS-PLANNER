@@ -7,7 +7,7 @@ import re
 import pandas as pd
 from .parser import parse_sequence
 from .database import load_compounds, load_rules, compound_lookup, load_reagent_library, reagent_lookup
-from .display import normalize_operator_amounts, ordered_step_materials, resin_label
+from .display import normalize_operator_amounts as _normalize_operator_amounts, ordered_step_materials as _ordered_step_materials, resin_label as _resin_label
 
 AA_TOKENS = set("ARNDCQEGHILKMFPSTWYV")
 
@@ -159,7 +159,7 @@ def direct_loading_enabled(inp: "PlanInput") -> bool:
 
 
 def operation_volume_mL(resin: str, scale_mmol: float) -> float:
-    """Return the fixed-factor working volume used by compatibility callers.
+    """Legacy default working volume retained for API compatibility.
 
     The connected GUI/engine path uses :func:`working_volume_mL`, which honors
     the editable Amide/CTC factors or molarity-basis volume.
@@ -478,13 +478,12 @@ def _canonical_terminal_reagent_name(unit: str, row: dict[str, Any] | None = Non
         return "Acetic acid"
 
     cleaned = form
-    # Purpose prose is not part of the reagent identity.  Keep it in Notes.
+    # Purpose prose is not part of the reagent identity and is discarded here.
     cleaned = re.sub(r"\s+route\s+for\s+N[- ]terminal\b.*$", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+for\s+N[- ]terminal\b.*$", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+generic\s*:\s*.*$", "", cleaned, flags=re.IGNORECASE)
     # Historical compound rows often use 'actual reagent / purpose or alias'.
-    # The left side is the material identity; the right side remains documented
-    # in Notes / chemistry-profile fields.
+    # The left side is the material identity; the purpose/alias suffix is discarded.
     if " / " in cleaned:
         cleaned = cleaned.split(" / ", 1)[0].strip()
     cleaned = re.sub(r"\s+route$", "", cleaned, flags=re.IGNORECASE).strip()
@@ -627,6 +626,12 @@ _CLEAVAGE_COMPONENT_INFO = {
     "DMB": {"role": "Rink linker stabilizer", "density": 0.0, "state": "solid_wv"},
     "p-Cresol": {"role": "phenolic scavenger", "density": 1.034, "state": "liquid_or_solid"},
     "Triethylsilane": {"role": "silane scavenger", "density": 0.728, "state": "liquid"},
+    "AcOH": {"role": "mild acid", "density": 1.049, "state": "liquid"},
+    "TFE": {"role": "mild cleavage co-solvent", "density": 1.39, "state": "liquid"},
+    "TEE": {"role": "mild cleavage co-solvent", "density": 1.39, "state": "liquid", "canonical": "TFE"},
+    "MC/DCM": {"role": "methylene chloride solvent", "density": 1.325, "state": "liquid"},
+    "DCM": {"role": "methylene chloride solvent", "density": 1.325, "state": "liquid", "canonical": "MC/DCM"},
+    "MC": {"role": "methylene chloride solvent", "density": 1.325, "state": "liquid", "canonical": "MC/DCM"},
 }
 
 
@@ -704,51 +709,6 @@ def _selected_cleavage_components(inp: PlanInput) -> dict[str, float]:
 
 
 
-def _normalize_material_liquid_fields(df: pd.DataFrame) -> pd.DataFrame:
-    """Show true liquid/solution reagents as mL-only in operator-facing tables.
-
-    DIC is treated as a liquid reagent/solvent-like component for
-    bench display, and DIEA/DIPEA/DIC/DMF/DCM/MC/NMP/TFA/TIS/EDT/AcOH/TFE/
-    piperidine/water rows must not show grams in Selected Materials or Selected
-    Total Materials.  Grams can still exist internally for calculations, but the
-    operator-facing table is mL-only for these rows.
-    """
-    if df is None or df.empty:
-        return df
-    out = df.copy()
-    if "density_g_mL" not in out.columns:
-        return out
-    mat = out.get("material", pd.Series([""] * len(out))).astype(str).str.lower().str.strip()
-    reagent = out.get("reagent", pd.Series([""] * len(out))).astype(str).str.lower().str.strip()
-    state = out.get("physical_state", pd.Series([""] * len(out))).astype(str).str.lower().str.strip()
-    dens = pd.to_numeric(out["density_g_mL"], errors="coerce").fillna(0.0)
-    liquid_names = (
-        "dic", "diea", "dipea", "dmf", "dcm", "mc", "mc/dcm", "nmp",
-        "tfa", "tis", "edt", "acoh", "acetic acid", "tfe", "tee",
-        "piperidine", "water", "h2o", "dw", "dw / water", "meoh", "methanol",
-        "acetic anhydride", "ac2o", "thioanisole", "anisole", "dms", "dmso", "triethylsilane"
-    )
-    def _is_named_liquid(x: str) -> bool:
-        x = str(x or "").lower().strip()
-        base = x.split(" -")[0].strip()
-        return any(base == n or x == n or x.startswith(n + " ") or x.startswith(n + " -") for n in liquid_names)
-    is_liquid_name = mat.map(_is_named_liquid) | reagent.map(_is_named_liquid)
-    liquid_like = is_liquid_name | state.isin(["liquid", "solution"]) | (dens.gt(0) & is_liquid_name)
-    for col in ("planned_g", "planned_mg", "approx_g"):
-        if col in out.columns:
-            out.loc[liquid_like, col] = 0.0
-    if "unit" in out.columns:
-        out.loc[liquid_like, "unit"] = "mL"
-    if "warning" in out.columns:
-        # N-terminal modifier rows are kept clean: the material identity and
-        # calculated amount are sufficient, so do not add an informational
-        # liquid-display warning to those rows.
-        cls = out.get("class", pd.Series([""] * len(out))).astype(str).str.lower().str.strip()
-        warn_mask = liquid_like & ~cls.str.contains("n-term", na=False)
-        existing = out.loc[warn_mask, "warning"].fillna("").astype(str)
-        add = "Liquid/solution reagent: operator table reports mL only."
-        out.loc[warn_mask, "warning"] = existing.map(lambda x: (x + " | " + add).strip(" |") if add not in x else x)
-    return out
 
 def validate_plan(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:
     """Return user-visible validation warnings for the current SPPS plan.
@@ -894,7 +854,7 @@ def _match_override(step_no: int, unit: str, phase: str, overrides: list[dict[st
 
 
 def _operator_solvent_name(name: Any) -> str:
-    """Normalize operator-facing solvent aliases without losing selection semantics."""
+    """Normalize legacy operator-facing solvent aliases without losing selection semantics."""
     raw = str(name or "").strip()
     key = re.sub(r"[^A-Za-z0-9]+", "", raw).upper()
     if key in {"DCM", "MC", "METHYLENECHLORIDE", "DICHLOROMETHANE"}:
@@ -931,8 +891,8 @@ def _parse_solvent_mix(text: Any, default: str = "90% DCM / 10% DMF") -> list[tu
             order.append(name)
             merged[name] = 0.0
         merged[name] += value / total
-    # Keep DMF/NMP-type fraction in solvent1 and MC/DCM in solvent2 so the
-    # established export column meanings remain stable.
+    # Keep DMF/NMP-type fraction in the legacy solvent1 column and MC/DCM in
+    # solvent2 so old exports remain meaningful.
     order.sort(key=lambda n: 1 if n.upper() == "MC/DCM" else 0)
     return [(name, merged[name]) for name in order]
 
@@ -1129,12 +1089,12 @@ def generate_step_matrix(inp: PlanInput, compounds: pd.DataFrame | None = None, 
             steps.append(_make_step(step_no, btok, "Branch AA coupling", _profile_for(btok, lookup), depro, wash, rxn, post, 0, 1.0, 0.0, dmf, pip, 0.0, note, inp, overrides, lookup, n + j, 0))
             step_no += 1
 
-    # The editable Plan table shows synthesis units from the user-entered peptide
-    # notation only. Fmoc removal is an operation/checklist action, not an extra
-    # synthesis-unit row.
+    # The editable Plan lists synthesis units from the user-entered peptide notation only.
+    # Final Fmoc removal is represented in operations/checklists, not as an extra sequence unit.
     if parsed.nterm:
         token = parsed.nterm
         rxn = int(rules.get("last_reaction", 1))
+        # N-terminal unit handling:
         # Any explicit N-terminal chemical, label, cap, or tag is treated as
         # the final coupling/capping unit, similar to an amino-acid coupling row.
         # The editable Plan shows only the real sequence unit. The practical
@@ -1251,8 +1211,8 @@ def generate_step_reagent_plan(inp: PlanInput, compounds: pd.DataFrame | None = 
 def _generate_materials_core(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: dict | None = None) -> pd.DataFrame:
     """Generate total raw-material usage for the plan.
 
-    This table reports real totals instead of silent per-step
-    fragments. Step-level details remain available in generate_step_reagent_plan.
+    This table contains real aggregated totals rather than silent per-step fragments.
+    Step-level details remain available in generate_step_reagent_plan.
     Auxiliary reagents (DIC/HOBt/DIEA/etc.) are calculated from the reagent
     library when MW/density are available; otherwise an explicit warning note is
     emitted in the source column.
@@ -1413,7 +1373,6 @@ def _generate_materials_core(inp: PlanInput, compounds: pd.DataFrame | None = No
     except Exception as e:
         rows.append({"material": "Cleavage cocktail", "class": "cleavage", "reagent": "manual", "planned_mmol": 0.0, "planned_g": 0.0, "planned_mg": 0.0, "planned_mL": 0.0, "unit": "manual", "MW": "", "density_g_mL": "", "physical_state": "", "source": "cleavage cocktail generation failed", "warning": str(e)})
     df = pd.DataFrame(rows)
-    df = _normalize_material_liquid_fields(df)
     preferred = ["material", "class", "reagent", "planned_mmol", "planned_g", "planned_mg", "planned_mL", "unit", "MW", "density_g_mL", "physical_state", "source", "warning"]
     return df[[c for c in preferred if c in df.columns]].copy()
 
@@ -1458,22 +1417,12 @@ def generate_printable_checklist(inp: PlanInput, compounds: pd.DataFrame | None 
 
 
 
-# ======================= BENCH-ACCURATE CLEAVAGE + STEP MATERIALS =======================
+# ======================= CLEAVAGE + STEP MATERIALS =======================
 # Cleavage cocktail "eq" is interpreted as a bench volume planning rule, not as
 # a neat-TFA molar equivalent. For 2-CTC/Trityl plans the calculation uses
 # scale/2 * eq mL total cocktail; for amide/Rink plans it uses scale * eq mL.
 # Example check:
 #   GHK, 1000 mmol, 2-CTC, 18 eq -> 9000 mL total = 8550 mL TFA + 450 mL water for 95/5
-
-_CLEAVAGE_COMPONENT_INFO.update({
-    "AcOH": {"role": "mild acid", "density": 1.049, "state": "liquid"},
-    "TFE": {"role": "mild cleavage co-solvent", "density": 1.39, "state": "liquid"},
-    "TEE": {"role": "mild cleavage co-solvent", "density": 1.39, "state": "liquid", "canonical": "TFE"},
-    "MC/DCM": {"role": "methylene chloride solvent", "density": 1.325, "state": "liquid"},
-    "DCM": {"role": "methylene chloride solvent", "density": 1.325, "state": "liquid", "canonical": "MC/DCM"},
-    "MC": {"role": "methylene chloride solvent", "density": 1.325, "state": "liquid", "canonical": "MC/DCM"},
-})
-
 
 def _canonical_cleavage_component(name: str) -> str:
     raw = str(name or "").strip()
@@ -1706,7 +1655,7 @@ def _generate_step_materials_core(inp: PlanInput, compounds: pd.DataFrame | None
         rows.append(_step_material_row("cleavage", "Cleavage cocktail", "manual check", phase="cleavage", note=str(e), source="cleavage generation failed"))
     cols = ["step", "material", "class", "MW", "density_g_mL", "planned_mmol", "planned_g", "planned_mL", "unit", "use_count", "repeat", "phase", "note", "source"]
     return pd.DataFrame(rows, columns=cols)
-# ======================= END BENCH-ACCURATE CLEAVAGE + STEP MATERIALS =======================
+# ======================= END CLEAVAGE + STEP MATERIALS =======================
 
 def recommend_cleavage_preset(inp: PlanInput | str) -> dict[str, Any]:
     seq = inp.sequence if hasattr(inp, "sequence") else str(inp or "")
@@ -1766,20 +1715,15 @@ def plan_summary(inp: PlanInput, compounds: pd.DataFrame | None = None, rules: d
         "product_mw": product_mw, "mh": product_mw + 1.0073, "mna": product_mw + 22.9898, "materials_count": int(len(materials)),
     }
 
-# Canonical public material API.
-#
-# Calculation is performed once by the core builders, then a single display
-# normalization pass applies operator-facing resin labels, liquid units, protected
-# AA names, and deterministic step order.  No versioned post-processing chain is
-# used here.
-
+# ======================= CANONICAL MATERIAL API =======================
 def generate_step_materials(
     inp: PlanInput,
     compounds: pd.DataFrame | None = None,
     rules: dict | None = None,
 ) -> pd.DataFrame:
+    """Return the operator-facing step material table from one canonical pipeline."""
     raw = _generate_step_materials_core(inp, compounds, rules)
-    return ordered_step_materials(raw, resin_label(getattr(inp, "resin", "")))
+    return _ordered_step_materials(raw, _resin_label(getattr(inp, "resin", "")))
 
 
 def generate_materials(
@@ -1787,5 +1731,6 @@ def generate_materials(
     compounds: pd.DataFrame | None = None,
     rules: dict | None = None,
 ) -> pd.DataFrame:
+    """Return total materials from one core calculation plus display normalization."""
     raw = _generate_materials_core(inp, compounds, rules)
-    return normalize_operator_amounts(raw, resin_label(getattr(inp, "resin", "")))
+    return _normalize_operator_amounts(raw, _resin_label(getattr(inp, "resin", "")))

@@ -5,6 +5,10 @@ behaviour that caused startup samples, duplicate loading controls, broken eq
 visibility, and Apply Change not propagating edited units.
 """
 from __future__ import annotations
+from suite_gui import runtime_state
+from suite_gui.runtime_state import (get_active_index, set_active_index, is_switching, get_calculation_namespace,
+    get_dirty_columns, set_dirty_columns, clear_dirty_columns, is_generating, set_generating,
+    is_applying, set_applying)
 
 from dataclasses import replace
 from datetime import datetime
@@ -17,14 +21,15 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import pandas as pd
 
-from suite_gui.modules import workspace_widgets as v228
+from suite_gui.modules import workspace_widgets
 from suite_gui import peptide_item_state
 from suite_gui import peptide_item_collection
 from suite_gui import state_persistence
 from suite_gui import position_rules
+from suite_gui.error_policy import log_nonfatal
 
-VERSION = "V5.0.0"
-TITLE = "SPPS Planner V5.0.0"
+VERSION = "V6.0.0"
+TITLE = "SPPS Planner V6.0.0"
 
 PLAN_COLUMNS = [
     "No", "Unit name", "MW", "Density(g/mL)", "Unit eq", "Unit mmol", "Unit amount",
@@ -45,12 +50,12 @@ PLAN_WIDTHS = {
     "Coupling solvent": 160, "Solvent mL": 95, "Repeat": 70, "Note": 430,
 }
 
-MATERIAL_COLUMNS = list(v228.MATERIAL_COLUMNS)
-MATERIAL_WIDTHS = dict(v228.MATERIAL_WIDTHS)
-TOTAL_COLUMNS = list(v228.TOTAL_COLUMNS)
-TOTAL_WIDTHS = dict(v228.TOTAL_WIDTHS)
-CHECK_COLUMNS = list(v228.CHECK_COLUMNS)
-CHECK_WIDTHS = dict(v228.CHECK_WIDTHS)
+MATERIAL_COLUMNS = list(workspace_widgets.MATERIAL_COLUMNS)
+MATERIAL_WIDTHS = dict(workspace_widgets.MATERIAL_WIDTHS)
+TOTAL_COLUMNS = list(workspace_widgets.TOTAL_COLUMNS)
+TOTAL_WIDTHS = dict(workspace_widgets.TOTAL_WIDTHS)
+CHECK_COLUMNS = list(workspace_widgets.CHECK_COLUMNS)
+CHECK_WIDTHS = dict(workspace_widgets.CHECK_WIDTHS)
 
 
 def _num(value: Any, default: float = 0.0) -> float:
@@ -93,7 +98,7 @@ def _set(gui, name: str, value: Any) -> None:
 
 
 def _active_index(gui) -> int | None:
-    value = getattr(gui, "_v229_active_index", None)
+    value = get_active_index(gui, None)
     try:
         value = int(value)
         if 0 <= value < len(gui.pm_items):
@@ -114,16 +119,15 @@ def _lookup(gui, ns: dict[str, Any], name: str) -> tuple[float, float]:
     direct = material_lookup(name)
     if direct != (0.0, 0.0):
         return direct
-    for fn_name in ("_v251_lookup", "_v248_lookup", "_v216_lookup_mw_density", "_v29_material_lookup"):
-        fn = ns.get(fn_name)
-        if callable(fn):
-            try:
-                mw, density = fn(gui, name)
-                mwf, denf = _num(mw), _num(density)
-                if mwf or denf:
-                    return mwf, denf
-            except Exception:
-                pass
+    fn = runtime_state.namespace_callable(ns, "material_lookup")
+    if callable(fn):
+        try:
+            mw, density = fn(gui, name)
+            mwf, denf = _num(mw), _num(density)
+            if mwf or denf:
+                return mwf, denf
+        except Exception:
+            pass
     key = re.sub(r"[^a-z0-9]+", "", str(name).lower())
     fallback = {
         "aceticanhydrideac2ofornterminalacetylation": (102.09, 1.08),
@@ -299,7 +303,7 @@ def _generated_plan_rows(gui, ns: dict[str, Any], inp) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for _, record in frame.iterrows():
         repeat = max(1, int(round(_num(record.get("coupling_repeat"), 1))))
-        unit = str(record.get("protected_reagent", "") or record.get("unit", "") or "").strip()
+        unit = _canonical(ns, str(record.get("protected_reagent", "") or record.get("unit", "") or "").strip())
         unit_eq = _num(record.get("reagent_eq"), 0.0)
         unit_mmol = _num(record.get("planned_reagent_mmol"), 0.0)
         unit_mw = _num(record.get("reagent_mw"), 0.0)
@@ -514,14 +518,15 @@ def _recalc_direct_loading_row(gui, ns: dict[str, Any], inp, row: dict[str, str]
         try:
             from spps_planner.engine import working_volume_mL
             row["Solvent mL"] = _fmt(working_volume_mL(inp) * repeat) if solvent else ""
-        except Exception:
-            pass
+        except Exception as exc:
+            row["Solvent mL"] = ""
+            log_nonfatal(gui, "Recalculate edited coupling solvent volume", exc)
     return row
 
 
 def _recalc_plan(gui, ns: dict[str, Any], inp) -> None:
     tree = gui.pm_selected_plan_tree
-    dirty_map = getattr(gui, "_v229_dirty_columns", {})
+    dirty_map = get_dirty_columns(gui)
     current_rows = [_row_dict(tree, iid) for iid in tree.get_children()]
     repeat_by_index = position_rules.desired_repeats(gui, current_rows)
     for position, iid in enumerate(tree.get_children()):
@@ -535,7 +540,7 @@ def _recalc_plan(gui, ns: dict[str, Any], inp) -> None:
             row["Repeat"] = repeat
             _write_row(tree, iid, row)
             dirty_map.setdefault(iid, set()).add("Repeat")
-    gui._v229_dirty_columns = dirty_map
+    set_dirty_columns(gui, dirty_map)
     scale = _num(inp.scale_mmol, 0.0)
     for position, iid in enumerate(list(tree.get_children())):
         row = _row_dict(tree, iid)
@@ -652,10 +657,11 @@ def _recalc_plan(gui, ns: dict[str, Any], inp) -> None:
         try:
             from spps_planner.engine import working_volume_mL
             row["Solvent mL"] = _fmt(working_volume_mL(inp) * repeat) if solvent else ""
-        except Exception:
-            pass
+        except Exception as exc:
+            row["Solvent mL"] = ""
+            log_nonfatal(gui, "Recalculate plan coupling solvent volume", exc)
         _write_row(tree, iid, row)
-    gui._v229_dirty_columns = {}
+    clear_dirty_columns(gui)
 
 
 def _parse_amount(text: str) -> tuple[float, float]:
@@ -996,7 +1002,7 @@ def _write_linked(
     rendered = getattr(gui, "_pm_rendered_output_index", {})
     for key, labels, tree, rows, columns, widths in outputs:
         if paint_all_linked or paint_all or selected_label in labels:
-            v228._write_rows(tree, rows, columns, widths)
+            workspace_widgets._write_rows(tree, rows, columns, widths)
             if index is not None:
                 rendered[key] = index
         elif index is not None and rendered.get(key) == index:
@@ -1020,31 +1026,31 @@ def _refresh_cleavage(gui, ns: dict[str, Any], inp=None, *, paint: bool = True):
     preset = str(_var(gui, "cleavage_preset", "") or "").strip()
     if not components and preset.upper() in {"", "AUTO"}:
         if paint:
-            v228._clear_tree(getattr(gui, "pm_cleavage_tree", None))
+            workspace_widgets._clear_tree(getattr(gui, "pm_cleavage_tree", None))
         return pd.DataFrame()
     try:
         inp = inp or _build_plan_input(gui, ns)
         from spps_planner.engine import generate_cleavage_cocktail
         frame = generate_cleavage_cocktail(inp)
         if paint:
-            v228._write_rows(
+            workspace_widgets._write_rows(
                 gui.pm_cleavage_tree, frame.fillna("").to_dict("records"),
             )
         return frame
     except Exception:
         if paint:
-            v228._clear_tree(getattr(gui, "pm_cleavage_tree", None))
+            workspace_widgets._clear_tree(getattr(gui, "pm_cleavage_tree", None))
         return pd.DataFrame()
 
 
 def _snapshot(gui) -> None:
-    peptide_item_state.snapshot(gui, v228, _active_index)
+    peptide_item_state.snapshot(gui, workspace_widgets, _active_index)
 
 
 def _save_active(gui, include_outputs=True) -> None:
     peptide_item_state.save_active(
         gui,
-        v228,
+        workspace_widgets,
         _active_index,
         _commit_editor,
         include_outputs=include_outputs,
@@ -1052,14 +1058,14 @@ def _save_active(gui, include_outputs=True) -> None:
 
 
 def _clear_editor_and_outputs(gui) -> None:
-    peptide_item_state.clear_editor_and_outputs(gui, v228, _set)
+    peptide_item_state.clear_editor_and_outputs(gui, workspace_widgets, _set)
 
 
 def _restore_item(gui, index: int, ns: dict[str, Any]) -> None:
     peptide_item_state.restore_item(
         gui,
         index,
-        v228,
+        workspace_widgets,
         _set,
         _bind_plan_editor,
         ns,
@@ -1096,7 +1102,7 @@ def _double_click(gui, ns: dict[str, Any], _event=None):
 
 
 def _live_sync(gui):
-    peptide_item_state.live_sync(gui, v228, _active_index)
+    peptide_item_state.live_sync(gui, workspace_widgets, _active_index)
 
 
 def _commit_editor(gui):
@@ -1107,11 +1113,11 @@ def _commit_editor(gui):
     active. The legacy Return-event fallback is retained for older editors.
     """
     tree = getattr(gui, "pm_selected_plan_tree", None)
-    editor = getattr(tree, "_v229_editor", None) if tree is not None else None
+    editor = runtime_state.get_tree_editor(tree) if tree is not None else None
     try:
         if editor is None or not editor.winfo_exists():
             return
-        callback = getattr(editor, "_v229_commit", None)
+        callback = runtime_state.get_editor_commit(editor)
         if callable(callback):
             callback()
         else:
@@ -1125,7 +1131,7 @@ def _mark_visible_plan_edits(gui) -> None:
     """Mark edits made by either Plan editor path before recalculation.
 
     The legacy ``Edit Unit name`` dialog writes directly to the visible tree
-    and does not populate ``_v229_dirty_columns``. Compare the visible Plan
+    and does not populate the legacy dirty-column compatibility field. Compare the visible Plan
     with the last accepted snapshot so Apply Change treats those edits exactly
     like a double-click cell edit, without regenerating the Plan from Sequence.
     """
@@ -1151,7 +1157,7 @@ def _mark_visible_plan_edits(gui) -> None:
     tree = getattr(gui, "pm_selected_plan_tree", None)
     if tree is None:
         return
-    dirty_map = getattr(gui, "_v229_dirty_columns", {})
+    dirty_map = get_dirty_columns(gui)
     for position, iid in enumerate(tree.get_children()):
         current = _row_dict(tree, iid)
         number = str(current.get("No", "") or "").strip()
@@ -1166,7 +1172,7 @@ def _mark_visible_plan_edits(gui) -> None:
             after = str(current.get(column, "") or "").strip()
             if before != after:
                 dirty_map.setdefault(iid, set()).add(column)
-    gui._v229_dirty_columns = dirty_map
+    set_dirty_columns(gui, dirty_map)
 
 
 def _bind_plan_editor(gui, ns: dict[str, Any]) -> None:
@@ -1204,7 +1210,7 @@ def _bind_plan_editor(gui, ns: dict[str, Any]) -> None:
             editor.select_range(0, "end")
         except Exception:
             pass
-        tree._v229_editor = editor
+        runtime_state.set_tree_editor(tree,editor)
 
         def commit(_e=None):
             try:
@@ -1215,24 +1221,24 @@ def _bind_plan_editor(gui, ns: dict[str, Any]) -> None:
                     value = _canonical(ns, value)
                 row[column] = value
                 _write_row(tree, iid, row)
-                gui._v229_dirty_columns.setdefault(iid, set()).add(column)
+                get_dirty_columns(gui).setdefault(iid, set()).add(column)
             finally:
                 try:
                     editor.destroy()
                 except Exception:
                     pass
-                tree._v229_editor = None
+                runtime_state.set_tree_editor(tree,None)
 
         def cancel(_e=None):
             try:
                 editor.destroy()
             except Exception:
                 pass
-            tree._v229_editor = None
+            runtime_state.set_tree_editor(tree,None)
 
         # Apply Change can call this exact callback even before Tk dispatches
         # FocusOut/Return, so the latest visible value is never skipped.
-        editor._v229_commit = commit
+        runtime_state.set_editor_commit(editor,commit)
         editor.bind("<Return>", commit)
         editor.bind("<FocusOut>", commit)
         editor.bind("<Escape>", cancel)
@@ -1241,15 +1247,15 @@ def _bind_plan_editor(gui, ns: dict[str, Any]) -> None:
 
 
 def generate(gui, ns: dict[str, Any]):
-    if getattr(gui, "_v229_generating", False):
+    if is_generating(gui):
         return None
-    gui._v229_generating = True
+    set_generating(gui, True)
     try:
         _save_active(gui, include_outputs=False)
         inp = _build_plan_input(gui, ns)
         rows = _generated_plan_rows(gui, ns, inp)
-        v228._write_rows(gui.pm_selected_plan_tree, rows, PLAN_COLUMNS, PLAN_WIDTHS)
-        gui._v229_dirty_columns = {}
+        workspace_widgets._write_rows(gui.pm_selected_plan_tree, rows, PLAN_COLUMNS, PLAN_WIDTHS)
+        clear_dirty_columns(gui)
         _bind_plan_editor(gui, ns)
         # Generate is the one-click synthesis calculation: Plan, Materials,
         # Checklist and Total Materials are all calculated and painted now.
@@ -1271,13 +1277,13 @@ def generate(gui, ns: dict[str, Any]):
             pass
         return None
     finally:
-        gui._v229_generating = False
+        set_generating(gui, False)
 
 
 def apply_change(gui, ns: dict[str, Any]):
-    if getattr(gui, "_v229_applying", False):
+    if is_applying(gui):
         return None
-    gui._v229_applying = True
+    set_applying(gui, True)
     try:
         _commit_editor(gui)
         if not list(gui.pm_selected_plan_tree.get_children()):
@@ -1303,7 +1309,7 @@ def apply_change(gui, ns: dict[str, Any]):
             pass
         return None
     finally:
-        gui._v229_applying = False
+        set_applying(gui, False)
 
 
 def _delete_selected(gui, ns):
@@ -1317,36 +1323,32 @@ def _delete_selected(gui, ns):
 
 
 def _install_plan_toolbar(gui, ns):
-    tree = gui.pm_selected_plan_tree
-    parent = tree.master
-    for widget in v228._walk(parent):
-        if isinstance(widget, ttk.Button):
-            text = str(widget.cget("text"))
-            if text in {"Apply Plan", "Apply Change"}:
-                widget.destroy()
-            elif text == "Delete selected row":
-                widget.configure(command=lambda: _delete_selected(gui, ns))
+    workspace_widgets._install_plan_toolbar(gui, ns)
+    button = getattr(gui, "pm_plan_delete_button", None)
+    if button is not None:
+        button.configure(command=lambda: _delete_selected(gui, ns))
     _bind_plan_editor(gui, ns)
 
 
 def _install_action_buttons(gui, ns):
-    v228._install_action_buttons(gui, ns)
-    # v228 creates buttons bound to its controller; reconnect exact V2.2.9 routes.
-    for widget in v228._walk(gui):
-        if not isinstance(widget, ttk.Button):
-            continue
-        try:
-            text = str(widget.cget("text"))
-        except Exception:
-            continue
-        if text == "Generate":
-            widget.configure(command=gui.generate_update_plan)
-        elif text == "Apply Change":
-            widget.configure(command=gui.apply_change)
+    """Bind the native Project Manager action bar without text-based widget discovery."""
+    bindings = {
+        "pm_generate_button": gui.generate_update_plan,
+        "pm_apply_button": gui.apply_change,
+        "pm_condition_button": gui.open_condition_optimizer,
+        "pm_loading_advice_button": gui.open_loading_advisor,
+        "pm_cleavage_advice_button": gui.open_cleavage_advisor,
+        "pm_record_lab_button": gui.open_experimental_data,
+        "pm_save_session_button": gui.save_autosave_state,
+    }
+    for attr, command in bindings.items():
+        widget = getattr(gui, attr, None)
+        if widget is not None:
+            widget.configure(command=command)
 
 
 def _find_setup_notebook(gui):
-    for widget in v228._walk(gui):
+    for widget in workspace_widgets._walk(gui):
         if not isinstance(widget, ttk.Notebook):
             continue
         try:
@@ -1359,26 +1361,24 @@ def _find_setup_notebook(gui):
 
 
 def _install_loading_controls(gui):
-    """Keep legacy direct-loading controls, but remove duplicated loading rate.
+    """Normalize direct-loading controls without duplicating resin loading.
 
     Resin loading (mmol/g) belongs only to the Selected peptide editor.  The
-    legacy setup tab remains useful for direct 2-CTC loading AA/DIEA settings,
+    setup tab remains useful for direct 2-CTC loading AA/DIEA settings,
     so it is normalized instead of replaced with another parallel panel.
     """
     if not hasattr(gui, "apply_loading_calc"):
         gui.apply_loading_calc = tk.BooleanVar(value=False)
-    # The V2.2.8 normalizer removes the duplicated pm_loading and loading
-    # solvent controls, renames the tab to Direct loading, and preserves the
-    # useful checkbox plus loading AA/DIEA eq controls.
+    # Normalize older saved/layout states to the single Direct loading UI.
     try:
-        v228._normalize_setup_panel(gui)
+        workspace_widgets._normalize_setup_panel(gui)
     except Exception:
         pass
 
     notebook = _find_setup_notebook(gui)
     if notebook is None:
         return
-    # Defensive cleanup for older legacy layouts whose label wording differs.
+    # Defensive cleanup for older persisted layouts whose label wording differs.
     pm_loading_var = str(getattr(gui, "pm_loading", ""))
     loading_solvent_var = str(getattr(gui, "default_loading_dissolve_solvent", ""))
     for tab in notebook.tabs():
@@ -1456,7 +1456,7 @@ def _install_eq_follow_control(gui):
 
 def _rename_editor_loading(gui):
     # Exactly one operator-facing loading-rate field remains: the peptide editor.
-    for widget in v228._walk(gui):
+    for widget in workspace_widgets._walk(gui):
         if isinstance(widget, ttk.Label):
             try:
                 if str(widget.cget("text")) == "Loading" and widget.master is getattr(gui.pm_loading, "_root", None):
@@ -1464,7 +1464,7 @@ def _rename_editor_loading(gui):
             except Exception:
                 pass
     # Parent matching above is intentionally conservative; use geometry proximity fallback.
-    for widget in v228._walk(gui):
+    for widget in workspace_widgets._walk(gui):
         if isinstance(widget, ttk.Label):
             try:
                 if str(widget.cget("text")) == "Loading":
@@ -1476,10 +1476,10 @@ def _rename_editor_loading(gui):
 
 
 def _install_cleavage(gui):
-    notebook = v228._find_results_notebook(gui)
+    notebook = workspace_widgets._find_results_notebook(gui)
     if notebook is None:
         return
-    frame = v228._tab_frame(notebook, "Cleavage Cocktail")
+    frame = workspace_widgets._tab_frame(notebook, "Cleavage Cocktail")
     if frame is None:
         return
     for child in list(frame.winfo_children()):
@@ -1494,7 +1494,7 @@ def _install_cleavage(gui):
     ttk.Label(controls, text="Eq override (0=auto)").pack(side="left", padx=(0, 3))
     ttk.Entry(controls, textvariable=gui.cleavage_eq_override, width=8).pack(side="left", padx=(0, 8))
     ttk.Label(controls, text="Preset / custom name").pack(side="left", padx=(0, 3))
-    ttk.Combobox(controls, textvariable=gui.cleavage_preset, values=[""] + v228._cocktail_presets(), state="normal", width=28).pack(side="left", padx=(0, 8))
+    ttk.Combobox(controls, textvariable=gui.cleavage_preset, values=[""] + workspace_widgets._cocktail_presets(), state="normal", width=28).pack(side="left", padx=(0, 8))
     ttk.Label(controls, text="Components (example: TFA=95;TIS=2.5;Water=2.5)").pack(side="left", padx=(0, 3))
     ttk.Entry(controls, textvariable=gui.cleavage_components_text, width=38).pack(side="left", fill="x", expand=True)
     ttk.Label(controls, text="Time (h)").pack(side="left", padx=(6, 3))
@@ -1515,9 +1515,9 @@ def _install_cleavage(gui):
 
 
 def _install_result_tabs(gui, ns):
-    v228._install_result_tabs(gui, ns)
+    workspace_widgets._install_result_tabs(gui, ns)
     gui.pm_selected_total_tree = getattr(gui, "pm_total_tree", getattr(gui, "pm_selected_total_tree", None))
-    v228._write_rows(gui.pm_selected_plan_tree, [], PLAN_COLUMNS, PLAN_WIDTHS)
+    workspace_widgets._write_rows(gui.pm_selected_plan_tree, [], PLAN_COLUMNS, PLAN_WIDTHS)
     _install_plan_toolbar(gui, ns)
     _install_cleavage(gui)
 
@@ -1528,7 +1528,7 @@ def _install_traces(gui):
         "apply_loading_calc", "loading_aa_eq", "loading_diea_eq", "loading_time_h", "cleavage_preset", "cleavage_eq_override", "cleavage_components_text", "cleavage_time_h",
         "post_cleavage_rescue", "nh4i_eq", "nh4i_concentration_m", "nh4i_time_h",
     ]
-    gui._v229_trace_tokens = []
+    runtime_state.set_trace_tokens(gui,[])
     for name in names:
         variable = getattr(gui, name, None)
         if variable is None or not hasattr(variable, "trace_info"):
@@ -1546,7 +1546,7 @@ def _install_traces(gui):
             token = variable.trace_add(
                 "write", lambda *_a, _gui=gui: _schedule_live_sync(_gui),
             )
-            gui._v229_trace_tokens.append((variable, token))
+            runtime_state.get_trace_tokens(gui).append((variable, token))
         except Exception:
             pass
 
@@ -1554,20 +1554,20 @@ def _install_traces(gui):
 def _schedule_live_sync(gui):
     """Save one editor change per idle cycle and ignore programmatic restores."""
     if (
-        getattr(gui, "_v229_switching", False)
-        or getattr(gui, "_v2212_switching", False)
+        is_switching(gui)
+        or runtime_state.is_switching(gui)
         or getattr(gui, "_restoring_state", False)
     ):
         return
-    if getattr(gui, "_v3_live_sync_after_id", None):
+    if runtime_state.get_live_sync_after_id(gui):
         return
 
     def run():
-        gui._v3_live_sync_after_id = None
+        runtime_state.set_live_sync_after_id(gui,None)
         _live_sync(gui)
 
     try:
-        gui._v3_live_sync_after_id = gui.after_idle(run)
+        runtime_state.set_live_sync_after_id(gui,gui.after_idle(run))
     except Exception:
         run()
 
@@ -1649,9 +1649,9 @@ def add_item(gui, item=None):
     gui.pm_list.insert("end", gui.pm_display_name(item))
     required = ("pm_selected_plan_tree", "pm_selected_material_tree", "pm_total_tree", "progress_tree", "pm_cleavage_tree")
     if all(hasattr(gui, name) for name in required):
-        _restore_item(gui, index, gui._v229_ns)
+        _restore_item(gui, index, get_calculation_namespace(gui, {}))
     else:
-        gui._v229_active_index = index
+        set_active_index(gui, index)
 
 
 def duplicate_item(gui):
@@ -1667,9 +1667,9 @@ def duplicate_item(gui):
     gui.pm_list.insert("end", gui.pm_display_name(item))
     required = ("pm_selected_plan_tree", "pm_selected_material_tree", "pm_total_tree", "progress_tree", "pm_cleavage_tree")
     if all(hasattr(gui, name) for name in required):
-        _restore_item(gui, new_index, gui._v229_ns)
+        _restore_item(gui, new_index, get_calculation_namespace(gui, {}))
     else:
-        gui._v229_active_index = new_index
+        set_active_index(gui, new_index)
 
 
 def delete_item(gui):
@@ -1694,25 +1694,21 @@ def _bind_item_actions(gui, ns):
     gui.pm_list.bind("<<ListboxSelect>>", lambda e: _single_select(gui, e), add=False)
     gui.pm_list.bind("<Double-Button-1>", gui.pm_on_double_click, add=False)
     gui.pm_list.bind("<Return>", gui.pm_on_double_click, add=False)
-    try:
-        parent = gui.pm_list.master
-        for widget in v228._walk(parent):
-            if isinstance(widget, ttk.Button):
-                text = str(widget.cget("text"))
-                if text == "Add":
-                    widget.configure(command=gui.pm_add_peptide)
-                elif text == "Duplicate":
-                    widget.configure(command=gui.pm_duplicate_peptide)
-                elif text == "Delete":
-                    widget.configure(command=gui.pm_delete_peptide)
-    except Exception:
-        pass
+    bindings = {
+        "pm_add_button": gui.pm_add_peptide,
+        "pm_duplicate_button": gui.pm_duplicate_peptide,
+        "pm_delete_button": gui.pm_delete_peptide,
+    }
+    for attr, command in bindings.items():
+        widget = getattr(gui, attr, None)
+        if widget is not None:
+            widget.configure(command=command)
 
 
 def export_outputs(gui, ns):
-    """Export the exact visible V5.0.0 state without replacing manual edits."""
+    """Export the exact visible V6.0.0 state without replacing manual edits."""
     try:
-        if not v228._tree_rows(getattr(gui, "pm_selected_plan_tree", None)):
+        if not workspace_widgets._tree_rows(getattr(gui, "pm_selected_plan_tree", None)):
             if not generate(gui, ns):
                 return None
         _commit_editor(gui)
@@ -1727,19 +1723,16 @@ def export_outputs(gui, ns):
             out = Path("outputs/project_manager_exports")
         out.mkdir(parents=True, exist_ok=True)
 
-        try:
-            from spps_planner.export import export_csvs, export_excel
-            export_csvs(inp, out / "core_engine_outputs")
-            export_excel(inp, out / "spps_plan_core_engine.xlsx")
-        except Exception:
-            pass
+        from spps_planner.export import export_csvs, export_excel
+        export_csvs(inp, out / "core_engine_outputs")
+        export_excel(inp, out / "spps_plan_core_engine.xlsx")
 
-        visible_plan = pd.DataFrame(v228._tree_rows(getattr(gui, "pm_selected_plan_tree", None)))
-        visible_materials = pd.DataFrame(v228._tree_rows(getattr(gui, "pm_selected_material_tree", None)))
+        visible_plan = pd.DataFrame(workspace_widgets._tree_rows(getattr(gui, "pm_selected_plan_tree", None)))
+        visible_materials = pd.DataFrame(workspace_widgets._tree_rows(getattr(gui, "pm_selected_material_tree", None)))
         total_tree = getattr(gui, "pm_selected_total_tree", None) or getattr(gui, "pm_total_tree", None)
-        visible_total = pd.DataFrame(v228._tree_rows(total_tree))
-        visible_checklist = pd.DataFrame(v228._tree_rows(getattr(gui, "progress_tree", None)))
-        visible_cleavage = pd.DataFrame(v228._tree_rows(getattr(gui, "pm_cleavage_tree", None)))
+        visible_total = pd.DataFrame(workspace_widgets._tree_rows(total_tree))
+        visible_checklist = pd.DataFrame(workspace_widgets._tree_rows(getattr(gui, "progress_tree", None)))
+        visible_cleavage = pd.DataFrame(workspace_widgets._tree_rows(getattr(gui, "pm_cleavage_tree", None)))
         try:
             from spps_planner.engine import cleavage_cocktail_presets, validate_plan, plan_summary
             presets = cleavage_cocktail_presets()
@@ -1749,7 +1742,7 @@ def export_outputs(gui, ns):
             presets = validation = summary = pd.DataFrame()
 
         index = _active_index(gui)
-        item = dict(gui.pm_items[index]) if index is not None and 0 <= index < len(gui.pm_items) else v228._editor_payload(gui)
+        item = dict(gui.pm_items[index]) if index is not None and 0 <= index < len(gui.pm_items) else workspace_widgets._editor_payload(gui)
         editor_summary = pd.DataFrame([{
             "app_version": VERSION,
             "project": item.get("project", ""), "peptide": item.get("peptide", ""),
@@ -1764,7 +1757,7 @@ def export_outputs(gui, ns):
             "nh4i_eq": item.get("nh4i_eq", "2"), "nh4i_concentration_m": item.get("nh4i_concentration_m", "0.2"), "nh4i_time_h": item.get("nh4i_time_h", "1"),
         }])
 
-        xlsx = out / "project_manager_selected_outputs_v5.0.0.xlsx"
+        xlsx = out / "project_manager_selected_outputs_v6.0.0.xlsx"
         with pd.ExcelWriter(xlsx, engine="openpyxl") as writer:
             editor_summary.to_excel(writer, index=False, sheet_name="00_EDITOR_SUMMARY")
             visible_plan.to_excel(writer, index=False, sheet_name="01_SELECTED_PLAN_VISIBLE")
@@ -1788,9 +1781,9 @@ def export_outputs(gui, ns):
         state = {
             "app_version": VERSION, "saved_at": datetime.now().isoformat(timespec="seconds"),
             "active_index": index, "pm_items": list(getattr(gui, "pm_items", []) or []),
-            "visible_selected_plan_source": "current edited TreeView; Apply Change-linked V5.0.0 tables; no regeneration during export",
+            "visible_selected_plan_source": "current edited TreeView; Apply Change-linked V6.0.0 tables; no regeneration during export",
         }
-        (out / "project_manager_state_v5.0.0.json").write_text(
+        (out / "project_manager_state_v6.0.0.json").write_text(
             json.dumps(state, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
         )
         gui.last_outdir = out
@@ -1809,12 +1802,6 @@ def export_outputs(gui, ns):
 
 def _normalize_title(gui) -> None:
     gui.title(TITLE)
-    for widget in v228._walk(gui):
-        if isinstance(widget, ttk.Label):
-            try:
-                text = str(widget.cget("text"))
-            except Exception:
-                continue
-            if text.startswith("SPPS Planner GitHub"):
-                widget.configure(text=TITLE)
-                break
+    label = getattr(gui, "app_title_label", None)
+    if label is not None:
+        label.configure(text=TITLE)

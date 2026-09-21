@@ -1,5 +1,7 @@
 """Direct live synthesis execution workflow for the V3 controller."""
 from __future__ import annotations
+from suite_gui import runtime_state
+from suite_gui.runtime_state import get_active_index
 
 from copy import deepcopy
 from typing import Any, Mapping
@@ -23,7 +25,7 @@ MATERIAL_STATUSES = ("Planned", "Prepared", "Charged", "Used", "Adjusted", "Reje
 def active_item(gui: Any) -> dict[str, Any]:
     items = getattr(gui, "pm_items", []) or []
     try:
-        index = int(getattr(gui, "_v229_active_index", -1))
+        index = int(get_active_index(gui, -1))
     except Exception as exc:
         raise ValueError("No active Work Item.") from exc
     if not (0 <= index < len(items)):
@@ -58,7 +60,7 @@ def _persist(gui: Any) -> None:
 
 
 def _refresh_open_window(gui: Any) -> None:
-    current = getattr(gui, "_v3_work_item_window", None)
+    current = runtime_state.get_work_item_window(gui)
     if current is not None:
         try:
             current.refresh()

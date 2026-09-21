@@ -110,10 +110,11 @@ def test_plan_buttons_are_bound_to_direct_controller_routes():
     source = (
         ROOT / "suite_gui" / "modules" / "plan_workflow.py"
     ).read_text(encoding="utf-8")
-    assert "widget.configure(command=gui.generate_update_plan)" in source
-    assert "widget.configure(command=gui.apply_change)" in source
-    assert "widget.configure(command=lambda: generate(gui, ns))" not in source
-    assert "widget.configure(command=lambda: apply_change(gui, ns))" not in source
+    assert '"pm_generate_button": gui.generate_update_plan' in source
+    assert '"pm_apply_button": gui.apply_change' in source
+    assert 'text == "Generate"' not in source
+    assert 'text == "Apply Change"' not in source
+    assert "workspace_widgets._install_action_buttons(gui, ns)" not in source
 
 
 class _Var:
@@ -245,7 +246,7 @@ def test_generate_linked_output_paints_every_table_and_preserves_cleavage(monkey
     )
     monkeypatch.setattr(plan_workflow, "_total_rows", lambda _rows: list(totals))
     monkeypatch.setattr(
-        plan_workflow.v228, "_write_rows",
+        plan_workflow.workspace_widgets, "_write_rows",
         lambda tree, rows, *_args: setattr(tree, "rows", list(rows)),
     )
 
@@ -293,7 +294,7 @@ def test_apply_change_linked_output_still_updates_cleavage(monkeypatch):
         lambda *_args, **_kwargs: cleavage.copy(),
     )
     monkeypatch.setattr(
-        plan_workflow.v228, "_write_rows",
+        plan_workflow.workspace_widgets, "_write_rows",
         lambda tree, rows, *_args: setattr(tree, "rows", list(rows)),
     )
 

@@ -1,4 +1,4 @@
-# SPPS Planner V5.0.0 사용자 매뉴얼
+# SPPS Planner v6.0.0 사용자 매뉴얼
 
 ## 1. 프로그램의 역할
 
@@ -136,7 +136,7 @@ mapping으로 변환한다.
 
 ## 12. Windows 설치와 문제 해결
 
-일반 사용자는 `SPPS_Planner_Setup_V5.0.0.exe`를 실행한다. 소스 빌드는
+일반 사용자는 `SPPS_Planner_Setup_V6.0.0.exe`를 실행한다. 소스 빌드는
 `WINDOWS_BUILD_KO.md`를 따른다. 실행 실패 시 사용자 data 폴더의
 `spps_planner_runtime_error.log`를 확인한다. 저장 충돌은 원본을 확인한 뒤
 Reload 또는 Save As로 해결한다. 손상 파일은 `.bak` 복구 결과를 확인하고
@@ -162,7 +162,7 @@ Default length baseline is intentionally conservative and is not presented as a 
 The recommendation view shows the baseline eq, similar-history adjustment, estimated eq range, cocktail basis, and current-scale component volumes. Estimated values require operator confirmation before Apply. Observed exact history always remains higher priority.
 
 
-## V5.0.0 간단 실험 기록 및 학습 흐름
+## V6.0.0 실험 기록 및 근거 축적 흐름
 
 - Planner가 이미 알고 있는 합성 조건은 사용자가 다시 입력하지 않습니다.
 - Loading 화면의 `Measured Loading`에 실제 측정값만 입력하면 현재 Work Item/Run, resin, C-terminal AA, AA eq, base eq, time이 자동으로 함께 기록됩니다.

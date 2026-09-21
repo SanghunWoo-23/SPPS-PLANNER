@@ -1,5 +1,6 @@
-"""Direct connected Batch Manager workflow for SPPS Planner V5.0.0."""
+"""Direct connected Batch Manager workflow for SPPS Planner V6.0.0."""
 from __future__ import annotations
+from suite_gui import runtime_state
 
 from datetime import datetime
 import json
@@ -26,7 +27,7 @@ SUMMARY_COLUMNS = [
     "No", "Project", "Peptide name", "LOT No", "Sequence", "Copies",
     "Scale mmol", "Resin", "Loading", "Resin_g", "Chemistry",
 ]
-VERSION = "V5.0.0"
+VERSION = "V6.0.0"
 
 
 def _float(current: Any, default: float = 0.0) -> float:
@@ -71,6 +72,7 @@ def _batch_sequence(row: dict[str, Any]) -> str:
         core_tokens: list[str] = []
         detected_nterm = ""
         detected_cterm = ""
+        has_residue_core = False
         linker = catalogs.canonical_unit_name(row.get("Linker", ""))
         for region_index, (sequence_key, repeat_key) in enumerate((
             ("Region 1 seq", "Region 1 eq"),
@@ -88,9 +90,12 @@ def _batch_sequence(row: dict[str, Any]) -> str:
             parsed = parse_sequence(text)
             detected_nterm = detected_nterm or str(parsed.nterm or "")
             detected_cterm = str(parsed.cterm_text or "") or detected_cterm
+            parsed_core = list(parsed.core_tokens or [])
+            if parsed_core:
+                has_residue_core = True
             repeat = _repeat_count(row.get(repeat_key), 1)
             for _ in range(repeat):
-                for token in parsed.core_tokens:
+                for token in parsed_core:
                     token = str(token or "").strip()
                     if not token:
                         continue
@@ -101,6 +106,12 @@ def _batch_sequence(row: dict[str, Any]) -> str:
                 and linker.lower() not in {"none", "manual", "-"}
             ):
                 core_tokens.append(linker)
+        # A Batch total represents a real peptide synthesis.  Terminal defaults
+        # (for example C-term NH2 on an otherwise blank placeholder project) must
+        # never manufacture a phantom sequence such as ``NH2``.
+        if not has_residue_core:
+            return ""
+
         prefix = []
         # Preserve the N-terminal modifier detected from the Project Manager
         # sequence even when Tag/Label fields are also configured.  The old
@@ -198,7 +209,14 @@ def sync_input_from_projects(gui: Any, *, replace: bool = True) -> list[dict[str
 
 
 def restore_input_rows(gui: Any, saved_rows: Any = None) -> list[dict[str, Any]]:
-    """Restore a persisted Batch table in one paint, or derive it from Projects."""
+    """Restore only persisted Batch rows; never infer Batch rows from Projects.
+
+    Batch Manager is an operator-owned workspace.  Project Manager entries can be
+    copied into it explicitly with ``Sync from Project Manager``, but loading a
+    project/session that has no saved Batch rows must leave the Batch table empty.
+    This prevents an unrelated or previously selected Project sequence from
+    appearing as if it were an operator-created Batch entry.
+    """
     tree = getattr(gui, "batch_tree", None)
     columns = list(getattr(gui, "batch_columns", []) or [])
     if tree is None or not columns:
@@ -206,8 +224,6 @@ def restore_input_rows(gui: Any, saved_rows: Any = None) -> list[dict[str, Any]]
     rows = [dict(row) for row in (saved_rows or []) if isinstance(row, dict)]
     for row in rows:
         row["Linker"] = catalogs.canonical_unit_name(row.get("Linker", ""))
-    if not rows:
-        return sync_input_from_projects(gui, replace=True)
     children = list(tree.get_children())
     if children:
         tree.delete(*children)
@@ -217,10 +233,32 @@ def restore_input_rows(gui: Any, saved_rows: Any = None) -> list[dict[str, Any]]
     return rows
 
 
+def _saved_batch_rows(gui: Any) -> list[dict[str, Any]]:
+    """Read only explicitly persisted Batch rows from the local session.
+
+    Project Manager rows are intentionally ignored here.  A session may contain
+    Project history without ever having contained a Batch workspace; in that
+    case startup must remain empty.
+    """
+    source = getattr(gui, "state_file", None)
+    if source is None:
+        return []
+    try:
+        from suite_gui import state_persistence
+        path = Path(source)
+        if not path.exists():
+            return []
+        data, _loaded_source, _recovered = state_persistence.read_json_with_recovery(path)
+        raw = data.get("batch_rows", []) if isinstance(data, dict) else []
+        return [dict(row) for row in raw if isinstance(row, dict)]
+    except Exception:
+        return []
+
+
 def initialize(gui: Any) -> dict[str, pd.DataFrame]:
-    """Connect startup data without blocking launch on full Batch calculation."""
+    """Restore saved Batch rows only; otherwise keep startup completely empty."""
     if not _batch_input_rows(gui):
-        sync_input_from_projects(gui, replace=True)
+        restore_input_rows(gui, _saved_batch_rows(gui))
     invalidate(gui)
     return {}
 
@@ -256,11 +294,19 @@ def _project_rows(gui: Any) -> list[dict[str, Any]]:
             })
         return rows
 
+    # Legacy editable Batch tables remain operator-owned and require explicit
+    # rows/sync.  The accepted compact desktop Batch dashboard, however, is a
+    # live aggregate of the current Project Manager items and must therefore
+    # calculate from ``pm_items`` automatically.  No sample/default sequence is
+    # synthesized here: only records actually present in Project Manager are
+    # eligible for aggregation.
+    if getattr(gui, "batch_tree", None) is not None:
+        return []
+
+    # Compact desktop / headless compatibility: calculate directly from the
+    # explicit Project Manager collection when there is no editable Batch table.
     rows = []
     for index, item in enumerate(list(getattr(gui, "pm_items", []) or []), 1):
-        # Project Manager is the source of truth for the compact Batch dashboard.
-        # Build the engine sequence from its sequence + linker/tag/label settings
-        # instead of silently dropping those configured units.
         pm_row = {
             "N-term": item.get("n_term", ""),
             "Region 1 seq": item.get("sequence", ""),
@@ -548,8 +594,143 @@ def _loading_frame(
     return pd.DataFrame(output, columns=BATCH_COLUMNS)
 
 
+def _compact_sequence_prep_projects(gui: Any) -> list[dict[str, Any]]:
+    """Return Project Manager sequences for the compact Batch preparation view.
+
+    The compact desktop Batch Manager is intentionally *not* a second synthesis
+    history/condition aggregator.  It reads the peptide sequence (plus copies for
+    the number of synthesizer columns) from Project Manager, then recalculates all
+    preparation amounts from the Batch ``Solution prep defaults``.  Project-level
+    coupling chemistry, resin/loading and per-project reagent equivalents must not
+    leak into this calculation.
+    """
+    scale = number(gui, "batch_default_scale", 0.2)
+    rows: list[dict[str, Any]] = []
+    for index, item in enumerate(list(getattr(gui, "pm_items", []) or []), 1):
+        sequence = str(item.get("sequence", "") or "").strip()
+        if not sequence:
+            continue
+        copies = max(1, _repeat_count(item.get("copies"), 1))
+        rows.append({
+            "No": index,
+            "Project": item.get("project", ""),
+            "Peptide name": item.get("peptide", ""),
+            "LOT No": item.get("lot", item.get("lot_no", "")),
+            "Sequence": sequence,
+            "Copies": copies,
+            "Scale mmol": scale,
+            "Resin": "",
+            "Loading": "",
+            "Resin_g": "",
+            "Chemistry": "Solution prep defaults",
+        })
+    return rows
+
+
+def _calculate_compact_sequence_prep(gui: Any) -> dict[str, pd.DataFrame]:
+    """Calculate the compact Batch Manager strictly from sequence + prep defaults.
+
+    This is the operator-facing synthesizer preparation calculator.  It deliberately
+    ignores Project Manager DIC/HOBt/HBTU selections and any project-specific reagent
+    equivalents.  AA stock and HBTU/NMP quantities are controlled only by the visible
+    ``Solution prep defaults`` fields.  Sequence-defined modifiers (Ac, linker, tag,
+    label, non-natural residues) are still recognized from the sequence itself.
+    """
+    from spps_planner.engine import PlanInput, generate_step_reagent_plan
+
+    projects = _compact_sequence_prep_projects(gui)
+    aa_records: dict[tuple[Any, ...], dict[str, Any]] = {}
+    chemical_records: dict[tuple[Any, ...], dict[str, Any]] = {}
+    reagent_records: dict[tuple[Any, ...], dict[str, Any]] = {}
+    solvent_totals: dict[tuple[str, str], dict[str, Any]] = {}
+
+    aa_concentration = number(gui, "batch_solution_conc", 0.25)
+    aa_eq = number(gui, "batch_coupling_eq", 10.0)
+    hbtu_eq = number(gui, "batch_hbtu_eq", 10.0)
+    hbtu_concentration = number(gui, "batch_hbtu_conc", 0.4)
+    total_coupling_count = 0.0
+    total_hbtu_mmol = 0.0
+
+    for project in projects:
+        sequence = str(project.get("Sequence", "") or "").strip()
+        copies = max(1, _repeat_count(project.get("Copies"), 1))
+        scale_each = _float(project.get("Scale mmol"), number(gui, "batch_default_scale", 0.2))
+
+        # ``AC`` is a legitimate Ala-Cys dipeptide, while the parser also accepts
+        # ``Ac`` as the acetyl terminal alias.  Preserve the operator's uppercase
+        # two-residue sequence unambiguously for preparation counting.
+        parser_sequence = "A-C" if sequence == "AC" else sequence
+
+        # Generate only a parser/protected-reagent view of the sequence.  The PlanInput
+        # chemistry defaults are not used for Batch coupling-reagent totals below.
+        plan = PlanInput(sequence=parser_sequence, scale_mmol=scale_each)
+        step_plan = generate_step_reagent_plan(plan)
+        aa_counts = _sequence_counts(parser_sequence, step_plan)
+        local_residue_count = sum(aa_counts.values())
+        total_coupling_count += local_residue_count * copies
+        total_hbtu_mmol += local_residue_count * copies * scale_each * hbtu_eq
+
+        for amino_acid, local_count in aa_counts.items():
+            count = local_count * copies
+            _add_record(
+                aa_records, "AA stock", amino_acid, "DMF", count, aa_eq,
+                aa_concentration, count * scale_each * aa_eq,
+                "Sequence count × prep scale × AA eq; actual mL is rounded up + reserve",
+            )
+
+        # Sequence-defined chemicals/modifiers are still useful in the prep view, but
+        # they are derived from the sequence only.  No Project Manager chemistry fields
+        # participate here.
+        for unit in _unit_records(plan, step_plan):
+            eq = _float(unit.get("eq"), 0.0)
+            repeat = max(1, _repeat_count(unit.get("repeat"), 1))
+            if eq <= 0:
+                continue
+            _add_record(
+                chemical_records, unit.get("category", "Chemical"),
+                unit.get("item"), unit.get("solvent", ""), copies * repeat,
+                eq, "", copies * scale_each * eq * repeat,
+                unit.get("note") or "Detected from sequence; verify reagent form/vendor when required",
+            )
+
+    if total_coupling_count > 0 and hbtu_eq > 0:
+        _add_record(
+            reagent_records, "Coupling reagent stock", "HBTU", "NMP",
+            total_coupling_count, hbtu_eq, hbtu_concentration, total_hbtu_mmol,
+            "Batch default HBTU stock; independent of Project Manager coupling chemistry",
+        )
+        if hbtu_concentration > 0:
+            calculated_nmp = total_hbtu_mmol / hbtu_concentration
+            solvent_totals[("HBTU stock solvent", "NMP")] = {
+                "mL": calculated_nmp,
+                "count": total_coupling_count,
+                "note": "NMP volume for HBTU stock; actual mL uses Batch round-up + reserve",
+            }
+
+    aa_frame = _records_frame(gui, aa_records)
+    chemical_frame = _records_frame(gui, chemical_records)
+    return {
+        "AA + Chemicals": grouped_aa_chemical_frame(aa_frame, chemical_frame),
+        "AA stock": aa_frame,
+        "Resin loading": pd.DataFrame(columns=BATCH_COLUMNS),
+        "Coupling reagents": _records_frame(gui, reagent_records),
+        "Catalyst/additive": pd.DataFrame(columns=BATCH_COLUMNS),
+        "Base/Deprotection": pd.DataFrame(columns=BATCH_COLUMNS),
+        "Solvents": _direct_volume_frame(gui, solvent_totals),
+        "Chemicals": chemical_frame,
+        "Summary": pd.DataFrame(projects, columns=SUMMARY_COLUMNS),
+    }
+
+
 def calculate(gui: Any) -> dict[str, pd.DataFrame]:
-    """Calculate every Batch table from Project items and the shared engine."""
+    """Calculate Batch tables.
+
+    Compact desktop Batch Manager = Project Manager sequence + Solution prep defaults.
+    Legacy editable Batch tables keep their explicit row-driven connected-plan behavior.
+    """
+    if getattr(gui, "batch_tree", None) is None:
+        return _calculate_compact_sequence_prep(gui)
+
     from spps_planner.engine import generate_detailed_operations, generate_step_reagent_plan, resin_family
 
     projects = _project_rows(gui)
@@ -729,6 +910,31 @@ def _display_value(record: dict[str, Any], column: str) -> Any:
     return record.get(column, "")
 
 
+def _format_tree_value(value_: Any, column: str) -> str:
+    """Keep the operator dashboard readable while exports retain raw precision."""
+    if value_ is None:
+        return ""
+    text = str(value_).strip()
+    if text.lower() in {"", "nan", "none", "<na>"}:
+        return ""
+    try:
+        number_ = float(text)
+        if not math.isfinite(number_):
+            return ""
+    except Exception:
+        return text
+    col = str(column or "")
+    if col in {"Count", "count", "Copies", "copies", "No", "no"}:
+        return str(int(round(number_))) if abs(number_ - round(number_)) < 1e-9 else f"{number_:.2f}"
+    if col in {"Conc_M", "conc_M", "Density", "density"}:
+        return f"{number_:.3f}".rstrip("0").rstrip(".")
+    if col in {"Eq", "eq"}:
+        return f"{number_:.2f}".rstrip("0").rstrip(".")
+    if col in {"Calculated_mL", "Actual_mL", "Volume_mL", "calculated", "actual", "volume_mL", "MW", "Weight_g", "weight_g", "Scale mmol", "scale_mmol"}:
+        return f"{number_:.2f}".rstrip("0").rstrip(".")
+    return f"{number_:.3f}".rstrip("0").rstrip(".")
+
+
 def _write_tree(tree: Any, frame: pd.DataFrame) -> None:
     if tree is None:
         return
@@ -745,7 +951,7 @@ def _write_tree(tree: Any, frame: pd.DataFrame) -> None:
         tree._spps_batch_schema = schema
     row_values = tuple(
         tuple(
-            str(_display_value(row.to_dict(), column) or "")
+            _format_tree_value(_display_value(row.to_dict(), column), column)
             for column in columns
         )
         for _, row in frame.iterrows()
@@ -762,7 +968,8 @@ def _write_tree(tree: Any, frame: pd.DataFrame) -> None:
 
 
 _SIGNATURE_SETTINGS = (
-    "batch_solution_conc", "batch_coupling_eq", "batch_hbtu_conc",
+    "batch_default_scale", "batch_solution_conc", "batch_coupling_eq",
+    "batch_hbtu_eq", "batch_hbtu_conc",
     "batch_actual_round_ml", "batch_actual_extra_ml",
     "reagent_eq_follows_coupling_eq", "coupling_eq",
     "solvent_volume_mode", "amide_ml_per_mmol", "ctc_ml_per_mmol",
@@ -780,10 +987,7 @@ def _calculation_signature(gui: Any) -> tuple[Any, ...]:
         )
     else:
         project_fields = (
-            "project", "peptide", "sequence", "copies", "scale", "resin",
-            "loading", "lot", "lot_no", "chemistry", "apply_loading_calc",
-            "loading_aa_eq", "loading_diea_eq", "n_term", "linker",
-            "region2_seq", "region2_eq", "tag", "label", "c_term",
+            "project", "peptide", "sequence", "copies", "lot", "lot_no",
         )
         inputs = tuple(
             tuple(str(item.get(field, "") or "") for field in project_fields)
@@ -794,7 +998,7 @@ def _calculation_signature(gui: Any) -> tuple[Any, ...]:
 
 
 def invalidate(gui: Any) -> None:
-    gui._v3_batch_signature = None
+    runtime_state.set_batch_signature(gui,None)
 
 
 def is_visible(gui: Any) -> bool:
@@ -816,24 +1020,22 @@ def invalidate_and_refresh_if_visible(
     invalidate(gui)
     if is_visible(gui):
         return request_refresh(gui, delay_ms=delay_ms, force=force)
-    return getattr(gui, "_v225_batch_tables", {})
+    return runtime_state.get_batch_tables(gui)
 
 
 def request_refresh(gui: Any, *, delay_ms: int = 80, force: bool = False):
     """Coalesce rapid UI edits into one Batch calculation."""
     try:
-        pending = getattr(gui, "__dict__", {}).get(
-            "_v3_batch_refresh_after_id",
-        )
+        pending = runtime_state.get_batch_refresh_after_id(gui)
         if pending:
             gui.after_cancel(pending)
 
         def run():
-            gui._v3_batch_refresh_after_id = None
+            runtime_state.set_batch_refresh_after_id(gui,None)
             refresh(gui, force=force)
 
-        gui._v3_batch_refresh_after_id = gui.after(max(0, int(delay_ms)), run)
-        return getattr(gui, "__dict__", {}).get("_v225_batch_tables", {})
+        runtime_state.set_batch_refresh_after_id(gui,gui.after(max(0, int(delay_ms)), run))
+        return runtime_state.get_batch_tables(gui)
     except Exception:
         return refresh(gui, force=True) if force else refresh(gui)
 
@@ -841,16 +1043,16 @@ def request_refresh(gui: Any, *, delay_ms: int = 80, force: bool = False):
 def refresh(gui: Any, *, force: bool = False) -> dict[str, pd.DataFrame]:
     try:
         signature = _calculation_signature(gui)
-        cached = getattr(gui, "_v225_batch_tables", None)
+        cached = runtime_state.get_batch_tables(gui)
         if (
             not force
             and isinstance(cached, dict)
-            and getattr(gui, "_v3_batch_signature", None) == signature
+            and runtime_state.get_batch_signature(gui) == signature
         ):
             tables = cached
         else:
             tables = calculate(gui)
-            gui._v3_batch_signature = signature
+            runtime_state.set_batch_signature(gui,signature)
         for name, tree in (getattr(gui, "v29_batch_trees", {}) or {}).items():
             _write_tree(tree, tables.get(name, pd.DataFrame()))
         aa_tree = getattr(gui, "batch_aa_tree", None)
@@ -875,11 +1077,11 @@ def refresh(gui: Any, *, force: bool = False) -> dict[str, pd.DataFrame]:
         layout_builder = getattr(gui, "_batch_layout_text", None)
         if layout is not None and callable(layout_builder):
             text = layout_builder(_batch_input_rows(gui))
-            if getattr(gui, "_v3_batch_layout_signature", None) != text:
+            if runtime_state.get_batch_layout_signature(gui) != text:
                 layout.delete("1.0", "end")
                 layout.insert("end", text)
-                gui._v3_batch_layout_signature = text
-        gui._v225_batch_tables = tables
+                runtime_state.set_batch_layout_signature(gui,text)
+        runtime_state.set_batch_tables(gui,tables)
         return tables
     except Exception as exc:
         try:
@@ -913,8 +1115,9 @@ def export(
             "app_version": VERSION,
             "saved_at": datetime.now().isoformat(timespec="seconds"),
             "calculation_source": "suite_gui.batch_workflow.calculate",
-            "project_count": len(_project_rows(gui)),
+            "project_count": len(_compact_sequence_prep_projects(gui)) if getattr(gui, "batch_tree", None) is None else len(_project_rows(gui)),
             "conditions": {
+                "prep_scale_mmol": number(gui, "batch_default_scale", 0.2),
                 "aa_conc_M": number(gui, "batch_solution_conc", 0.25),
                 "aa_eq": number(gui, "batch_coupling_eq", 5.0),
                 "hbtu_eq": number(gui, "batch_hbtu_eq", 10.0),

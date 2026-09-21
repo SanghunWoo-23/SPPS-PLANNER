@@ -10,7 +10,8 @@ def text():
 def test_advisors_sync_and_auto_analyze_when_opened():
     src = text()
     assert 'self._sync_advisor_from_planner("loading" if loading else "cleavage")' in src
-    assert 'self.after_idle(self.run_loading_advisor if loading else self.run_cleavage_advisor)' in src
+    assert 'self._schedule(0, self.run_loading_advisor if loading else self.run_cleavage_advisor, idle=True)' in src
+    assert 'self._pending_after_ids' in src
 
 
 def test_loading_apply_is_one_click_regenerate():

@@ -1,38 +1,26 @@
-name: Source validation
-
-on:
-  push:
-    branches: ["main", "master"]
-  pull_request:
-  workflow_dispatch:
-
+name: CI
+on: [push, pull_request]
 jobs:
-  validate:
+  windows:
     runs-on: windows-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python: ['3.11','3.12']
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt -r requirements-dev.txt
-
-      - name: Compile source
-        run: |
-          python -m compileall -q main_launcher.py suite_gui peptiforg_core apps\spps_planner_app\spps_planner
-
-      - name: Run non-GUI release tests
-        env:
-          PYTHONPATH: ${{ github.workspace }}\apps\spps_planner_app;${{ github.workspace }}
-        run: |
-          python -m pytest -q tests\test_spps_normalized_logic.py tests\test_v200_final_release.py tests\test_v200_custom_db_tab_restore.py tests\test_v200_apply_change_terminal_sync.py tests\test_v200_2ctc_apply_loading_preserve.py tests\test_v200_preset_buttons_no_autogenerate.py -k "not gui"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '${{ matrix.python }}'}
+      - run: python -m pip install -r requirements.txt
+      - run: python -m pytest -q
+      - run: python tools/verify_v6_integrity.py
+      - run: python tools/verify_windows_release.py
+      - run: python tools/verify_release.py --passes 1
+  linux-tk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk
+      - run: python -m pip install -r requirements.txt
+      - run: xvfb-run -a python -m pytest -q

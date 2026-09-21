@@ -1,5 +1,6 @@
 """Controller-facing Stage 4 data, Run, HPLC and workbook workflows."""
 from __future__ import annotations
+from suite_gui.runtime_state import get_active_index, get_calculation_namespace
 
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,7 +14,7 @@ from suite_gui.modules import plan_workflow, project_manager_workflow
 def active_item(gui: Any) -> dict[str, Any]:
     items = getattr(gui, "pm_items", []) or []
     try:
-        index = int(getattr(gui, "_v229_active_index", -1))
+        index = int(get_active_index(gui, -1))
     except Exception as exc:
         raise ValueError("No active Work Item.") from exc
     if not 0 <= index < len(items):
@@ -41,7 +42,7 @@ def create_run(gui: Any, name: str = "", reason: str = "New synthesis run") -> d
     plan_workflow._save_active(gui, include_outputs=True)
     run = data_system.new_run(active_item(gui), name, reason=reason)
     project_manager_workflow._restore(
-        gui, plan_workflow, getattr(gui, "_v229_ns", {}), int(gui._v229_active_index),
+        gui, plan_workflow, get_calculation_namespace(gui, {}), int(get_active_index(gui, -1)),
     )
     _persist(gui)
     return run
@@ -51,7 +52,7 @@ def activate_run(gui: Any, run_id: str, reason: str = "Operator selected run") -
     plan_workflow._save_active(gui, include_outputs=True)
     run = data_system.activate_run(active_item(gui), run_id, reason=reason)
     project_manager_workflow._restore(
-        gui, plan_workflow, getattr(gui, "_v229_ns", {}), int(gui._v229_active_index),
+        gui, plan_workflow, get_calculation_namespace(gui, {}), int(get_active_index(gui, -1)),
     )
     _persist(gui)
     return run
@@ -110,7 +111,7 @@ def import_workbook(gui: Any, path: str | Path | None = None,
     gui._project_id = str(imported.get("project", {}).get("project_id", "")) or getattr(gui, "_project_id", "")
     index = 0
     project_manager_workflow._rebuild_listbox(gui, [index], index)
-    project_manager_workflow._restore(gui, plan_workflow, getattr(gui, "_v229_ns", {}), index)
+    project_manager_workflow._restore(gui, plan_workflow, get_calculation_namespace(gui, {}), index)
     _persist(gui)
     return Path(path)
 
@@ -133,6 +134,27 @@ def import_hplc(gui: Any, path: str | Path | None = None,
     _persist(gui)
     return count
 
+
+
+def upsert_analytical(gui: Any, values: Mapping[str, Any], reason: str) -> dict[str, Any]:
+    record=data_system.upsert_analytical(active_item(gui),values,reason=reason); _persist(gui); return record
+
+def delete_analytical(gui: Any, record_id: str, reason: str) -> dict[str, Any]:
+    record=data_system.delete_analytical(active_item(gui),record_id,reason=reason); _persist(gui); return record
+
+def list_analytical(gui: Any) -> list[dict[str, Any]]:
+    return data_system.list_analytical(active_item(gui))
+
+def import_analytical(gui: Any, path: str | Path | None=None, reason: str='Imported analytical table') -> int:
+    if path is None:
+        selected=filedialog.askopenfilename(filetypes=[('Analytical CSV/XLSX','*.csv *.xlsx'),('All files','*.*')])
+        if not selected: return 0
+        path=selected
+    frame = __import__('pandas').read_csv(path) if str(path).lower().endswith('.csv') else __import__('pandas').read_excel(path,engine='openpyxl')
+    count=0
+    for row in frame.to_dict('records'):
+        data_system.upsert_analytical(active_item(gui),row,reason=reason); count+=1
+    _persist(gui); return count
 
 def recent_path(gui: Any) -> Path:
     override = getattr(gui, "recent_projects_path", None)
@@ -170,6 +192,6 @@ def recent_projects(gui: Any) -> list[dict[str, Any]]:
 
 __all__ = [
     "activate_run", "active_item", "add_recent", "change_history", "create_run",
-    "delete_hplc", "export_workbook", "import_hplc", "import_workbook",
-    "list_runs", "recent_path", "recent_projects", "search_hplc", "upsert_hplc",
+    "delete_hplc", "delete_analytical", "export_workbook", "import_hplc", "import_analytical", "import_workbook",
+    "list_runs", "list_analytical", "recent_path", "recent_projects", "search_hplc", "upsert_hplc", "upsert_analytical",
 ]

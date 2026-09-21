@@ -1,41 +1,39 @@
-"""Explicit V3.0.0 UI construction pipeline.
+"""Canonical SPPS Planner V6 UI construction pipeline.
 
-The accepted interface used to be assembled by nested ``_build`` wrappers.
-This module preserves the same order as ordinary function calls.  Nothing in
-this file assigns methods to a GUI class at runtime.
+The accepted interface is assembled through explicit construction stages.
+Nothing in this file assigns methods to a GUI class at runtime, and final
+behavior is owned by explicit widget/controller references rather than labels.
 """
 from __future__ import annotations
+from suite_gui.runtime_state import set_switching, set_calculation_namespace
 
 import json
 from typing import Any
 
 from suite_gui import batch_workflow, calculation_context, custom_db_workflow, experimental_workflow
-from suite_gui.v3_menu import install_menu
+from suite_gui.menu import install_menu
 from suite_gui import ui_system
 from suite_gui.classic_base import ClassicControllerBase
 from suite_gui.modules import (
-    final_plan_adjustments,
     plan_workflow,
     project_manager_workflow,
     release_ui,
-    setup_controls,
-    operator_controls,
     workspace_widgets as workbench,
+    ui_ownership,
 )
 
 
-TITLE = "SPPS Planner V5.0.0"
+TITLE = "SPPS Planner V6.0.0"
 
 
 def build_base_interface(gui: Any) -> None:
     """Build the retained classic widgets once, without any wrapper chain."""
-    gui._v229_ns = calculation_context.namespace()
-    gui._v228_ns = gui._v229_ns
-    gui._v229_switching = True
+    set_calculation_namespace(gui, calculation_context.namespace())
+    set_switching(gui, True)
     try:
         ClassicControllerBase._build(gui)
     finally:
-        gui._v229_switching = False
+        set_switching(gui, False)
 
 
 def apply_plan_workspace(gui: Any) -> None:
@@ -65,14 +63,11 @@ def apply_plan_workspace(gui: Any) -> None:
 def apply_operator_workspace(gui: Any) -> None:
     """Apply the four accepted operator-facing UI corrections in order."""
     namespace = calculation_context.namespace()
-    setup_controls.apply_post_build(gui)
-    project_manager_workflow.apply_post_build(gui, plan_workflow, namespace)
-    operator_controls.apply_post_build(gui)
-    final_plan_adjustments.apply_post_build(gui)
+    ui_ownership.finalize(gui, plan_workflow, namespace)
 
 
 def apply_final_release_ui(gui: Any) -> None:
-    """Apply the fixed V3.0.0 identity, resin list, and cleavage controls."""
+    """Apply the current release identity, resin list, and cleavage controls."""
     release_ui.apply_post_build(gui, calculation_context.namespace())
 
 
@@ -114,44 +109,31 @@ def _pin_setup_button(gui: Any) -> None:
 
 
 def apply_custom_database_ui(gui: Any) -> None:
-    """Restore the real Custom DB tab and its persisted values."""
+    """Restore Custom DB exactly once after the setup notebook exists."""
     _load_custom_materials(gui)
-
-    def restore_and_pin() -> None:
-        _restore_custom_tab(gui)
-        _pin_setup_button(gui)
-
-    restore_and_pin()
-    try:
-        gui.after_idle(restore_and_pin)
-        for delay in (120, 450):
-            gui.after(delay, restore_and_pin)
-    except Exception:
-        pass
+    _restore_custom_tab(gui)
+    _pin_setup_button(gui)
 
 
 def bind_direct_workspace_actions(gui: Any) -> None:
-    """Route retained Project/session/Batch buttons through the controller."""
-    commands = {
-        "Export": gui.export_outputs,
-        "Save Session Now": gui.save_autosave_state,
-        "Save Project": gui.save_project,
-        "Load Project": gui.load_project,
-        "Export batch tables": gui.export_batch_tables,
-        "Refresh now": gui.refresh_batch_workspace_preview,
-        "Generate Batch Workspace": gui.refresh_batch_workspace_preview,
-        "Refresh totals": gui.refresh_batch_workspace_preview,
-        "Sync from Project Manager": gui.sync_batch_from_projects,
+    """Bind retained actions through construction-time widget references only."""
+    bindings = {
+        "setup_export_button": gui.export_outputs,
+        "setup_load_project_button": gui.load_project,
+        "pm_export_button": gui.export_outputs,
+        "pm_load_project_button": gui.load_project,
+        "pm_save_session_button": gui.save_autosave_state,
+        "batch_generate_button": gui.refresh_batch_workspace_preview,
+        "batch_sync_button": gui.sync_batch_from_projects,
+        "batch_save_session_button": gui.save_autosave_state,
     }
-    for widget in workbench._walk(gui):
-        if not isinstance(widget, workbench.ttk.Button):
-            continue
-        try:
-            command = commands.get(str(widget.cget("text")).strip())
-            if command is not None:
-                widget.configure(command=command)
-        except Exception:
-            pass
+    for attr, command in bindings.items():
+        widget = getattr(gui, attr, None)
+        if widget is not None:
+            widget.configure(command=command)
+    save_project = getattr(gui, "pm_save_project_button", None)
+    if save_project is not None:
+        save_project.configure(command=gui.save_project)
 
 
 def initialize_batch_manager(gui: Any) -> None:

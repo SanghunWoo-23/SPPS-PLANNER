@@ -1,5 +1,7 @@
 """Project Manager peptide-item editor and output snapshot state."""
 from __future__ import annotations
+from suite_gui import runtime_state
+from suite_gui.runtime_state import get_active_index, set_active_index, is_switching, set_switching
 
 from suite_gui import catalogs
 
@@ -86,7 +88,7 @@ def save_active(
     include_outputs=True,
 ):
     index = active_index(gui)
-    if index is None or getattr(gui, "_v229_switching", False):
+    if index is None or is_switching(gui):
         return
     gui.pm_items[index].update(adapter._editor_payload(gui))
     if include_outputs:
@@ -95,7 +97,7 @@ def save_active(
 
 
 def clear_editor_and_outputs(gui, adapter, set_value):
-    gui._v229_switching = True
+    set_switching(gui, True)
     try:
         for name in (
             "pm_project", "pm_peptide", "pm_sequence", "pm_scale",
@@ -124,10 +126,10 @@ def clear_editor_and_outputs(gui, adapter, set_value):
             gui.pm_list.selection_clear(0, "end")
         except Exception:
             pass
-        gui._v229_active_index = None
-        gui._v229_dirty_columns = {}
+        set_active_index(gui, None)
+        runtime_state.clear_dirty_columns(gui)
     finally:
-        gui._v229_switching = False
+        set_switching(gui, False)
 
 
 def restore_item(
@@ -153,7 +155,7 @@ def restore_item(
     for output_key, _tree_name in OUTPUT_TREES:
         if output_key in item:
             item[output_key] = _canonicalize_saved_rows(item[output_key])
-    gui._v229_switching = True
+    set_switching(gui, True)
     try:
         for name, key, default in EDITOR_FIELDS:
             if not hasattr(gui, name):
@@ -169,12 +171,12 @@ def restore_item(
             )
         except Exception:
             pass
-        gui._v229_active_index = int(index)
+        set_active_index(gui, int(index))
         gui.pm_list.selection_clear(0, "end")
         gui.pm_list.selection_set(index)
         gui.pm_list.activate(index)
     finally:
-        gui._v229_switching = False
+        set_switching(gui, False)
     writers = {
         "selected_plan_rows": lambda: adapter._write_rows(
             gui.pm_selected_plan_tree, item.get("selected_plan_rows", []),
@@ -208,7 +210,7 @@ def restore_item(
             return None
 
     def render_current_tab(_event=None):
-        current_index = getattr(gui, "_v229_active_index", None)
+        current_index = get_active_index(gui, None)
         if current_index is None or not (0 <= int(current_index) < len(gui.pm_items)):
             return
         key = selected_output_key()
@@ -243,13 +245,13 @@ def restore_item(
                 "<<NotebookTabChanged>>", dispatch_current_renderer, add="+",
             )
             gui._pm_lazy_output_bound = True
-    gui._v229_dirty_columns = {}
+    runtime_state.clear_dirty_columns(gui)
     if notebook is None:
         bind_plan_editor(gui, namespace)
 
 
 def live_sync(gui, adapter, active_index):
-    if getattr(gui, "_v229_switching", False):
+    if is_switching(gui):
         return
     index = active_index(gui)
     if index is None:

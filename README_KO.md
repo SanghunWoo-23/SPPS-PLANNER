@@ -1,17 +1,17 @@
 <div align="center">
 
-<img src="assets/SPPS_Planner_Icon.png" alt="SPPS Planner icon" width="160">
+<img src="assets/SPPS_Planner_Icon.png" alt="SPPS Planner" width="150">
 
-# SPPS Planner V5.0.0
+# SPPS Planner v6.0.0
 
-**고체상 펩타이드 합성(SPPS)의 계획·계산·기록·근거 기반 추천을 하나로 연결하는 Windows 우선 데스크톱 소프트웨어**
+**고체상 펩타이드 합성(SPPS)의 계획·계산·기록·실험 근거 기반 의사결정을 지원하는 Windows 중심 데스크톱 프로그램**
 
-Sequence parsing · 편집 가능한 합성 Plan · Materials · Checklist · Batch · Cleavage · 실험 이력 · Evidence-driven Recommendation
+Sequence parsing · Editable Plan · Materials · Checklist · Batch · Loading Advisor · Cleavage Advisor · Experimental History
 
-[![Release](https://img.shields.io/badge/release-V5.0.0-2563EB?style=for-the-badge)](VERSION)
+[![Release](https://img.shields.io/badge/release-v6.0.0-2563EB?style=for-the-badge)](VERSION)
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](requirements.txt)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white)](#빠른-시작)
-[![License](https://img.shields.io/badge/license-Custom%20Academic%20Citation-6B7280?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/badge/license-Academic%20%2F%20Non--commercial-6B7280?style=for-the-badge)](LICENSE)
 
 **[English README](README.md) · [한국어 사용자 매뉴얼](docs/USER_MANUAL_KO.md) · [English User Manual](docs/USER_MANUAL_EN.md) · [Architecture](docs/ARCHITECTURE.md) · [Public Data Policy](PUBLIC_DATA_POLICY.md)**
 
@@ -19,201 +19,105 @@ Repository: **SanghunWoo-23/SPPS-PLANNER**
 
 </div>
 
----
-
-## 목차
-
-- [SPPS Planner가 무엇인가](#spps-planner가-무엇인가)
-- [릴리스 상태](#릴리스-상태)
-- [핵심 설계 원칙](#핵심-설계-원칙)
-- [V5.0.0의 핵심 변화](#v500의-핵심-변화)
-- [기능 요약](#기능-요약)
-- [전체 작업 흐름](#전체-작업-흐름)
-- [빠른 시작](#빠른-시작)
-- [Sequence 입력과 Parser](#sequence-입력과-parser)
-- [Plan 생성과 Apply Change](#plan-생성과-apply-change)
-- [Materials · Checklist · Batch](#materials--checklist--batch)
-- [Loading Advisor](#loading-advisor)
-- [Cleavage Advisor](#cleavage-advisor)
-- [Post-cleavage NH4I Rescue](#post-cleavage-nh4i-rescue)
-- [Recommendations & Lab History](#recommendations--lab-history)
-- [Natural-language Issue Log](#natural-language-issue-log)
-- [Run 추적성](#run-추적성)
-- [Evidence / ML 정책](#evidence--ml-정책)
-- [Public 데이터 정책](#public-데이터-정책)
-- [Runtime 데이터](#runtime-데이터)
-- [저장소 구조](#저장소-구조)
-- [Windows 빌드](#windows-빌드)
-- [검증과 회귀 테스트](#검증과-회귀-테스트)
-- [성능 설계](#성능-설계)
-- [과학적 범위와 한계](#과학적-범위와-한계)
-- [문서 안내](#문서-안내)
-- [기여](#기여)
-- [인용](#인용)
-- [라이선스](#라이선스)
-- [문제 해결](#문제-해결)
-- [FAQ](#faq)
+> **현재 공개 릴리스: v6.0.0.** 이 Public 패키지는 검증된 V6 R19 소스 라인을 기준으로 하며, 프로그램 기능 코드는 포함하지만 **Private 실험 이력, Private seed, 원본 실험 사진, 로컬 실험 DB는 포함하지 않습니다.**
 
 ---
 
-## SPPS Planner가 무엇인가
+## SPPS Planner란?
 
-SPPS Planner는 **고체상 펩타이드 합성(SPPS)의 실제 작업 흐름을 계획하고 추적하기 위한 데스크톱 프로그램**이다.
-
-단순히 sequence를 넣고 숫자만 계산하는 프로그램이 아니라 다음을 하나의 흐름으로 연결한다.
+SPPS Planner는 **고체상 펩타이드 합성(SPPS)** 조건을 계획하고, 계산 결과와 실제 실험 기록을 연결하기 위한 데스크톱 작업 도구입니다.
 
 ```text
-Project / Peptide 정의
+Peptide / Project 설정
         ↓
-Sequence + modifier + resin + scale + loading + chemistry
+Sequence + Modifier + Resin + Scale + Chemistry
         ↓
 Generate
         ↓
-편집 가능한 Plan
-  ├─ Materials
-  ├─ Checklist
-  ├─ Total Materials
-  ├─ Cleavage
-  └─ Export / Batch
+Editable Plan
+ ├─ Materials
+ ├─ Checklist
+ ├─ Total Materials
+ ├─ Cleavage
+ └─ Export / Batch
         ↓
-실제 실험 수행
+실제 합성
         ↓
-측정 Result 또는 자유문장 Issue 입력
+Add Result / Add Issue
         ↓
-현재 Planner 조건 + active Run 자동 연결
+Run과 연결된 로컬 실험 근거
         ↓
-Verified 실험 근거 축적
-        ↓
-다음 추천의 근거가 점점 좋아짐
+Loading / Cleavage Recommendation
 ```
 
-V5에서 가장 중요한 방향은 **“화면을 더 많이 만드는 것”이 아니라 “Planner가 이미 아는 정보를 다시 입력시키지 않고, 실제 결과를 근거로 다음 판단을 더 잘하게 만드는 것”**이다.
+프로그램은 합성 조건을 자동으로 단정하는 블랙박스를 목표로 하지 않습니다. 사용자가 편집한 Plan을 실제 상태로 유지하고, **실측 근거 / 보간 / 화학 기본값 / 모델 추정**을 가능한 한 구분해서 보여주는 것이 핵심 설계 원칙입니다.
 
 ---
 
-## 릴리스 상태
+## v6.0.0 주요 기능
 
-**V5.0.0은 현재 Public GitHub 릴리스이다.**
+### 1. 편집 가능한 SPPS Plan
 
-Public 버전은 내부/개인 실험 이력을 번들하지 않는다. 실험 DB가 비어 있는 상태에서도 기존 SPPS Planner의 계획·계산 기능과 public-safe fallback이 동작하며, 사용자가 자신의 권한 있는 데이터를 로컬에서 기록하거나 import하면서 evidence system을 구축하는 구조다.
+- Sequence, resin, scale, loading, coupling, terminal setting을 기반으로 Plan 생성
+- 생성된 Plan 직접 수정
+- **Apply Change**로 현재 보이는 수정 Plan을 유지하면서 Materials/Checklist 등 연동 결과 재계산
+- 여러 peptide Work Item 및 Batch 계산 지원
 
-V5는 기존 검증된 Generate / Apply Change 계산 경로를 없애거나 대체하지 않는다. 그 위에 실험 결과 기록, Run 연결, 근거 표시, Loading/Cleavage 추천, model registry, natural-language issue 기록 등을 추가했다.
+### 2. 다양한 building block 인식
 
-최종 Public 소스 패키지는 **273 passed / 22 skipped**, release verifier PASS, Windows release contract PASS 상태로 검증했다. Public experimental seed에는 문서만 포함된다.
+- 표준 L-amino acid
+- D-form amino acid
+- 실제 Loading 자료에 기반한 `Cit`, `Hyp`, `Dab` 등의 special/non-natural identity
+- Linker, label, tag, N-terminal modifier 및 terminal chemistry
+- 보호기 형태가 다른 building block을 임의로 같은 물질로 합치지 않음
 
+### 3. Loading Advisor
 
----
+Loading Recommend는 **실험 데이터 우선 + 보수적 판단**을 기본으로 합니다.
 
-## 핵심 설계 원칙
+- 직접 추천 근거는 **동일 resin + 동일 normalized loaded-AA identity**만 사용
+- D-form과 L-form 데이터를 분리
+- non-natural AA의 이름을 인식한다고 해서 근거 `n`이 자동 증가하지 않음
+- 동일 조건 반복 실험의 실제 관측 범위가 target을 포함하면 `OBSERVED REPEATED CONDITION` 사용 가능
+- 관측 범위 내부에서만 bounded interpolation
+- 관측 범위 밖 extrapolation을 실험 근거처럼 표시하지 않음
+- 실측 근거가 없을 때 사용하는 `CHEMISTRY DEFAULT`는 예측값과 분리 표시
+- 근거 데이터 수, Verified/Parsed, min/median/max, 날짜 범위, 반복성, capping, source locator, 근접 실험 조건 표시
 
-### 1. 화면에 보이는 Plan이 실제 기준이다
+현재 identity normalization 예시는 다음과 같습니다.
 
-`Generate` 후 사용자가 Plan을 직접 수정할 수 있다. 그 다음 `Apply Change`를 누르면 원래 sequence에서 몰래 다시 생성하지 않고 **현재 보이는 Plan을 기준으로** Materials, Checklist, Totals 등의 연결 결과를 다시 계산한다.
+```text
+Cit          -> Fmoc-Cit-OH
+Hyp          -> 실제 관측 identity가 Fmoc-Hyp(tBu)-OH인 경우 해당 형태
+Dab          -> Fmoc-Dab(Boc)-OH
+D-Leu / dL   -> Fmoc-D-Leu-OH
+D-Phe / dF   -> Fmoc-D-Phe-OH
+D-His(Trt)   -> Fmoc-D-His(Trt)-OH
+```
 
-### 2. 계획값과 실험값은 다르다
+Gly은 achiral로 취급하며 임의의 `D-Gly` identity를 만들지 않습니다.
 
-Planner에 입력한 조건은 **Plan condition**이다. 실제 실험을 수행했다는 증거가 아니다.
+### 4. Cleavage Advisor
 
-실험 근거가 되려면 실제 Result / Issue / Outcome 등이 Run과 연결되어야 한다.
+- Cleavage cocktail과 equivalent 양을 분리해서 관리
+- 기존 Cys hard rule 유지: 자동 적용 시 **TFA eq = 100 × Cys count**
+- Cys rule에 peptide-length baseline을 중복 가산하지 않음
+- NH4I reduction은 일반 cleavage cocktail과 분리된 post-cleavage rescue workflow
+- Met이 있다는 이유만으로 NH4I를 자동 삽입하지 않음
 
-### 3. 보호기와 실제 reagent form을 함부로 합치지 않는다
+### 5. 실험 기록과 추적성
 
-Fmoc-AA의 보호기 형태, D-form, non-natural residue, branch handle, modifier, linker, label, tag는 화학적으로 의미가 다를 수 있으므로 가능한 한 bottle-level identity를 유지한다.
+- Loading / Cleavage / Outcome / Issue 등 실험 기록 저장
+- 가능한 경우 active Run 및 Planner condition snapshot과 연결
+- 원본 raw text를 보존하면서 검색용 canonical key를 별도 사용
+- 애매하거나 provisional인 기록을 강한 근거로 자동 승격하지 않음
+- 사용자가 명시적으로 내보내거나 공개하지 않는 한 로컬 데이터는 로컬에 유지
 
-### 4. 근거 종류를 구분한다
+### 6. 명시적인 model workflow
 
-다음은 같은 것이 아니다.
-
-- 실제 측정된 historical evidence
-- operator-approved rule
-- empirical estimate
-- model prediction
-- 일반 chemistry / literature reference
-
-프로그램은 이들을 가능한 한 구분해서 보여주는 방향으로 설계되어 있다.
-
-### 5. Model은 자동으로 몰래 재학습하지 않는다
-
-Result를 하나 입력했다고 모델이 즉시 바뀌지 않는다. Loading model rebuild는 명시적으로 실행하며, 후보 모델의 validation 성능을 기록하고 active model과 비교한다.
-
-### 6. Public에는 private 실험 이력을 넣지 않는다
-
-GitHub 공개판은 빈 experimental seed에서 시작한다. 사용자는 자신의 로컬 데이터로 evidence를 쌓는다.
-
-### 7. 최종 판단은 operator가 한다
-
-SPPS Planner는 계획/검토/추천 도구다. 승인된 SOP, SDS, 안전 규정, 장비 적격성, 분석법 검증, 숙련된 연구자의 판단을 대체하지 않는다.
-
----
-
-## V5.0.0의 핵심 변화
-
-- **Target Loading → Recommended AA eq** 형태의 Loading Advisor
-- 동일 resin + 동일 loaded/C-terminal AA 기반의 **bounded interpolation**
-- 관측 범위 밖 extrapolation을 근거 있는 값처럼 보여주지 않음
-- Verified measured loading 데이터만 사용하는 명시적 Loading model rebuild
-- model candidate / active model / rollback 관리
-- Cys가 있는 경우 **100 eq × Cys 개수** cleavage hard rule
-- non-Cys sequence용 public-safe empirical length baseline
-- post-cleavage **NH4I Reduction** rescue workflow
-- NH4I를 cleavage cocktail에 자동 삽입하지 않음
-- Add Result / Add Issue 중심의 간단한 실험 기록 흐름
-- 한국어 / 영어 / 혼합 문장을 처리하는 natural-language Issue parser
-- Result / Issue / Cleavage / Outcome에 active Run과 Planner condition snapshot 연결
-- Recommendations / Advanced(History, Risk & Evidence, Data Health) 구조
-- Batch material grouping 개선
-- Fmoc-Cit-OH를 Non-natural AA로 분류
-- Recommendations / Lab History 창의 체감 오픈 속도 개선
-- Public/Private 공통 기능 source parity 유지
-
----
-
-## 기능 요약
-
-| 영역 | 기능 |
-| --- | --- |
-| Sequence | natural AA, terminal group, D/non-natural AA, chemical, linker, label, tag, branch-capable unit 처리 |
-| Resin / Loading | resin family, loading, scale, resin-dependent volume 및 loading workflow |
-| Plan | 합성 step 생성, 직접 편집, Repeat / Doubling 등 적용 |
-| Apply Change | 현재 Plan을 유지한 채 연결 결과 재계산 |
-| Materials | resin, AA, reagent, additive, base, solvent, modifier 등 계산 |
-| Checklist | 전체/축약 실행 checklist |
-| Cleavage | cleavage eq, cocktail, 시간, amount, workup 분리 및 추천 |
-| Project Manager | 여러 peptide work item 관리 |
-| Batch Manager | 여러 peptide를 동시에 계산하고 total material 집계 |
-| Custom DB | 사용자 정의 AA / chemical / reagent / solvent / resin 등 |
-| Experimental Data | Loading, Cleavage, Sequence, Usage, Outcome, Issue 기록 |
-| Recommendations | historical evidence + bounded recommendation + explicit model support |
-| Risk & Evidence | sequence/stage 위험 및 유사 실험 근거 표시 |
-| Model Registry | Loading model rebuild, validation, version, promote, rollback |
-| Windows Build | PyInstaller portable build + packaged self-test + Inno Setup installer |
-
----
-
-## 전체 작업 흐름
-
-### 일반적인 단일 peptide 작업
-
-1. Project / Work Item을 만든다.
-2. Sequence를 입력한다.
-3. Resin과 scale을 정한다.
-4. Loading / coupling chemistry를 확인한다.
-5. **Generate**를 누른다.
-6. 생성된 Plan을 확인한다.
-7. 실제 실험 조건에 맞게 Plan을 수정한다.
-8. 수정 후 **Apply Change**를 누른다.
-9. Materials / Checklist / Total Materials / Cleavage를 확인한다.
-10. 실험을 수행한다.
-11. 실제 측정 결과는 **Add Result**에 기록한다.
-12. 문제나 intervention은 **Add Issue**에 자연어로 기록한다.
-13. 데이터가 쌓이면 Recommendations / Risk & Evidence에서 다음 조건의 근거로 활용한다.
-
-### Generate와 Apply Change를 나눈 이유
-
-- `Generate` = 현재 Setup을 기준으로 Plan을 새로 만든다.
-- `Apply Change` = 사용자가 편집한 현재 Plan은 유지하고 연결 결과를 갱신한다.
-
-이 둘을 분리하지 않으면 사용자가 실제 bench workflow에 맞게 Plan을 수정한 뒤 Materials를 다시 계산하는 순간 수정한 내용이 사라질 수 있다.
+- Loading model rebuild는 자동이 아니라 명시적 실행
+- Candidate validation / promotion / rollback 지원
+- Result를 추가했다고 모델이 몰래 재학습되지 않음
 
 ---
 
@@ -223,9 +127,11 @@ SPPS Planner는 계획/검토/추천 도구다. 승인된 SOP, SDS, 안전 규�
 
 - Windows 10 / 11
 - 64-bit Python 3.11 또는 3.12
-- Tk GUI가 가능한 일반 데스크톱 Python 환경
+- Tk 사용이 가능한 일반 데스크톱 Python 환경
 
-### 소스 실행
+### 소스에서 실행
+
+Repository root에서:
 
 ```bat
 python -m venv .venv
@@ -235,966 +141,223 @@ python -m pip install -r requirements.txt
 python main_launcher.py
 ```
 
-### 개발/검증 환경
+### 개발 / 검증 환경
 
 ```bat
 python -m pip install -r requirements.txt -r requirements-dev.txt
 python tools\verify_release.py
 ```
 
-### 주요 단축키
+추가 검증:
 
-| 단축키 | 기능 |
+```bat
+python tools\verify_v6_integrity.py
+python tools\verify_windows_release.py
+```
+
+---
+
+## 기본 사용 흐름
+
+1. Peptide / Work Item을 설정합니다.
+2. Sequence, resin, scale, loading, coupling system 등을 입력합니다.
+3. **Generate**로 새 Plan을 만듭니다.
+4. 필요한 경우 Plan을 직접 수정합니다.
+5. **Apply Change**로 수정된 현재 Plan을 기준으로 연결 계산을 갱신합니다.
+6. Materials / Checklist / Total Materials / Cleavage를 검토합니다.
+7. 실제 합성 후 **Add Result** 또는 **Add Issue**를 기록합니다.
+8. Recommendations & Lab History에서 누적 근거를 검토합니다.
+
+### Generate와 Apply Change의 차이
+
+| 기능 | 의미 |
 | --- | --- |
-| `Ctrl+S` | 저장 |
-| `Ctrl+Shift+S` | 다른 이름으로 저장 |
-| `Ctrl+O` | Project 불러오기 |
-| `Ctrl+N` | Work Item 추가 |
-| `Ctrl+D` | Work Item 복제 |
-| `Ctrl+G` | Generate |
-| `Ctrl+Enter` | Apply Change |
-| `Ctrl+E` | 현재 작업 Export |
-| `Ctrl+-` | Compact density |
-| `Ctrl+0` | Standard density |
-| `Ctrl+=` | Comfortable density |
-| Work Item `F5` | Refresh |
-| Work Item `Esc` | 저장 후 닫기 |
+| **Generate** | 현재 Setup 입력으로 새로운 Plan을 생성 |
+| **Apply Change** | 현재 화면에서 수정된 Plan을 유지한 채 연동 계산만 다시 수행 |
+
+이 구조는 Plan을 수동으로 수정한 뒤 Materials만 다시 계산했을 때 원래 Plan으로 되돌아가는 문제를 방지합니다.
 
 ---
 
-## Sequence 입력과 Parser
+## Loading Recommendation 원칙
 
-기본적인 natural sequence와 terminal notation을 지원한다.
+Loading Advisor는 다음 순서를 따릅니다.
 
-```text
-GHTYKL
-GHTYKL-NH2
--GHTYKL-NH2
-Ac-GHTYKL-NH2
-AcGHTYKL-NH2
-FITC-GHTYKL-NH2
-Biotin-GHTYKL-NH2
-```
+1. 동일 resin + 동일 loaded-AA identity의 실제 이력을 우선 사용
+2. outlier로 표시된 기록은 evidence-driven inversion에서 제외
+3. 동일 조건 반복 측정 범위 안에 target이 있으면 실제 반복 조건을 우선 고려
+4. 관측된 범위 내부에서만 bounded interpolation
+5. broad similarity는 진단용 context로만 사용
+6. 정의된 경우에만 명시적으로 `CHEMISTRY DEFAULT` fallback 사용
+7. 범위 밖에서는 가짜 실험 예측을 만드는 대신 insufficient/out-of-range 상태 표시
 
-예를 들어:
+화면에서는 다음 provenance를 구분합니다.
 
-```text
-Ac-GHTYKL-NH2
-```
+- **Exact experimental match**
+- **Bounded interpolation**
+- **Default fallback**
+- **Insufficient / outside observed range**
 
-는 개념적으로 다음처럼 분리된다.
-
-```text
-N-term : Ac
-Core   : G H T Y K L
-C-term : NH2
-```
-
-### Parser 안전 규칙
-
-- 일반 FASTA형 natural sequence는 residue 단위로 분리한다.
-- bracket/catalog 기반 chemical, linker, label, tag는 의미 있는 단위로 유지한다.
-- `Ac` compact 표기는 모호하지 않을 때만 인식한다.
-- 자연 sequence가 `AC...`로 시작한다는 이유만으로 acetylated peptide로 바꾸지 않는다.
-- Ac 이외 N-terminal modifier는 dash로 명확하게 쓰는 것을 권장한다.
-- protecting group은 parser가 임의로 만들어내지 않고 catalog/planner layer에서 처리한다.
-- natural matching은 필요한 경우 case-insensitive로 처리하지만 D-form/modified token의 의미는 보존한다.
-
-자세한 계약은 [docs/SPPS_PARSER_CONTRACT.md](docs/SPPS_PARSER_CONTRACT.md)에 있다.
+D-form 및 special/non-natural building block은 **인식 가능 여부와 실험 근거 여부를 분리**합니다. 따라서 identity는 정상 인식되더라도 exact-history `n=0` 또는 `n=1`로 표시될 수 있습니다.
 
 ---
 
-## Plan 생성과 Apply Change
+## Batch Manager / Project Manager 연동
+
+Batch Manager는 **Project Manager의 peptide sequence를 읽어 합성기용 stock/solution 준비량을 계산하는 도구**입니다. R19부터 Project Manager의 DIC/HOBt/HBTU 선택, project별 reagent eq, resin/loading 조건을 합산하지 않습니다. 준비량 계산은 Batch Manager 상단의 **Solution prep defaults**만 사용합니다.
+
+- Project Manager에서 실제 sequence가 있는 항목만 읽습니다.
+- `Copies`는 합성 column 수를 반영하며, 계산 scale은 Batch Manager의 `Scale mmol` 기본값을 사용합니다.
+- AA stock은 `Scale mmol × AA eq ÷ AA conc`를 기준으로 계산합니다.
+- HBTU/NMP stock은 `Scale mmol × HBTU eq ÷ HBTU conc`를 기준으로 계산합니다.
+- `Round-up mL`과 `Extra reserve mL`를 적용해 실제 준비 부피를 산출합니다.
+- Project Manager에 DIC/HOBt 조건이 저장되어 있어도 Batch Manager에 DIC/HOBt 사용량으로 나타나지 않습니다.
+- 빈/default placeholder 및 sample/demo sequence는 계산하지 않습니다.
+- **Refresh totals**는 현재 sequence와 prep defaults를 다시 계산합니다.
+- Autosave와 기존 Project 이력은 그대로 보존합니다.
 
-Planner가 다루는 주요 입력은 다음과 같다.
-
-- project / peptide / work item
-- sequence
-- copies
-- synthesis scale
-- resin / resin family
-- resin loading
-- loaded 또는 C-terminal AA
-- AA eq
-- base eq
-- loading time
-- coupling reagent / additive / base / solvent
-- N-terminal modifier
-- branch 설정
-- Repeat / Doubling
-- cleavage eq / composition / time
-
-### Plan은 단순 출력물이 아니다
-
-Plan은 직접 수정 가능한 작업 상태다.
-
-일반적으로 다음 단계들이 연결된다.
-
-- resin swelling
-- loading
-- Fmoc deprotection
-- pre-coupling wash
-- AA / chemical coupling
-- post-coupling wash
-- repeat coupling / doubling
-- N-terminal modification
-- final wash
-- cleavage / workup 계획
-
-### 기본 process rule 예시
-
-내장 process rule에는 다음과 같은 운영 기본값이 포함된다.
-
-- 20% piperidine / 80% DMF deprotection basis
-- 반복 deprotection
-- resin family에 따른 swell/loading solvent 처리
-- coupling / wash 반복 횟수
-- terminal/final wash 처리
-
-이 값들은 **프로그램의 planning default**이며 각 실험실 SOP보다 우선하는 절대 규칙이 아니다.
-
----
-
-## Materials · Checklist · Batch
-
-### Materials
-
-현재 Plan에서 다음과 같은 재료를 계산할 수 있다.
-
-- Resin
-- L-AA
-- D-AA
-- Non-natural AA
-- Branch handle
-- Chemical modifier / cap
-- Label / Tag / Linker
-- Coupling reagent
-- Catalyst / Additive
-- Base
-- Solvent
-- Deprotection reagent
-- Cleavage component
-- 필요한 경우 workup material
-
-MW, density, volume basis가 존재하면 적절한 g/mg/mL 계산을 사용한다. source data에서 unit이 확인되지 않은 값은 임의로 mL/L 등으로 바꾸지 않는 방향이다.
-
-### Batch material 표시 순서
-
-V5의 combined material table은 다음 순서를 따른다.
-
-1. L-AA
-2. D-AA
-3. Non-natural AA
-4. Chemical
-
-각 그룹 내부는 알파벳 순으로 정리한다.
-
-Chemical 그룹에는 modifier/cap, tag, label, terminal chemical-type unit 등이 포함될 수 있다.
-
-**Fmoc-Cit-OH는 Non-natural AA**로 분류한다.
-
-### Checklist
-
-Plan에서 전체 checklist와 짧은 step 중심 view를 생성한다. 이는 operator 편의 기능이며 GMP batch record 또는 기관 표준 문서를 자동 대체하는 용도는 아니다.
-
-### Batch Manager
-
-여러 peptide를 동시에 계산할 수 있으며, selected peptide의 Plan/Materials/Checklist와 전체 Batch Total Materials를 함께 볼 수 있다.
-
----
-
-## Loading Advisor
-
-V5 Loading Advisor의 목적은 ML 용어를 보여주는 것이 아니라 실제 bench 질문을 해결하는 것이다.
-
-```text
-Target Loading (mmol/g)
-        ↓
-Recommended AA eq
-        ↓
-Expected Loading
-        ↓
-Expected Range
-        ↓
-Confidence / Evidence
-        ↓
-Apply
-```
-
-### 중요한 입력/근거
-
-- Resin
-- 같은 loaded/C-terminal AA
-- AA eq
-- Base eq
-- Loading time
-- 실제 Measured Loading (`mmol/g`)
-
-### Evidence 우선순위
-
-1. Verified measured loading
-2. Same resin + same loaded/C-terminal AA
-3. 관측 범위 안의 bounded interpolation
-4. 명시적으로 만들어진 model의 cross-check/support
-5. Verified가 부족한 경우 Parsed historical fallback
-6. 근거가 부족하면 `INSUFFICIENT EVIDENCE`
-
-### 왜 extrapolation을 막는가
-
-소수의 실험값만 가지고 목표 loading을 맞춘다고 무리하게 범위 밖을 예측하면 정밀해 보이는 잘못된 숫자가 나오기 쉽다.
-
-그래서 V5는 가능한 경우 **실제로 관측된 범위 안에서만 inverse recommendation**을 수행하고, 서로 다른 resin/AA를 단순히 N을 늘리기 위해 섞지 않는다.
-
-### Measured Loading 기록
-
-Loading 화면에서 실제 measured loading을 기록하면 현재 Planner가 알고 있는 조건과 Run 정보를 자동으로 붙일 수 있다.
-
-### Loading Model Registry
-
-Model rebuild는 명시적이다.
-
-현재 조건:
-
-- Verified measured loading만 사용
-- 최소 12개 eligible record
-- 최소 3개의 distinct measured loading value
-- categorical feature: resin, normalized amino acid
-- numeric feature: AA eq, base eq, loading time
-- Random Forest regression
-- cross-validation MAE 기록
-- model version 보존
-- active model과 candidate 비교
-- candidate가 구현된 tolerance보다 현저히 나쁘면 active model을 자동 교체하지 않음
-- Promote Candidate / Rollback 가능
-- model-only output 자동 Apply 금지
-
-Active model이 있는 상태에서 새 Verified measured loading 결과가 약 5개 쌓이면 rebuild를 권하는 알림을 줄 수 있지만 자동 학습하지는 않는다.
-
----
-
-## Cleavage Advisor
-
-Cleavage는 **실제 history / operator rule / empirical fallback**을 구분한다.
-
-### Cys hard rule
-
-Sequence에 Cys가 하나라도 있으면 현재 operator rule은 다음과 같다.
-
-```text
-TFA equivalent = 100 eq × Cys 개수
-```
-
-| Cys 개수 | Cleavage eq |
-| ---: | ---: |
-| 1 | 100 eq |
-| 2 | 200 eq |
-| 3 | 300 eq |
-| 4 | 400 eq |
-
-중요:
-
-- peptide length와 무관하다.
-- length baseline에 `+100 eq × Cys`를 더하는 방식이 아니다.
-- Cys rule이 최종 eq를 결정한다.
-- manual/operator override가 있으면 또 +100을 중복 추가하지 않는다.
-- eq 결정과 cocktail composition 결정은 별도다.
-- public generic Cys-sensitive fallback은 현재 TFA/TIS/Water `95/2.5/2.5`를 사용한다.
-
-### Non-Cys empirical baseline
-
-더 강한 eligible evidence가 없는 non-Cys peptide에 대해서는 public-safe monotonic baseline이 존재한다.
-
-| 길이 | TFA eq baseline |
-| ---: | ---: |
-| 1 | 8 |
-| 2 | 10 |
-| 3 | 15 |
-| 4 | 18 |
-| 5 | 20 |
-| 6 | 30 |
-| 8 | 35 |
-| 10 | 45 |
-| 12 | 50 |
-| 14 | 60 |
-| 15 | 80 |
-| 18 | 88 |
-| 21 | 95 |
-| 22+ | 100 |
-
-사이 길이는 monotonic interpolation한다.
-
-이 표는 **V5 empirical software baseline**이지 SPPS의 보편적 화학 법칙이 아니다.
-
-### Cleavage evidence 원칙
-
-- exact/repeated history가 있으면 generic fallback보다 우선할 수 있다.
-- Public에는 private exact-sequence anchor file을 넣지 않는다.
-- similar-sequence evidence는 참고 근거일 뿐 exact observation으로 둔갑시키지 않는다.
-- unit이 없는 usage 값은 임의로 mL/L로 추정하지 않는다.
-- 여러 product가 섞인 aggregate usage는 automatic scaling의 직접 근거로 쓰지 않는다.
-- cleavage cocktail과 precipitation/workup은 분리한다.
-
-### Ether / n-Hexane
-
-Ethyl Ether와 n-Hexane은 precipitation/workup solvent이며 cleavage cocktail component가 아니다.
-
----
-
-## Post-cleavage NH4I Rescue
-
-NH4I는 기본 cleavage cocktail 성분이 아니다.
-
-기본값:
-
-```text
-Post-cleavage Rescue: None
-```
-
-필요 시:
-
-```text
-Post-cleavage Rescue: NH4I Reduction
-```
-
-현재 operator preset:
-
-| 항목 | 기본값 |
-| --- | ---: |
-| NH4I | peptide 대비 2 eq |
-| 최종 농도 | 0.2 M |
-| 반응 시간 | 1 h |
-| solvent context | TFA / DW |
-
-Program은 peptide scale을 기준으로 NH4I mmol, mg, final solution volume을 계산한다.
-
-**0.2 M 초과는 precipitation 가능성 때문에 block/warn**한다.
-
-Met이 있다는 이유만으로 자동 적용하지 않는다. Oxidation 또는 관련 impurity가 실제로 관찰되었을 때 operator가 선택하는 rescue workflow다.
-
----
-
-## Recommendations & Lab History
-
-V5에서는 이 창을 daily workflow와 advanced review로 분리했다.
-
-### Recommendations
-
-- Loading
-- Cleavage
-- All Conditions
-
-### Advanced
-
-- History
-- Risk & Evidence
-- Data Health
-
-History 안에서는 다음 record를 확인할 수 있다.
-
-- Issues
-- Loading
-- Cleavage
-- Sequence STD
-- Cleavage Usage
-- Outcomes
-
-### Add Result
-
-사용자는 **실제로 측정한 값**만 넣는 것을 목표로 한다. 이미 Planner가 알고 있는 조건은 자동으로 snapshot에 붙인다.
-
-예:
-
-- Measured Loading
-- Yield
-- Purity
-- Crude weight
-- Outcome
-- Note
-
-### Add Issue
-
-문제는 자유문장으로 적을 수 있다.
-
-원문을 그대로 보존하면서 가능한 경우 다음을 구조화한다.
-
-- stage
-- issue_type
-- position
-- residue
-- severity
-- action_taken
-- resolution
-- confidence
-- parse_status
-- parser_version
-- detected_language
-
-애매한 문장은 `needs_review`로 남겨 ML/risk 데이터에 잘못 들어가는 것을 막는다.
-
----
-
-## Natural-language Issue Log
-
-한국어, 영어, 혼합 입력을 처리한다.
-
-인식 가능한 대표 issue:
-
-- Kaiser / chloranil 이상
-- precipitation failure / partial precipitation
-- resin clumping / aggregation
-- oxidation
-- incomplete deprotection
-- incomplete coupling
-- poor swelling
-- filtration difficulty
-- reagent solubility
-- side product
-- low crude recovery
-- cleavage problem
-- equipment / process problem
-
-대표 action:
-
-- Repeat coupling
-- Repeat deprotection
-- Longer reaction
-- Solvent change
-- Reagent change
-- Additional wash
-- Re-cleavage / extended cleavage
-- Re-precipitation
-- NH4I reduction
-- Manual intervention
-
-Issue가 있다고 무조건 실패로 분류하지 않는다.
-
-예를 들어:
-
-```text
-Incomplete coupling
-      ↓
-Repeat coupling
-      ↓
-Resolved
-      ↓
-Final purity 97%
-```
-
-이라면 “문제는 있었지만 해결된 성공적 outcome”으로 남을 수 있다.
-
----
-
-## Run 추적성
-
-새로운 독립 Run 시스템을 하나 더 만들지 않고 기존 Work Item / Run 구조를 사용한다.
-
-실험 record에는 다음 연결값을 가질 수 있다.
-
-```text
-work_item_id
-run_id
-```
-
-사용자가 기술적인 ID를 매번 직접 입력하는 방식이 아니라, 현재 active run을 Planner가 알고 있으면 자동으로 연결하는 것이 목표다.
-
-그래서 나중에 “이 측정 loading이 정확히 어떤 조건에서 나온 것인가?”를 추적할 수 있다.
-
----
-
-## Evidence / ML 정책
-
-### 데이터 상태
-
-| 상태 | 의미 |
-| --- | --- |
-| Verified | operator가 확인한 실제 실험 근거 |
-| Parsed | import/parsing되었지만 더 강한 review가 필요한 기록 |
-| Incomplete | 보존하지만 특정 target/학습에 필요한 정보가 부족 |
-| Excluded | 삭제하지 않고 audit용으로 남기되 추천/학습에서 제외 |
-
-### 다른 근거 종류
-
-- Operator rule
-- Empirical estimate
-- Model output
-- Literature / chemistry reference
-
-이들을 Verified 실험값과 동일하게 취급하지 않는다.
-
-### 일반적인 추천 우선순위
-
-1. 반복되고 성공적인 relevant history
-2. exact bottle/sequence/product evidence
-3. coherent category evidence
-4. observed range 내 bounded interpolation
-5. chemistry/risk reference 또는 empirical fallback
-6. insufficient evidence
-
-### 의도적으로 하지 않는 것
-
-- 관측 범위 밖 extrapolation을 신뢰 가능한 값처럼 제시
-- 서로 다른 resin/AA를 단순히 sample 수 늘리려고 섞기
-- import record 자동 Verified 승격
-- Generate된 Plan을 실제 실험 결과로 사용
-- Result 입력 때마다 자동 retrain
-- Model-only output 자동 Apply
-- unit 없는 숫자를 mL/L로 추측
-- 서로 다른 실험을 섞어 가짜 historical cocktail 생성
-
----
 
 ## Public 데이터 정책
 
-Public GitHub판은 **data-sanitized build**다.
+GitHub용 Public 패키지는 **data-sanitized build**입니다.
 
-포함:
+다음 데이터는 의도적으로 포함하지 않습니다.
 
-- experimental schema
-- record/import UI
-- recommendation logic
-- similarity / risk / evidence 기능
-- model management
-- public-safe generic rule
-- 빈 experimental seed 안내
+- 내부/Private Loading 실험 이력
+- Private Cleavage 이력
+- 기밀 product-sequence mapping
+- 원본 실험 사진 및 Private source manifest
+- 로컬 SQLite DB
+- Private 데이터로 학습된 model artifact
+- 사용자 export / log / runtime data
 
-제외:
+Public 버전은 비어 있는 public-safe experimental seed에서 시작하며, 사용자는 자신이 사용 권한을 가진 데이터만 로컬로 기록하여 근거 DB를 구축할 수 있습니다.
 
-- 내부/개인/회사 실험 history
-- private product-to-sequence mapping
-- private exact sequence cleavage anchor
-- 공개하면 안 되는 operator-specific experimental record
-
-사용자는 자신이 사용할 권한이 있는 데이터를 로컬에서 추가해야 한다.
-
-자세한 내용은 [PUBLIC_DATA_POLICY.md](PUBLIC_DATA_POLICY.md)를 참고한다.
-
----
-
-## Runtime 데이터
-
-Public build의 사용자 생성 데이터는 source repository 밖에 둔다.
-
-Windows core runtime 경로 기준:
+Windows에서 Public runtime 데이터는 repository 바깥의 다음 user-data 영역을 기반으로 저장됩니다.
 
 ```text
 %LOCALAPPDATA%\SPPS_Planner_PUBLIC\
 ```
 
-여기에는 상황에 따라 다음이 들어갈 수 있다.
-
-- Project / Session
-- Experimental SQLite DB
-- Imported lab data
-- Model file / registry
-- Runtime log
-- Export / output
-- 분석파일 link metadata
-
-이 파일들은 사용자가 공개를 명시적으로 검토하지 않았다면 GitHub에 commit하면 안 된다.
-
-`.gitignore`에는 sqlite, private data directory, build output, archive, log, venv 등 일반적인 runtime/generated artifact 차단 규칙이 포함되어 있다.
+DB, model, export, log 등을 GitHub에 올리기 전에는 반드시 [PUBLIC_DATA_POLICY.md](PUBLIC_DATA_POLICY.md)를 확인하십시오.
 
 ---
 
-## 저장소 구조
+## 프로젝트 구조
 
 ```text
 SPPS-PLANNER/
 ├─ main_launcher.py
 ├─ suite_gui/
 ├─ apps/spps_planner_app/
-│  ├─ spps_planner/
-│  └─ data/
-├─ peptiforg_core/
 ├─ tests/
 ├─ tools/
 ├─ docs/
 ├─ assets/
 ├─ installer/
-├─ BUILD_EXE_ONLY.bat
-├─ BUILD_INSTALLER.bat
-├─ INSTALL_BUILD_TOOLS_AND_BUILD.bat
-├─ SPPS_Planner.spec
 ├─ requirements.txt
 ├─ requirements-dev.txt
-├─ PUBLIC_DATA_POLICY.md
-├─ CONTRIBUTING.md
-├─ CITATION.cff
+├─ SPPS_Planner.spec
+├─ BUILD_EXE_ONLY.bat
+├─ BUILD_INSTALLER.bat
 ├─ LICENSE
-├─ VERSION
-└─ README.md
+└─ CITATION.cff
 ```
 
-### 주요 코드 위치
-
-| 영역 | 파일 |
-| --- | --- |
-| Entry / release | `main_launcher.py`, `suite_gui/release.py` |
-| GUI / controller | `suite_gui/controller.py`, `suite_gui/classic_base.py` |
-| Generate / Apply | `suite_gui/synthesis_workflow.py`, `suite_gui/modules/plan_workflow.py` |
-| Project / State | `suite_gui/project_workflow.py`, `suite_gui/peptide_item_state.py` |
-| Experimental DB | `suite_gui/experimental_data.py` |
-| Loading/Cleavage Advisor | `suite_gui/ml_advisor_v5.py`, `suite_gui/empirical_cleavage_v5.py` |
-| Model Registry | `suite_gui/model_registry_v5.py` |
-| Issue Parser | `suite_gui/natural_language_issue_v5.py` |
-| Recommendation UI | `suite_gui/modules/experimental_data_panel.py` |
-| NH4I / Cleavage UI | `suite_gui/modules/cleavage_panel.py` |
-| Engine | `apps/spps_planner_app/spps_planner/engine.py` |
-| Parser | `apps/spps_planner_app/spps_planner/parser.py` |
-
-더 자세한 내용은 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)를 참고한다.
+상세한 모듈 ownership 및 release boundary는 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)를 참고하십시오.
 
 ---
 
 ## Windows 빌드
 
-### Portable EXE
+PyInstaller / Inno Setup 기반 release 경로가 포함되어 있습니다.
 
 ```bat
 BUILD_EXE_ONLY.bat
-```
-
-결과:
-
-```text
-dist\SPPS_Planner\SPPS_Planner.exe
-```
-
-### Installer
-
-Inno Setup이 있는 상태에서:
-
-```bat
 BUILD_INSTALLER.bat
-```
-
-결과:
-
-```text
-installer\output\SPPS_Planner_Setup_V5.0.0.exe
-```
-
-### Build tool 확인/설치부터 한 번에
-
-```bat
 INSTALL_BUILD_TOOLS_AND_BUILD.bat
 ```
 
-이 workflow는 단순히 EXE 파일이 생성되었다는 것만 확인하지 않고 packaged runtime self-test와 release contract를 통해 실제 packaged app이 필요한 모듈을 정상적으로 포함했는지 확인하는 방향이다.
-
-Windows release checklist는 [docs/WINDOWS_BUILD_KO.md](docs/WINDOWS_BUILD_KO.md)에 있다.
+배포 전 release verification을 실행하고 [docs/WINDOWS_BUILD_KO.md](docs/WINDOWS_BUILD_KO.md)를 확인하는 것을 권장합니다.
 
 ---
 
-## 검증과 회귀 테스트
+## v6.0.0 검증 결과
 
-### 전체 Release Verification
+최종 Public ZIP을 별도 디렉터리에 다시 푼 fresh-unzip 상태에서 검증했습니다.
 
-```bat
-python -m pip install -r requirements.txt -r requirements-dev.txt
-python tools\verify_release.py
-```
+- 전체 Public headless pytest: **370 passed / 28 skipped**
+- 전체 Public Real-Tk/Xvfb pytest: **395 passed / 3 skipped**
+- R19 sequence-driven Batch prep 실제 Tk 회귀: **PASS**
+- `tools/verify_v6_integrity.py`: **PASS**
+- `tools/verify_windows_release.py`: **PASS**
+- Public experimental seed: 문서용 `README.md`만 포함
+- Public SQLite/DB: **0개**
+- ZIP integrity: **PASS** (`testzip = None`)
+- R19 Batch solution-prep 분리 후에도 chemistry engine의 golden behavior 유지
 
-여러 번 반복 검증:
-
-```bat
-python tools\verify_release.py --passes 5
-```
-
-Release verifier는 다음을 확인한다.
-
-- 필수 release file
-- V5.0.0 version identity
-- active controller contract
-- Windows release contract
-- runtime monkey-patch/rebinding audit
-- source compile
-- 전체 pytest suite
-
-### Windows contract
-
-```bat
-python tools\verify_windows_release.py
-```
-
-### Active release monkey-patch audit
-
-```bat
-python tools\audit_monkey_patches.py --active-release
-```
-
-### V5 주요 회귀 테스트 영역
-
-- parser / sequence
-- Generate / Apply Change
-- resin/loading
-- C-terminal behavior
-- Repeat / Doubling
-- Materials / Checklist / Totals
-- Project / Session persistence
-- Batch
-- Custom DB
-- Cys 100 eq-per-Cys
-- Cys eq double-add 방지
-- empirical cleavage
-- target-loading bounded inverse
-- Loading model rebuild/promote/rollback
-- active Run linkage
-- bilingual issue parsing
-- NH4I ≤0.2 M
-- DB initialization fast path
-- Public release/data contract
+Public/Private 대응 빌드의 공유 소스 parity 역시 release validation에서 확인했으며, Private 실험 데이터는 Public 패키지로 이동하지 않습니다.
 
 ---
 
-## 성능 설계
+## 과학적 사용 범위와 한계
 
-V5.0.0은 **Recommendations / Lab History** 창을 열 때 불필요한 반복 DB 작업을 줄이고, 무거운 history 화면이 모두 준비될 때까지 창 표시를 막지 않도록 동작 순서를 개선했다.
+SPPS Planner는 **연구 계획, 계산, 기록, 우선순위 설정 및 의사결정 보조**를 위한 프로그램입니다.
 
-목표는 다음과 같다.
+다음을 대체하지 않습니다.
 
-```text
-Button click
-   ↓
-창이 먼저 보임
-   ↓
-필요한 recommendation/history 내용이 이어서 로드됨
-```
+- 승인된 SOP
+- SDS 및 기관 안전 규정
+- 숙련된 작업자의 판단
+- 검증된 분석법
+- 실제 합성 결과 확인
+- 필요한 경우의 GMP/GLP 공식 문서
 
-기존 Recommendation, History, Risk & Evidence, Data Health 기능은 그대로 유지된다.
-
----
-
-## 과학적 범위와 한계
-
-SPPS Planner는 연구/계획 지원 도구다.
-
-사용자는 반드시 다음을 직접 검토해야 한다.
-
-- sequence / modification
-- protecting group 및 bottle identity
-- resin / loading
-- scale 단위
-- AA / reagent eq
-- 농도
-- coupling / deprotection chemistry
-- Repeat / Doubling
-- cleavage composition / amount
-- workup / precipitation
-- reactor / equipment volume 및 호환성
-- SDS / 기관 안전규정
-- 실제 실험 검증
-
-### Empirical rule은 universal law가 아니다
-
-Cys hard rule, non-Cys length curve, generic cocktail fallback, NH4I rescue preset은 현재 software/operator rule이다. 모든 peptide/scale/resin/보호기에 보편적으로 최적인 조건이라는 의미가 아니다.
-
-### Historical data에는 bias가 있을 수 있다
-
-실험 이력은 기록된 데이터에 의존한다. operator effect, scale effect, 분석법 변경, selection bias, 누락 등으로 인해 단순한 상관관계를 causal optimum으로 해석하면 안 된다.
-
-### Model도 advisory다
-
-Cross-validation MAE가 좋더라도 새로운 chemistry에 대한 보장은 아니다. Model은 판단을 돕는 근거 중 하나다.
+특히 Recommendation은 표시된 provenance를 함께 확인해야 합니다. Chemistry default, empirical rule, interpolation, model estimate, 실제 반복 실험은 서로 같은 수준의 근거가 아닙니다.
 
 ---
 
-## 문서 안내
+## 문서
 
-### 시작용
+| 문서 | 내용 |
+| --- | --- |
+| [README.md](README.md) | English project overview |
+| [docs/USER_MANUAL_KO.md](docs/USER_MANUAL_KO.md) | 한국어 사용자 매뉴얼 |
+| [docs/USER_MANUAL_EN.md](docs/USER_MANUAL_EN.md) | English user manual |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 구조 / ownership |
+| [docs/SPPS_PARSER_CONTRACT.md](docs/SPPS_PARSER_CONTRACT.md) | Sequence parser contract |
+| [docs/SPPS_REAGENT_DATABASE_SCHEMA.md](docs/SPPS_REAGENT_DATABASE_SCHEMA.md) | Reagent DB schema |
+| [PUBLIC_DATA_POLICY.md](PUBLIC_DATA_POLICY.md) | Public/Private 데이터 경계 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guide |
+| [CHANGELOG.md](CHANGELOG.md) | 변경 이력 |
+| [RELEASE_NOTES_V6.0.0.md](RELEASE_NOTES_V6.0.0.md) | v6.0.0 공개 릴리스 노트 |
 
-- [README.md](README.md) — English full overview
-- [README_KO.md](README_KO.md) — 한국어 full overview
-- [docs/USER_MANUAL_KO.md](docs/USER_MANUAL_KO.md) — 한국어 사용자 매뉴얼
-- [docs/USER_MANUAL_EN.md](docs/USER_MANUAL_EN.md) — English user manual
-
-### Technical
-
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/SPPS_PARSER_CONTRACT.md](docs/SPPS_PARSER_CONTRACT.md)
-- [docs/SPPS_REAGENT_DATABASE_SCHEMA.md](docs/SPPS_REAGENT_DATABASE_SCHEMA.md)
-- [docs/V5_DECISION_SUPPORT_EN.md](docs/V5_DECISION_SUPPORT_EN.md)
-- [docs/V5_DECISION_SUPPORT_KO.md](docs/V5_DECISION_SUPPORT_KO.md)
-- [docs/DATA_SYSTEM_KO.md](docs/DATA_SYSTEM_KO.md)
-- [docs/WINDOWS_BUILD_KO.md](docs/WINDOWS_BUILD_KO.md)
-
-### Policy / Release
-
-- [PUBLIC_DATA_POLICY.md](PUBLIC_DATA_POLICY.md)
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [LICENSE](LICENSE)
-- [CITATION.cff](CITATION.cff)
+V5 decision-support 문서와 과거 개발 체크포인트 문서는 배포 루트에서 제거하여 파일 구성을 정리했으며, 공개 변경 이력은 CHANGELOG에 유지합니다.
 
 ---
 
-## 기여
+## Citation
 
-기여는 환영하지만 기존 release contract를 보존해야 한다.
+학술 연구에서 SPPS Planner를 사용한 경우 software와 해당 tagged release/DOI(있는 경우)를 인용해 주십시오.
 
-특히 다음은 피한다.
+권장 표기:
 
-- 프로그램 전체 재작성
-- 기존 기능을 단순화된 별도 화면으로 대체
-- runtime monkey patch
-- placeholder / dummy / fake training data
-- 실제 reagent identity 무시
-- plan condition을 measured experimental truth로 취급
-- Result 입력 시 자동 model rebuild
-- confidential experimental data를 Public에 포함
+> Woo, S. **SPPS Planner: Solid-Phase Peptide Synthesis Planning and Evidence-Driven Decision Support.** Version 6.0.0. GitHub repository, 2026. https://github.com/SanghunWoo-23/SPPS-PLANNER
 
-Calculation/recommendation behavior를 바꾸는 PR은 최소한 다음을 설명하는 것이 좋다.
-
-1. 기존 문제
-2. 기존 동작
-3. 변경 동작
-4. 변경 이유
-5. 어떤 test로 regression을 막았는지
-
-자세한 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)에 있다.
+GitHub citation 기능을 위한 [CITATION.cff](CITATION.cff)가 포함되어 있습니다.
 
 ---
 
-## 인용
+## License
 
-SPPS Planner 또는 SPPS Planner에서 생성된 결과/워크플로/수정본을 학술 작업에 사용하는 경우 포함된 라이선스의 citation/attribution 조건을 확인해야 한다.
+SPPS Planner는 **SPPS Planner Public Academic Citation License**로 배포됩니다.
 
-권장 repository citation:
+학술·교육·연구·포트폴리오 검토·비상업적 사용을 허용하는 custom source-available license이며, 조건에 따라 인용이 필요합니다. **OSI 승인 오픈소스 라이선스는 아닙니다.**
 
-> Woo, S. **SPPS Planner: Solid-Phase Peptide Synthesis Planning and Evidence-Driven Decision Support.** GitHub repository, Version 5.0.0. https://github.com/SanghunWoo-23/SPPS-PLANNER
-
-[CITATION.cff](CITATION.cff)를 포함했기 때문에 GitHub의 **Cite this repository** 기능에서도 citation metadata를 사용할 수 있다.
-
-향후 release DOI가 생성되면 해당 release DOI도 함께 사용한다.
+자세한 내용은 [LICENSE](LICENSE)를 확인하십시오.
 
 ---
 
-## 라이선스
+## Release notes
 
-이 저장소는 **SPPS Planner Public Academic Citation License Version 1.0**을 사용한다.
-
-학술·교육·연구·portfolio review·비상업적 사용을 허용하는 custom public-source license이며, 인용/attribution 조건이 있다.
-
-현재 라이선스는 OSI-approved open-source license가 아니므로 라이선스가 변경되지 않는 한 “OSI 오픈소스”라고 표현하면 안 된다.
-
-자세한 내용은 [LICENSE](LICENSE)를 반드시 확인한다.
-
----
-
-## 문제 해결
-
-### 소스 실행이 안 됨
-
-```bat
-python --version
-python -m venv .venv
-.venv\Scripts\activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python main_launcher.py
-```
-
-지원 Python 버전과 dependency 설치 상태를 확인한다.
-
-### 창이 안 뜸
-
-Tk가 포함된 일반 desktop Python 환경을 사용한다. Headless 서버 환경은 일반 operator 사용 환경이 아니다.
-
-### EXE는 생겼는데 build validation이 실패함
-
-파일이 생겼다는 이유만으로 성공으로 보지 않는다.
-
-```bat
-python tools\verify_release.py
-python tools\verify_windows_release.py
-```
-
-첫 실패 항목부터 확인한다.
-
-### Public에서 Recommendation history가 비어 있음
-
-정상이다. Public은 private seed 없이 시작한다. 자신의 승인된 실험 데이터를 기록/import해야 history-driven recommendation이 생긴다.
-
-### Loading model이 없음
-
-현재 최소 12개의 eligible Verified measured loading record와 3개의 distinct target value가 필요하다.
-
-### Loading target을 넣었는데 Apply가 안 됨
-
-관측 범위 밖 extrapolation이 필요하거나 충분한 eligible condition이 없으면 evidence는 보여주되 Apply를 막을 수 있다.
-
-### Cys peptide에서 cleavage eq가 너무 커 보임
-
-현재 V5 rule이 `100 eq × Cys count`인지 확인한다.
-
-### NH4I >0.2 M가 막힘
-
-의도된 동작이다. 현재 operator protocol에서 0.2 M 초과는 precipitation 위험 때문에 block/warn한다.
-
-### Import한 숫자에 mL가 자동으로 안 붙음
-
-source에 unit이 없으면 임의로 추측하지 않는다. operator review가 필요하다.
-
----
-
-## FAQ
-
-### 자동 합성 장비 controller인가?
-
-아니다. 현재 release는 planning, calculation, traceability, decision-support desktop application이다.
-
-### 자동으로 최적 조건을 찾아주는가?
-
-근거가 있으면 historical evidence, bounded interpolation, empirical rule, explicit local model을 사용해 추천할 수 있다. 하지만 무근거 extrapolation을 “최적화 결과”처럼 단정하지 않는다.
-
-### Result 하나 추가하면 바로 재학습하는가?
-
-아니다. Rebuild는 명시적으로 실행한다.
-
-### 실험 history가 하나도 없어도 쓸 수 있는가?
-
-그렇다. Core Planner와 public-safe fallback은 experimental DB가 비어 있어도 동작하도록 설계되어 있다.
-
-### 내 실험 데이터를 import할 수 있는가?
-
-가능하다. 단, 사용/공개 권한이 있는 데이터만 사용해야 한다.
-
-### Public GitHub에 내부 실험 데이터가 포함되는가?
-
-의도적으로 포함하지 않는다.
-
-### Model 결과가 자동으로 Plan에 적용되는가?
-
-아니다. Model-only output 자동 Apply를 막는 방향이다.
-
-### 왜 History/Data Health가 Advanced에 있는가?
-
-중요하지만 매번 실험할 때마다 조작하는 메뉴는 아니기 때문이다. V5 primary workflow는 Add Result, Add Issue, 현재 recommendation을 우선한다.
-
-### 왜 raw note를 보존하는가?
-
-Parser가 틀릴 수 있기 때문이다. 나중에 구조화 결과를 수정하더라도 operator가 실제로 적었던 원문을 잃지 않기 위해서다.
-
-### 오픈소스인가?
-
-소스는 공개되어 있지만 현재는 custom academic citation license이며 OSI-approved license가 아니다.
-
----
-
-## 버전
-
-현재 Public release:
-
-```text
-V5.0.0
-```
-
-`VERSION`, `VERSION.txt`, release title과 Windows release metadata가 verification tool로 검사된다.
-
----
-
-<div align="center">
-
-**SPPS Planner V5.0.0**  
-Plan은 편집 가능하게. Evidence는 출처를 잃지 않게. Model은 조언자로.
-
-</div>
+공개용 변경 사항은 [RELEASE_NOTES_V6.0.0.md](RELEASE_NOTES_V6.0.0.md), 전체 개발 이력은 [CHANGELOG.md](CHANGELOG.md)를 참고하십시오.

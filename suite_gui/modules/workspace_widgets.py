@@ -1,4 +1,4 @@
-"""Project Manager workspace orchestration for the V4 desktop workflow.
+"""Project Manager workspace orchestration for the canonical desktop workflow.
 
 The operator workflow is explicit:
 
@@ -8,6 +8,7 @@ The operator workflow is explicit:
 * Cleavage cocktail presets remain independent from resin selection.
 """
 from __future__ import annotations
+from suite_gui import runtime_state
 
 from datetime import datetime
 from pathlib import Path
@@ -18,9 +19,14 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import pandas as pd
 from suite_gui import state_persistence
+from suite_gui.runtime_state import (
+    get_active_index, set_active_index, is_switching, set_switching, get_calculation_namespace,
+)
 
-VERSION = "V5.0.0"
-TITLE = "SPPS Planner V5.0.0"
+VERSION = "V6.0.0"
+TITLE = "SPPS Planner V6.0.0"
+# Public UI contract retained from the validated V4 workflow; actions now bind by explicit refs.
+PRIMARY_ML_ENTRY_CONTRACT = "Experimental / ML (V4)"
 
 PLAN_COLUMNS = [
     "No", "Unit name", "MW", "Density(g/mL)", "Unit mmol", "Unit amount",
@@ -176,11 +182,10 @@ def _cancel_pending_legacy_jobs(gui):
             pass
 
 def _active_index(gui):
-    value = getattr(gui, "_v228_active_index", None)
+    value = get_active_index(gui, None)
     try:
-        value = int(value)
-        if 0 <= value < len(gui.pm_items):
-            return value
+        if value is not None and 0 <= int(value) < len(gui.pm_items):
+            return int(value)
     except Exception:
         pass
     try:
@@ -188,6 +193,7 @@ def _active_index(gui):
         if selected:
             value = int(selected[0])
             if 0 <= value < len(gui.pm_items):
+                set_active_index(gui, value)
                 return value
     except Exception:
         pass
@@ -251,7 +257,7 @@ def _snapshot_outputs(gui, item):
 
 def save_active(gui, include_outputs=True):
     index = _active_index(gui)
-    if index is None or getattr(gui, "_v228_switching", False):
+    if index is None or is_switching(gui):
         return
     item = gui.pm_items[index]
     item.update(_editor_payload(gui))
@@ -269,7 +275,7 @@ def _refresh_list_label(gui, index):
         item = gui.pm_items[index]
         text = f"{item.get('project','')} | {item.get('peptide','')}"
     try:
-        gui._v228_switching = True
+        set_switching(gui, True)
         selected = list(gui.pm_list.curselection())
         gui.pm_list.delete(index)
         gui.pm_list.insert(index, text)
@@ -279,7 +285,7 @@ def _refresh_list_label(gui, index):
     except Exception:
         pass
     finally:
-        gui._v228_switching = False
+        set_switching(gui, False)
 
 
 def _set_var(gui, name, value):
@@ -300,7 +306,7 @@ def restore_item(gui, index, ns):
     if not (0 <= int(index) < len(gui.pm_items)):
         return
     item = gui.pm_items[int(index)]
-    gui._v228_switching = True
+    set_switching(gui, True)
     try:
         _set_var(gui, "pm_project", item.get("project", ""))
         _set_var(gui, "pm_peptide", item.get("peptide", ""))
@@ -328,9 +334,9 @@ def restore_item(gui, index, ns):
         _set_var(gui, "branch_pg", item.get("branch_pg", ""))
         _set_var(gui, "branch_depro_condition", item.get("branch_depro_condition", ""))
         _set_var(gui, "step_overrides_text", item.get("step_overrides_text", ""))
-        gui._v228_active_index = int(index)
+        set_active_index(gui, int(index))
     finally:
-        gui._v228_switching = False
+        set_switching(gui, False)
 
     plan_rows = list(item.get("selected_plan_rows") or [])
     if plan_rows:
@@ -353,7 +359,7 @@ def restore_item(gui, index, ns):
 
 
 def on_item_select(gui, ns, _event=None):
-    if getattr(gui, "_v228_switching", False):
+    if is_switching(gui):
         return "break"
     try:
         selected = list(gui.pm_list.curselection())
@@ -375,18 +381,18 @@ def on_item_select(gui, ns, _event=None):
 
 def live_sync(gui):
     """Save edits in place without clearing or regenerating the current plan."""
-    if getattr(gui, "_v228_switching", False):
+    if is_switching(gui):
         return
     # Only 2-CTC is a direct-loading profile.  Preloaded/synthesizer resins must
     # not inherit a stale loading checkbox from the previously selected item.
     try:
         resin = str(gui.pm_resin.get() or "").strip()
         if resin != "2-CTC" and hasattr(gui, "apply_loading_calc") and bool(gui.apply_loading_calc.get()):
-            gui._v228_switching = True
+            set_switching(gui, True)
             gui.apply_loading_calc.set(False)
-            gui._v228_switching = False
+            set_switching(gui, False)
     except Exception:
-        gui._v228_switching = False
+        set_switching(gui, False)
     index = _active_index(gui)
     if index is None:
         return
@@ -403,15 +409,13 @@ def _commit_open_editor(gui):
     tree = getattr(gui, "pm_selected_plan_tree", None)
     if tree is None:
         return
-    for attr in ("_v228_editor", "_v254_editor", "_v257_editor"):
-        try:
-            editor = getattr(tree, attr, None)
-            if editor is not None and editor.winfo_exists():
-                editor.event_generate("<Return>")
-                gui.update_idletasks()
-                return
-        except Exception:
-            pass
+    try:
+        editor = runtime_state.get_tree_editor(tree)
+        if editor is not None and editor.winfo_exists():
+            editor.event_generate("<Return>")
+            gui.update_idletasks()
+    except Exception:
+        pass
 
 
 def _bind_plan_editor(gui, ns):
@@ -419,7 +423,7 @@ def _bind_plan_editor(gui, ns):
     if tree is None:
         return
     # The proven legacy editor supports comboboxes and MW/density recalculation.
-    binder = ns.get("_v254_bind_selected_plan_editor")
+    binder = runtime_state.namespace_callable(ns,"bind_selected_plan_editor")
     if callable(binder):
         try:
             binder(gui)
@@ -449,7 +453,7 @@ def _bind_plan_editor(gui, ns):
         editor.select_range(0, "end")
         editor.place(x=x, y=y, width=width, height=height)
         editor.focus_set()
-        tree._v228_editor = editor
+        runtime_state.set_tree_editor(tree,editor)
 
         def commit(_e=None):
             if not editor.winfo_exists():
@@ -457,7 +461,7 @@ def _bind_plan_editor(gui, ns):
             values[index] = editor.get()
             tree.item(iid, values=values)
             editor.destroy()
-            tree._v228_editor = None
+            runtime_state.set_tree_editor(tree,None)
 
         editor.bind("<Return>", commit)
         editor.bind("<FocusOut>", commit)
@@ -467,7 +471,7 @@ def _bind_plan_editor(gui, ns):
 
 
 def _core_tables(gui, ns):
-    function = ns.get("_v221_core_tables") or ns.get("_v217_core_tables")
+    function = runtime_state.namespace_callable(ns,"core_tables")
     if not callable(function):
         return {}
     result = function(gui)
@@ -478,13 +482,13 @@ def _core_tables(gui, ns):
 
 def generate(gui, ns):
     """Generate: rebuild the plan from editor/setup values."""
-    if getattr(gui, "_v228_generating", False):
+    if runtime_state.is_generating(gui):
         return None
-    gui._v228_generating = True
+    runtime_state.set_generating(gui,True)
     try:
         _cancel_pending_legacy_jobs(gui)
         save_active(gui, include_outputs=False)
-        plan_input = ns.get("_v226_plan_input") or ns.get("_v222_plan_input") or ns.get("_v218_plan_input")
+        plan_input = runtime_state.namespace_callable(ns,"plan_input")
         if not callable(plan_input):
             raise RuntimeError("PlanInput controller is unavailable.")
         inp = plan_input(gui)
@@ -498,7 +502,7 @@ def generate(gui, ns):
         tables = _core_tables(gui, ns)
         _write_rows(gui.pm_selected_plan_tree, rows, PLAN_COLUMNS, PLAN_WIDTHS)
         _bind_plan_editor(gui, ns)
-        writer = ns.get("_v2093_write_tree")
+        writer = runtime_state.namespace_callable(ns,"write_tree")
         materials = tables.get("selected_materials_core", pd.DataFrame())
         totals = tables.get("selected_total_materials_visible", pd.DataFrame())
         if callable(writer):
@@ -536,7 +540,7 @@ def generate(gui, ns):
             pass
         return None
     finally:
-        gui._v228_generating = False
+        runtime_state.set_generating(gui,False)
 
 
 def _amount_number(value, unit):
@@ -591,26 +595,26 @@ def _refresh_linked_from_visible_plan(gui, ns):
     if tree is None:
         raise RuntimeError("Selected Plan is unavailable.")
 
-    recalc = ns.get("_v251_recalc_visible_row")
+    recalc = runtime_state.namespace_callable(ns,"recalculate_visible_row")
     if callable(recalc):
         for iid in list(tree.get_children()):
             recalc(gui, tree, iid)
-    volume = ns.get("_v257_apply_volume_to_plan")
+    volume = runtime_state.namespace_callable(ns,"apply_volume_to_plan")
     if callable(volume):
         volume(gui)
 
-    material_builder = ns.get("_v260_visible_plan_protocol_materials")
+    material_builder = runtime_state.namespace_callable(ns,"visible_plan_protocol_materials")
     if not callable(material_builder):
         raise RuntimeError("Visible-plan material controller is unavailable.")
     materials = material_builder(gui)
     _write_rows(gui.pm_selected_material_tree, _protocol_material_detail_rows(materials), MATERIAL_COLUMNS, MATERIAL_WIDTHS)
 
-    total_builder = ns.get("_v252_total_from_materials") or ns.get("_v251_total_from_materials")
+    total_builder = runtime_state.namespace_callable(ns,"total_from_materials")
     totals = total_builder(materials) if callable(total_builder) else pd.DataFrame()
     total_rows = totals.fillna("").to_dict("records") if hasattr(totals, "to_dict") else []
     _write_rows(getattr(gui, "pm_selected_total_tree", getattr(gui, "pm_total_tree", None)), total_rows, TOTAL_COLUMNS, TOTAL_WIDTHS)
 
-    checklist = ns.get("_v260_refresh_checklist_protocol")
+    checklist = runtime_state.namespace_callable(ns,"refresh_checklist_protocol")
     if callable(checklist):
         checklist(gui)
     else:
@@ -621,8 +625,9 @@ def _refresh_linked_from_visible_plan(gui, ns):
             pass
 
     try:
-        if hasattr(gui, "_v260_schedule_batch_refresh"):
-            gui._v260_schedule_batch_refresh()
+        scheduler=runtime_state.namespace_callable(getattr(gui,"__dict__",{}),"schedule_batch_refresh")
+        if callable(scheduler):
+            scheduler()
         elif hasattr(gui, "refresh_batch_workspace_preview"):
             gui.after_idle(gui.refresh_batch_workspace_preview)
     except Exception:
@@ -633,9 +638,9 @@ def _refresh_linked_from_visible_plan(gui, ns):
 
 def apply_change(gui, ns):
     """Apply Change: keep visible edits and refresh only linked outputs."""
-    if getattr(gui, "_v228_applying", False):
+    if runtime_state.is_applying(gui):
         return None
-    gui._v228_applying = True
+    runtime_state.set_applying(gui,True)
     try:
         _refresh_linked_from_visible_plan(gui, ns)
         index = _active_index(gui)
@@ -655,7 +660,7 @@ def apply_change(gui, ns):
             pass
         return None
     finally:
-        gui._v228_applying = False
+        runtime_state.set_applying(gui,False)
 
 
 def delete_selected_rows(gui, ns):
@@ -697,7 +702,7 @@ def edit_unit(gui, ns):
             tree.event_generate("<ButtonPress-1>", x=cx, y=cy)
             tree.event_generate("<ButtonRelease-1>", x=cx, y=cy)
             gui.update_idletasks()
-        editor = getattr(tree, "_v229_editor", None)
+        editor = runtime_state.get_tree_editor(tree)
         if editor is None or not editor.winfo_exists():
             raise RuntimeError("Unit name editor could not be opened.")
         editor.focus_set()
@@ -725,7 +730,7 @@ def _cocktail_presets():
 def refresh_cleavage(gui, ns, show_errors=True):
     try:
         save_active(gui, include_outputs=False)
-        plan_input = ns.get("_v226_plan_input") or ns.get("_v222_plan_input") or ns.get("_v218_plan_input")
+        plan_input = runtime_state.namespace_callable(ns,"plan_input")
         if not callable(plan_input):
             return None
         inp = plan_input(gui)
@@ -825,7 +830,7 @@ def _install_cleavage(gui, notebook):
     ttk.Entry(controls, textvariable=gui.cleavage_time_h, width=7).pack(side="left", padx=(0, 8))
     ttk.Label(controls, text="Min total (mL)").pack(side="left", padx=(2, 3))
     ttk.Entry(controls, textvariable=gui.cleavage_reserve_mL, width=9).pack(side="left", padx=(0, 8))
-    ttk.Button(controls, text="Apply cleavage", command=lambda: refresh_cleavage(gui, gui._v228_ns)).pack(side="left")
+    ttk.Button(controls, text="Apply cleavage", command=lambda: refresh_cleavage(gui, get_calculation_namespace(gui, {}))).pack(side="left")
 
     from suite_gui.modules import cleavage_panel as _cleavage_panel
     _cleavage_panel.install_post_cleavage_rescue_controls(gui, frame, row=1)
@@ -996,36 +1001,18 @@ def save_project(gui, ns, show=True):
 
 
 def _install_save_project_button(gui, ns):
-    """Restore the useful legacy Save Project action exactly once."""
-    save_session_button = None
-    for widget in _walk(gui):
-        if isinstance(widget, ttk.Button):
-            try:
-                if str(widget.cget("text")) == "Save Session Now":
-                    save_session_button = widget
-                    break
-            except Exception:
-                pass
-    if save_session_button is None:
-        return
-    editor = save_session_button.master.master
-    global_row = None
-    for child in editor.winfo_children():
-        if not isinstance(child, ttk.Frame):
-            continue
-        labels = [str(w.cget("text")) for w in child.winfo_children() if isinstance(w, ttk.Label)]
-        buttons = [str(w.cget("text")) for w in child.winfo_children() if isinstance(w, ttk.Button)]
-        if "Global actions:" in labels or "Export" in buttons:
-            global_row = child
-            break
-    if global_row is None:
-        return
-    for widget in global_row.winfo_children():
-        if isinstance(widget, ttk.Button) and str(widget.cget("text")) == "Save Project":
-            widget.configure(command=gui.save_project)
-            return
-    ttk.Button(global_row, text="Save Project", command=gui.save_project).pack(side="left", padx=3)
-
+    """Add the Project save action to the canonical global-action row once."""
+    existing = getattr(gui, "pm_save_project_button", None)
+    if existing is not None:
+        existing.configure(command=gui.save_project)
+        return existing
+    parent = getattr(gui, "pm_global_actions", None)
+    if parent is None:
+        return None
+    button = ttk.Button(parent, text="Save Project", command=gui.save_project)
+    button.pack(side="left", padx=3)
+    gui.pm_save_project_button = button
+    return button
 
 def _startup_refresh_noop(gui, *args, **kwargs):
     """Ignore obsolete constructor refreshes; Generate owns plan creation."""
@@ -1042,7 +1029,7 @@ def _install_editor_traces(gui):
         "branch_point", "branch_arm_sequence", "branch_pg", "branch_depro_condition",
         "step_overrides_text",
     ]
-    gui._v228_trace_tokens = []
+    runtime_state.set_trace_tokens(gui,[])
     for name in names:
         variable = getattr(gui, name, None)
         if variable is None or not hasattr(variable, "trace_info"):
@@ -1058,76 +1045,34 @@ def _install_editor_traces(gui):
             pass
         try:
             token = variable.trace_add("write", lambda *_a, _gui=gui: _gui.after_idle(lambda: live_sync(_gui)))
-            gui._v228_trace_tokens.append((variable, token))
+            runtime_state.get_trace_tokens(gui).append((variable, token))
         except Exception:
             pass
 
 
 def _install_action_buttons(gui, ns):
-    # Find the exact legacy action row by the Save Session Now button.
-    save_button = None
-    for widget in _walk(gui):
-        if isinstance(widget, ttk.Button):
-            try:
-                if str(widget.cget("text")) == "Save Session Now" and isinstance(widget.master, ttk.Frame):
-                    # Prefer the row inside Selected peptide editor, not Batch Manager.
-                    siblings = [str(x.cget("text")) for x in widget.master.winfo_children() if isinstance(x, ttk.Button)]
-                    if any(text.startswith("Generate") for text in siblings):
-                        save_button = widget
-                        break
-            except Exception:
-                pass
-    if save_button is None:
-        return
-    parent = save_button.master
-    for child in list(parent.winfo_children()):
-        if isinstance(child, ttk.Button):
-            try:
-                text = str(child.cget("text"))
-            except Exception:
-                text = ""
-            if text.startswith("Generate") or text in {"Apply Change", "Apply Plan"}:
-                child.destroy()
-    # Repack in the requested order. Save is preserved, only moved.
-    try:
-        save_button.pack_forget()
-    except Exception:
-        pass
-    ttk.Button(parent, text="Generate", command=lambda: generate(gui, ns)).pack(side="left", padx=3)
-    ttk.Button(parent, text="Apply Change", command=lambda: apply_change(gui, ns)).pack(side="left", padx=3)
-    # Experimental / ML (V4): V4 advisors are next to the actual planner actions. They read the active
-    # item and can write recommendations back only after explicit Apply.
-    ttk.Button(parent, text="Recommend Conditions", command=gui.open_condition_optimizer).pack(side="left", padx=(9, 3))
-    ttk.Button(parent, text="Loading Advice", command=gui.open_loading_advisor).pack(side="left", padx=3)
-    ttk.Button(parent, text="Cleavage Advice", command=gui.open_cleavage_advisor).pack(side="left", padx=3)
-    ttk.Button(parent, text="Record Lab Data", command=gui.open_experimental_data).pack(side="left", padx=3)
-    save_button.pack(side="left", padx=3)
-
+    """Compatibility entry point using canonical action references only."""
+    bindings = {
+        "pm_generate_button": gui.generate_update_plan,
+        "pm_apply_button": gui.apply_change,
+        "pm_condition_button": gui.open_condition_optimizer,
+        "pm_loading_advice_button": gui.open_loading_advisor,
+        "pm_cleavage_advice_button": gui.open_cleavage_advisor,
+        "pm_save_session_button": gui.save_autosave_state,
+    }
+    for attr, command in bindings.items():
+        widget = getattr(gui, attr, None)
+        if widget is not None:
+            widget.configure(command=command)
+    # Experimental / ML (V4) remains a visible primary action; explicit ref, no text scan.
+    if getattr(gui, "pm_record_lab_button", None) is not None:
+        gui.pm_record_lab_button.configure(command=gui.open_experimental_data)
 
 def _install_plan_toolbar(gui, ns):
     tree = gui.pm_selected_plan_tree
     parent = tree.master
-    found_delete = None
-    found_edit = None
-    # Remove Apply Plan; it duplicates and conflicts with top-level Apply Change.
-    for widget in _walk(parent):
-        if isinstance(widget, ttk.Button):
-            try:
-                text = str(widget.cget("text"))
-            except Exception:
-                continue
-            if text in {"Apply Plan", "Apply Change"}:
-                widget.destroy()
-            elif text == "Delete selected row":
-                found_delete = widget
-                widget.configure(command=lambda: delete_selected_rows(gui, ns))
-            elif text == "Edit Unit name":
-                found_edit = widget
-                widget.configure(command=lambda: edit_unit(gui, ns))
-
-    if found_delete is None or found_edit is None:
-        # The earliest legacy builder has no plan-local toolbar. Add only the two
-        # useful editing actions; no duplicate Apply button is created.
+    bar = getattr(gui, "pm_plan_toolbar", None)
+    if bar is None or not bar.winfo_exists():
         try:
             parent.rowconfigure(0, weight=0)
             parent.rowconfigure(1, weight=1)
@@ -1142,11 +1087,22 @@ def _install_plan_toolbar(gui, ns):
                         child.grid(row=2, column=0, sticky="ew")
             bar = ttk.Frame(parent)
             bar.grid(row=0, column=0, sticky="ew", pady=(0, 2))
-            ttk.Button(bar, text="Delete selected row", command=lambda: delete_selected_rows(gui, ns)).pack(side="left", padx=(0, 4))
-            ttk.Button(bar, text="Edit Unit name", command=lambda: edit_unit(gui, ns)).pack(side="left", padx=(0, 4))
-            gui._v228_plan_toolbar = bar
+            gui.pm_plan_toolbar = bar
         except Exception:
-            pass
+            bar = None
+    if bar is not None:
+        delete_button = getattr(gui, "pm_plan_delete_button", None)
+        if delete_button is None or not delete_button.winfo_exists():
+            delete_button = ttk.Button(bar, text="Delete selected row")
+            delete_button.pack(side="left", padx=(0, 4))
+            gui.pm_plan_delete_button = delete_button
+        delete_button.configure(command=lambda: delete_selected_rows(gui, ns))
+        edit_button = getattr(gui, "pm_plan_edit_unit_button", None)
+        if edit_button is None or not edit_button.winfo_exists():
+            edit_button = ttk.Button(bar, text="Edit Unit name")
+            edit_button.pack(side="left", padx=(0, 4))
+            gui.pm_plan_edit_unit_button = edit_button
+        edit_button.configure(command=lambda: edit_unit(gui, ns))
     _bind_plan_editor(gui, ns)
 
 def _install_result_tabs(gui, ns):
@@ -1196,20 +1152,20 @@ def add_item(gui, item=None):
             "chemistry": "DIC/HOBt", "status": "Ready", "cleavage_preset": "AUTO",
         }
     gui.pm_items.append(dict(item))
-    gui._v228_switching = True
+    set_switching(gui, True)
     try:
         gui.pm_list.insert("end", gui.pm_display_name(gui.pm_items[-1]))
         gui.pm_list.selection_clear(0, "end")
         gui.pm_list.selection_set(len(gui.pm_items) - 1)
         gui.pm_list.activate(len(gui.pm_items) - 1)
     finally:
-        gui._v228_switching = False
+        set_switching(gui, False)
     # During the legacy builder this method is called before the result trees
     # exist.  Defer full restore until build installation finishes.
     if all(hasattr(gui, name) for name in ("pm_selected_plan_tree", "pm_selected_material_tree", "pm_total_tree")):
-        restore_item(gui, len(gui.pm_items) - 1, gui._v228_ns)
+        restore_item(gui, len(gui.pm_items) - 1, get_calculation_namespace(gui, {}))
     else:
-        gui._v228_active_index = len(gui.pm_items) - 1
+        set_active_index(gui, len(gui.pm_items) - 1)
 
 
 def duplicate_item(gui):
@@ -1233,32 +1189,26 @@ def delete_item(gui):
         add_item(gui)
         return
     new_index = min(index, len(gui.pm_items) - 1)
-    gui._v228_switching = True
+    set_switching(gui, True)
     try:
         gui.pm_list.selection_set(new_index)
         gui.pm_list.activate(new_index)
     finally:
-        gui._v228_switching = False
-    restore_item(gui, new_index, gui._v228_ns)
+        set_switching(gui, False)
+    restore_item(gui, new_index, get_calculation_namespace(gui, {}))
 
 
 def _bind_item_buttons(gui):
-    # Only buttons in the left Peptide items frame.
-    try:
-        parent = gui.pm_list.master
-        for widget in _walk(parent):
-            if not isinstance(widget, ttk.Button):
-                continue
-            text = str(widget.cget("text"))
-            if text == "Add":
-                widget.configure(command=lambda: add_item(gui))
-            elif text == "Duplicate":
-                widget.configure(command=lambda: duplicate_item(gui))
-            elif text == "Delete":
-                widget.configure(command=lambda: delete_item(gui))
-    except Exception:
-        pass
-
+    """Bind item actions through explicit Project Manager button references."""
+    bindings = {
+        "pm_add_button": lambda: add_item(gui),
+        "pm_duplicate_button": lambda: duplicate_item(gui),
+        "pm_delete_button": lambda: delete_item(gui),
+    }
+    for attr, command in bindings.items():
+        widget = getattr(gui, attr, None)
+        if widget is not None:
+            widget.configure(command=command)
 
 def _hide_non_workbench_tabs(gui):
     """Match the stable legacy first screen: Project Manager + Batch Manager only."""
@@ -1301,7 +1251,7 @@ def export_outputs(gui, ns):
         if not _tree_rows(getattr(gui, "pm_selected_plan_tree", None)):
             generate(gui, ns)
         save_active(gui, include_outputs=True)
-        plan_input = ns.get("_v226_plan_input") or ns.get("_v222_plan_input")
+        plan_input = runtime_state.namespace_callable(ns,"plan_input")
         inp = plan_input(gui) if callable(plan_input) else None
         try:
             out_text = gui.project_outdir.get() if hasattr(gui, "project_outdir") else ""
@@ -1359,7 +1309,7 @@ def export_outputs(gui, ns):
             "nh4i_time_h": item.get("nh4i_time_h", "1"),
         }])
 
-        xlsx = out / "project_manager_selected_outputs_v2.2.8.xlsx"
+        xlsx = out / "project_manager_selected_outputs.xlsx"
         with pd.ExcelWriter(xlsx, engine="openpyxl") as writer:
             editor_summary.to_excel(writer, index=False, sheet_name="00_EDITOR_SUMMARY")
             visible_plan.to_excel(writer, index=False, sheet_name="01_SELECTED_PLAN_VISIBLE")
@@ -1387,7 +1337,7 @@ def export_outputs(gui, ns):
             "pm_items": list(getattr(gui, "pm_items", []) or []),
             "visible_selected_plan_source": "current edited TreeView; no regeneration during export",
         }
-        (out / "project_manager_state_v2.2.8.json").write_text(
+        (out / "project_manager_state.json").write_text(
             json.dumps(state, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
         )
         gui.last_outdir = out

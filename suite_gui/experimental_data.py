@@ -1,6 +1,6 @@
-"""Persistent experimental knowledge base for SPPS Planner V5.0.0.
+"""Persistent experimental knowledge base for SPPS Planner V6.0.0.
 
-The V5 layer is additive: it does not replace planner calculations.  It stores
+The experimental-data layer is additive: it does not replace planner calculations.  It stores
 real loading/cleavage observations, preserves raw source text, and separates
 parsed records from operator-verified records before supervised training.
 """
@@ -19,11 +19,19 @@ from uuid import uuid4
 import zipfile
 
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 10
 STATUSES = ("parsed", "verified", "incomplete", "excluded")
 
-_LOOKUP_BACKFILL_VERSION = 1
+_LOOKUP_BACKFILL_VERSION = 2
 _INITIALIZED_DB_PATHS: set[str] = set()
+_PERF_COUNTERS = {"initialize_calls": 0, "cache_hits": 0, "full_initialize_runs": 0, "lookup_backfills": 0, "legacy_merge_runs": 0, "legacy_merge_backups": 0, "legacy_merge_failures": 0}
+
+def performance_counters(*, reset: bool = False) -> dict[str, int]:
+    snapshot = dict(_PERF_COUNTERS)
+    if reset:
+        for key in _PERF_COUNTERS: _PERF_COUNTERS[key] = 0
+    return snapshot
+
 
 
 
@@ -44,25 +52,309 @@ def default_db_path() -> Path:
         return Path.home() / FALLBACK_DOT_DIR / "data" / "experimental_v5.sqlite"
 
 
-def _maybe_clone_v4_db(destination: Path) -> None:
-    """Clone a user-local V4 DB once so V5 migration never mutates the V4 file."""
+def _same_path(left: Path, right: Path) -> bool:
+    try:
+        return left.expanduser().resolve() == right.expanduser().resolve()
+    except Exception:
+        return str(left.expanduser()) == str(right.expanduser())
+
+
+def legacy_db_candidates(destination: str | Path | None = None) -> list[Path]:
+    """Return safe same-profile historical DB locations in priority order.
+
+    R10 deliberately does not search arbitrary disks or the other build flavor.
+    The candidates are limited to paths used by older SPPS Planner user-storage
+    layouts for the current Public/Private profile.  This prevents a version/path
+    change from making real Loading/Cleavage history appear to disappear.
+    """
+    dest = Path(destination) if destination is not None else default_db_path()
+    from spps_planner.build_profile import APP_FOLDER, FALLBACK_DOT_DIR, SESSION_FOLDER
+    candidates: list[Path] = []
+    # Older code sometimes placed the DB under an explicit data/ child while the
+    # current canonical path is directly below the profile folder.
+    candidates.extend([
+        dest.parent / "data" / dest.name,
+        dest.parent / "Data" / dest.name,
+        Path.home() / FALLBACK_DOT_DIR / "data" / dest.name,
+        Path.home() / FALLBACK_DOT_DIR / dest.name,
+    ])
+    # Windows/local profile name variants used during older Private/Public builds.
+    parent = dest.parent.parent
+    candidates.extend([
+        parent / SESSION_FOLDER / dest.name,
+        parent / SESSION_FOLDER / "data" / dest.name,
+        parent / APP_FOLDER / "data" / dest.name,
+    ])
+    # V4 was intentionally cloned rather than edited in place.  Keep that safety
+    # property while allowing a user who never opened V5/V6 to recover history.
+    for base in list(candidates) + [dest]:
+        candidates.append(base.with_name("experimental_v4.sqlite"))
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if _same_path(candidate, dest):
+            continue
+        try:
+            key = str(candidate.expanduser().resolve())
+        except Exception:
+            key = str(candidate.expanduser())
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
+def _safe_table_count(path: Path, table: str) -> int:
+    try:
+        con = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+        try:
+            row = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+            return int(row[0]) if row else 0
+        finally:
+            con.close()
+    except Exception:
+        return 0
+
+
+def _legacy_score(path: Path) -> tuple[int, int, int]:
+    tables = ("loading_records", "cleavage_records", "synthesis_sequence_records", "cleavage_usage_records", "experimental_outcomes", "synthesis_issue_records")
+    total = sum(_safe_table_count(path, table) for table in tables)
+    try:
+        st = path.stat()
+        return total, int(st.st_mtime_ns), int(st.st_size)
+    except OSError:
+        return total, 0, 0
+
+
+def _maybe_clone_legacy_db(destination: Path) -> Path | None:
+    """Copy the richest historical same-profile DB when canonical is absent."""
     if destination.exists() or destination.name != "experimental_v5.sqlite":
-        return
-    legacy = destination.with_name("experimental_v4.sqlite")
-    if not legacy.is_file():
-        return
+        return None
+    found = [p for p in legacy_db_candidates(destination) if p.is_file()]
+    if not found:
+        return None
+    source = max(found, key=_legacy_score)
     try:
         import shutil
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(legacy, destination)
+        shutil.copy2(source, destination)
+        return source
     except OSError:
-        # Seed/user import still creates a valid V5 DB if cloning is unavailable.
-        return
+        return None
+
+
+def _legacy_source_fingerprint(source: Path) -> tuple[str, str]:
+    """Return the persisted merge marker and human-readable source fingerprint."""
+    stat = source.stat()
+    fingerprint = f"{source.expanduser()}|{stat.st_size}|{stat.st_mtime_ns}"
+    import hashlib
+    marker = "legacy_merge:" + hashlib.sha256(fingerprint.encode("utf-8", "replace")).hexdigest()
+    return marker, fingerprint
+
+
+def _sqlite_integrity_ok(path: Path) -> tuple[bool, str]:
+    """Read-only quick-check used before importing a historical user database."""
+    try:
+        src = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+        try:
+            row = src.execute("PRAGMA quick_check").fetchone()
+            result = str(row[0] if row else "").strip()
+            return result.lower() == "ok", result or "no result"
+        finally:
+            src.close()
+    except Exception as exc:
+        return False, str(exc)
+
+
+def _legacy_has_new_primary_rows(con: sqlite3.Connection, source: Path) -> bool:
+    """Return True only when a historical DB can add rows by canonical primary ID."""
+    if not source.is_file():
+        return False
+    src = sqlite3.connect(f"file:{source.as_posix()}?mode=ro", uri=True)
+    try:
+        table_keys = {
+            "import_sources": "source_id",
+            "loading_records": "record_id",
+            "cleavage_records": "record_id",
+            "synthesis_sequence_records": "record_id",
+            "cleavage_usage_records": "record_id",
+            "experimental_outcomes": "record_id",
+            "synthesis_issue_records": "record_id",
+            "recommendation_traces": "trace_id",
+        }
+        for table, key in table_keys.items():
+            src_cols = {str(r[1]) for r in src.execute(f"PRAGMA table_info({table})").fetchall()}
+            dst_cols = {str(r[1]) for r in con.execute(f"PRAGMA table_info({table})").fetchall()}
+            if key not in src_cols or key not in dst_cols:
+                continue
+            for (value,) in src.execute(f"SELECT {key} FROM {table}"):
+                if value in (None, ""):
+                    continue
+                if con.execute(f"SELECT 1 FROM {table} WHERE {key}=? LIMIT 1", (value,)).fetchone() is None:
+                    return True
+        return False
+    finally:
+        src.close()
+
+
+def backup_database(path: str | Path | None = None, *, reason: str = "manual") -> Path:
+    """Create an atomic SQLite backup and return the final backup path."""
+    destination = Path(path) if path else default_db_path()
+    if not destination.is_file():
+        raise FileNotFoundError(f"Experimental database does not exist: {destination}")
+    safe_reason = re.sub(r"[^A-Za-z0-9_-]+", "_", str(reason or "manual")).strip("_") or "manual"
+    backup_dir = destination.parent / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    final = backup_dir / f"{destination.stem}.{safe_reason}_{stamp}_{uuid4().hex[:8]}.sqlite"
+    temp = final.with_suffix(final.suffix + ".tmp")
+    try:
+        src = sqlite3.connect(f"file:{destination.as_posix()}?mode=ro", uri=True)
+        out = sqlite3.connect(temp)
+        try:
+            src.backup(out)
+        finally:
+            out.close()
+            src.close()
+        temp.replace(final)
+        return final
+    except Exception:
+        try:
+            temp.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
+
+
+def _premerge_backup(destination: Path) -> Path | None:
+    """Create a recovery point before importing rows into an existing store."""
+    if not destination.is_file():
+        return None
+    backup = backup_database(destination, reason="pre_legacy_merge")
+    _PERF_COUNTERS["legacy_merge_backups"] += 1
+    return backup
+
+
+def legacy_recovery_status(path: str | Path | None = None) -> dict[str, Any]:
+    """Expose the last recovery/backup state without scanning user data tables."""
+    destination = Path(path) if path else default_db_path()
+    if not destination.is_file():
+        return {"last_recovery": "", "last_error": "", "last_backup": ""}
+    try:
+        con = sqlite3.connect(f"file:{destination.as_posix()}?mode=ro", uri=True)
+        try:
+            rows = dict(con.execute(
+                "SELECT meta_key,meta_value FROM experimental_meta WHERE meta_key IN "
+                "('legacy_recovery:last','legacy_recovery:last_error','legacy_recovery:last_backup')"
+            ).fetchall())
+        finally:
+            con.close()
+    except Exception:
+        return {"last_recovery": "", "last_error": "", "last_backup": ""}
+    return {
+        "last_recovery": str(rows.get("legacy_recovery:last", "") or ""),
+        "last_error": str(rows.get("legacy_recovery:last_error", "") or ""),
+        "last_backup": str(rows.get("legacy_recovery:last_backup", "") or ""),
+    }
+
+
+def _merge_legacy_database(destination: Path, source: Path, con: sqlite3.Connection, *, backup_path: Path | None = None) -> int:
+    """Atomically merge compatible rows from one same-profile historical DB.
+
+    Existing canonical rows always win.  The historical source is read-only.  A
+    changed/corrupt source is never marked complete after a partial import, so a
+    later launch can retry after the source is repaired.
+    """
+    if not source.is_file() or _same_path(source, destination):
+        return 0
+    try:
+        marker, fingerprint = _legacy_source_fingerprint(source)
+    except OSError:
+        return 0
+    if con.execute("SELECT 1 FROM experimental_meta WHERE meta_key=?", (marker,)).fetchone():
+        return 0
+    ok, integrity = _sqlite_integrity_ok(source)
+    if not ok:
+        _PERF_COUNTERS["legacy_merge_failures"] += 1
+        con.execute(
+            "INSERT OR REPLACE INTO experimental_meta(meta_key,meta_value) VALUES('legacy_recovery:last_error',?)",
+            (f"source={source}; integrity={integrity}; at={_now()}",),
+        )
+        return 0
+    try:
+        src = sqlite3.connect(f"file:{source.as_posix()}?mode=ro", uri=True)
+        src.row_factory = sqlite3.Row
+    except Exception as exc:
+        _PERF_COUNTERS["legacy_merge_failures"] += 1
+        con.execute(
+            "INSERT OR REPLACE INTO experimental_meta(meta_key,meta_value) VALUES('legacy_recovery:last_error',?)",
+            (f"source={source}; open_error={exc}; at={_now()}",),
+        )
+        return 0
+    copied = 0
+    table_order = (
+        "import_sources",
+        "loading_records", "cleavage_records", "synthesis_sequence_records", "cleavage_usage_records",
+        "experimental_outcomes", "synthesis_issue_records", "recommendation_traces",
+    )
+    savepoint = "legacy_merge_source"
+    try:
+        con.execute(f"SAVEPOINT {savepoint}")
+        for table in table_order:
+            src_cols = [str(r[1]) for r in src.execute(f"PRAGMA table_info({table})").fetchall()]
+            if not src_cols:
+                continue
+            dst_cols = [str(r[1]) for r in con.execute(f"PRAGMA table_info({table})").fetchall()]
+            if not dst_cols:
+                continue
+            cols = [c for c in src_cols if c in set(dst_cols)]
+            if not cols:
+                continue
+            rows = src.execute(f"SELECT {','.join(cols)} FROM {table}").fetchall()
+            placeholders = ",".join("?" for _ in cols)
+            sql = f"INSERT OR IGNORE INTO {table} ({','.join(cols)}) VALUES ({placeholders})"
+            for row in rows:
+                cur = con.execute(sql, [row[c] for c in cols])
+                copied += max(int(cur.rowcount or 0), 0)
+        recovery = json.dumps({
+            "source": str(source), "copied": copied, "backup": str(backup_path or ""),
+            "fingerprint": fingerprint, "merged_at": _now(),
+        }, ensure_ascii=False, sort_keys=True)
+        con.execute("INSERT OR REPLACE INTO experimental_meta(meta_key,meta_value) VALUES(?,?)", (marker, recovery))
+        con.execute("INSERT OR REPLACE INTO experimental_meta(meta_key,meta_value) VALUES('legacy_recovery:last',?)", (recovery,))
+        if backup_path:
+            con.execute("INSERT OR REPLACE INTO experimental_meta(meta_key,meta_value) VALUES('legacy_recovery:last_backup',?)", (str(backup_path),))
+        con.execute("DELETE FROM experimental_meta WHERE meta_key='legacy_recovery:last_error'")
+        con.execute(f"RELEASE SAVEPOINT {savepoint}")
+        _PERF_COUNTERS["legacy_merge_runs"] += 1
+        return copied
+    except Exception as exc:
+        _PERF_COUNTERS["legacy_merge_failures"] += 1
+        try:
+            con.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            con.execute(f"RELEASE SAVEPOINT {savepoint}")
+        except Exception:
+            pass
+        con.execute(
+            "INSERT OR REPLACE INTO experimental_meta(meta_key,meta_value) VALUES('legacy_recovery:last_error',?)",
+            (f"source={source}; merge_error={exc}; at={_now()}",),
+        )
+        return 0
+    finally:
+        src.close()
+
+def _is_canonical_default_path(destination: Path) -> bool:
+    try:
+        return _same_path(destination, default_db_path())
+    except Exception:
+        return False
 
 
 def _connect(path: str | Path | None = None) -> sqlite3.Connection:
     destination = Path(path) if path else default_db_path()
-    _maybe_clone_v4_db(destination)
+    if _is_canonical_default_path(destination):
+        _maybe_clone_legacy_db(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(destination)
     con.row_factory = sqlite3.Row
@@ -156,6 +448,7 @@ def _lookup_keys_need_backfill(con: sqlite3.Connection) -> bool:
 
 def _backfill_lookup_keys(con: sqlite3.Connection) -> None:
     """Migrate existing DBs without changing any raw historical value."""
+    _PERF_COUNTERS["lookup_backfills"] += 1
     for row in con.execute("SELECT record_id,resin_type,amino_acid_normalized,resin_key,amino_acid_key FROM loading_records").fetchall():
         resin_key = canonical_resin_key(row["resin_type"])
         aa_key = canonical_amino_acid_key(row["amino_acid_normalized"])
@@ -191,12 +484,14 @@ def initialize(path: str | Path | None = None) -> Path:
     path in a running app, while a persisted migration version prevents the
     canonical-key backfill from being repeated on every application launch.
     """
+    _PERF_COUNTERS["initialize_calls"] += 1
     destination = Path(path) if path else default_db_path()
     try:
         cache_key = str(destination.expanduser().resolve())
     except Exception:
         cache_key = str(destination)
     if cache_key in _INITIALIZED_DB_PATHS and destination.exists():
+        _PERF_COUNTERS["cache_hits"] += 1
         # Keep initialize() as an explicit repair point for DBs edited outside the
         # normal write path, but make the common path a handful of indexed/limited
         # probes instead of a full historical sequence backfill.
@@ -204,6 +499,7 @@ def initialize(path: str | Path | None = None) -> Path:
             if _lookup_keys_need_backfill(con):
                 _backfill_lookup_keys(con)
         return destination
+    _PERF_COUNTERS["full_initialize_runs"] += 1
     with _connect(destination) as con:
         con.executescript(
             """
@@ -396,6 +692,24 @@ def initialize(path: str | Path | None = None) -> Path:
                 updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS recommendation_traces (
+                trace_id TEXT PRIMARY KEY,
+                work_item_id TEXT NOT NULL DEFAULT '',
+                run_id TEXT NOT NULL DEFAULT '',
+                recommendation_type TEXT NOT NULL DEFAULT '',
+                evidence_source TEXT NOT NULL DEFAULT '',
+                confidence TEXT NOT NULL DEFAULT '',
+                evidence_count INTEGER NOT NULL DEFAULT 0,
+                recommended_condition_json TEXT NOT NULL DEFAULT '{}',
+                apply_allowed INTEGER NOT NULL DEFAULT 0,
+                operator_decision TEXT NOT NULL DEFAULT '',
+                actual_condition_json TEXT NOT NULL DEFAULT '{}',
+                final_result_links_json TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                resolved_at TEXT NOT NULL DEFAULT '',
+                note TEXT NOT NULL DEFAULT ''
+            );
+
             CREATE TABLE IF NOT EXISTS experimental_meta (
                 meta_key TEXT PRIMARY KEY,
                 meta_value TEXT NOT NULL DEFAULT ''
@@ -407,6 +721,7 @@ def initialize(path: str | Path | None = None) -> Path:
               ON cleavage_records(product, status);
             CREATE INDEX IF NOT EXISTS idx_sequence_lookup
               ON synthesis_sequence_records(product, status);
+            CREATE INDEX IF NOT EXISTS idx_recommendation_trace_run ON recommendation_traces(run_id, recommendation_type, created_at);
             """
         )
         _ensure_column(con, "loading_records", "resin_key", "TEXT NOT NULL DEFAULT ''")
@@ -432,6 +747,15 @@ def initialize(path: str | Path | None = None) -> Path:
         _ensure_column(con, "synthesis_issue_records", "parser_version", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(con, "synthesis_issue_records", "detected_language", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(con, "synthesis_issue_records", "planner_snapshot_json", "TEXT NOT NULL DEFAULT '{}'")
+        # V6 traceability/lifecycle metadata is additive. Existing ML eligibility
+        # continues to use the legacy status column so migrations cannot silently
+        # promote historical data into training truth.
+        for table in ("loading_records", "cleavage_records", "experimental_outcomes", "synthesis_issue_records"):
+            _ensure_column(con, table, "record_state", "TEXT NOT NULL DEFAULT 'draft'")
+            _ensure_column(con, table, "planner_snapshot_json", "TEXT NOT NULL DEFAULT '{}'")
+        for table in ("loading_records", "cleavage_records", "experimental_outcomes"):
+            _ensure_column(con, table, "actual_condition_json", "TEXT NOT NULL DEFAULT '{}'")
+        _ensure_column(con, "experimental_outcomes", "crude_g", "REAL")
         con.execute("CREATE INDEX IF NOT EXISTS idx_loading_key_lookup ON loading_records(resin_key, amino_acid_key, status)")
         con.execute("CREATE INDEX IF NOT EXISTS idx_cleavage_key_lookup ON cleavage_records(product_key, sequence_key, status)")
         con.execute("CREATE INDEX IF NOT EXISTS idx_sequence_key_lookup ON synthesis_sequence_records(product_key, sequence_key, status)")
@@ -439,6 +763,41 @@ def initialize(path: str | Path | None = None) -> Path:
         con.execute("CREATE INDEX IF NOT EXISTS idx_usage_synthesis_lookup ON cleavage_usage_records(synthesis_key, status)")
         con.execute("CREATE INDEX IF NOT EXISTS idx_outcome_lookup ON experimental_outcomes(stage, product_key, sequence_key, status)")
         con.execute("CREATE INDEX IF NOT EXISTS idx_issue_lookup ON synthesis_issue_records(stage, product_key, sequence_key, status)")
+        # If a previous release wrote to another same-profile user-data location,
+        # merge it once into the canonical DB. This is intentionally limited to
+        # the canonical default path; explicit test/operator DB overrides are not
+        # allowed to absorb unrelated local history.
+        if _is_canonical_default_path(destination):
+            pending: list[Path] = []
+            for legacy in legacy_db_candidates(destination):
+                if not legacy.is_file():
+                    continue
+                try:
+                    marker, _fingerprint = _legacy_source_fingerprint(legacy)
+                except OSError:
+                    continue
+                if con.execute("SELECT 1 FROM experimental_meta WHERE meta_key=?", (marker,)).fetchone():
+                    continue
+                ok, integrity = _sqlite_integrity_ok(legacy)
+                if not ok:
+                    _PERF_COUNTERS["legacy_merge_failures"] += 1
+                    con.execute(
+                        "INSERT OR REPLACE INTO experimental_meta(meta_key,meta_value) VALUES('legacy_recovery:last_error',?)",
+                        (f"source={legacy}; integrity={integrity}; at={_now()}",),
+                    )
+                    continue
+                if _legacy_has_new_primary_rows(con, legacy):
+                    pending.append(legacy)
+                else:
+                    # No new primary-key rows: mark this exact source revision as
+                    # inspected so unchanged historical files are not rescanned.
+                    con.execute(
+                        "INSERT OR REPLACE INTO experimental_meta(meta_key,meta_value) VALUES(?,?)",
+                        (marker, json.dumps({"source": str(legacy), "copied": 0, "backup": "", "merged_at": _now()}, sort_keys=True)),
+                    )
+            backup_path = _premerge_backup(destination) if pending else None
+            for legacy in pending:
+                _merge_legacy_database(destination, legacy, con, backup_path=backup_path)
         row = con.execute(
             "SELECT meta_value FROM experimental_meta WHERE meta_key='lookup_backfill_version'"
         ).fetchone()
@@ -573,15 +932,80 @@ AA_ALIASES = {
     "Y": "Fmoc-Tyr(tBu)-OH", "V": "Fmoc-Val-OH",
 }
 
+# Loading identity aliases intentionally preserve stereochemistry and the actual
+# protected building-block identity.  Recognition can be broad enough to accept
+# operator shorthand, but recommendation evidence is still restricted to the exact
+# normalized resin + loaded-AA key.  In particular, D-form history never falls
+# back to the corresponding L-form.
+_AA_THREE_TO_ONE = {
+    "ALA":"A", "ARG":"R", "ASN":"N", "ASP":"D", "CYS":"C", "GLN":"Q",
+    "GLU":"E", "GLY":"G", "HIS":"H", "ILE":"I", "LEU":"L", "LYS":"K",
+    "MET":"M", "PHE":"F", "PRO":"P", "SER":"S", "THR":"T", "TRP":"W",
+    "TYR":"Y", "VAL":"V",
+}
+# Explicit D-form identities mirror the D-AA catalog and deliberately omit Gly,
+# which is achiral.  Do not synthesize a fictitious "D-Gly" identity.
+_D_AA_ALIASES = {
+    code: canonical.replace("Fmoc-", "Fmoc-D-", 1)
+    for code, canonical in AA_ALIASES.items()
+    if code != "G"
+}
+_EMPIRICAL_LOADING_SPECIAL_ALIASES = {
+    # These names are present in the Private Loading evidence / supplied UV-Vis logs.
+    "cit": "Fmoc-Cit-OH", "citrulline": "Fmoc-Cit-OH",
+    "hyp": "Fmoc-Hyp(tBu)-OH", "4-hyp": "Fmoc-Hyp(tBu)-OH",
+    "trans-4-hyp": "Fmoc-Hyp(tBu)-OH",
+    "dab": "Fmoc-Dab(Boc)-OH",
+    "cys(acm)": "Fmoc-Cys(Acm)-OH",
+    "aeea": "Fmoc-AEEA-OH",
+    "n3-lys": "Fmoc-N3-Lys-OH", "azido-lys": "Fmoc-N3-Lys-OH",
+    "homo-cys": "Fmoc-Homo-Cys(Trt)-OH", "homocys": "Fmoc-Homo-Cys(Trt)-OH",
+}
+_EMPIRICAL_LOADING_SPECIAL_IDENTITIES = frozenset(_EMPIRICAL_LOADING_SPECIAL_ALIASES.values())
+
+
+def _aa_alias_key(value: Any) -> str:
+    text = str(value or "").strip()
+    text = text.replace("–", "-").replace("—", "-").replace("−", "-")
+    return re.sub(r"\s+", "", text).casefold()
+
 
 def normalize_amino_acid(value: Any) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
+    text = text.replace("–", "-").replace("—", "-").replace("−", "-")
     compact = re.sub(r"\s+", "", text)
-    compact = compact.replace("Fmoc-", "Fmoc-")
+    low = compact.casefold()
+
     if len(compact) == 1 and compact.upper() in AA_ALIASES:
         return AA_ALIASES[compact.upper()]
+    if compact.upper() in _AA_THREE_TO_ONE:
+        return AA_ALIASES[_AA_THREE_TO_ONE[compact.upper()]]
+
+    # Data-supported special/non-natural loading building blocks.  Keep the
+    # protecting-group form that actually appears in the Loading evidence.
+    special = _EMPIRICAL_LOADING_SPECIAL_ALIASES.get(low)
+    if special:
+        return special
+
+    # D-form shorthand: dL, D-L, (D)L, D-Leu, (D)Leu, etc.  This only resolves
+    # identity; it does NOT authorize use of L-form evidence.
+    d_one = re.fullmatch(r"(?:\(d\)|d)-?([arndcqehilkmfpstwyv])", low)
+    if d_one:
+        return _D_AA_ALIASES[d_one.group(1).upper()]
+    d_three = re.fullmatch(r"(?:\(d\)|d)-?(ala|arg|asn|asp|cys|gln|glu|his|ile|leu|lys|met|phe|pro|ser|thr|trp|tyr|val)", low)
+    if d_three:
+        return _D_AA_ALIASES[_AA_THREE_TO_ONE[d_three.group(1).upper()]]
+    # Accept protected short names such as D-His(Trt), D-Lys(Boc), or D-Asp(OtBu).
+    # The target is still the explicit Fmoc-D building block identity.
+    d_protected_aliases = {
+        _aa_alias_key(v.removeprefix("Fmoc-").removesuffix("-OH")): v
+        for v in _D_AA_ALIASES.values()
+    }
+    if low in d_protected_aliases:
+        return d_protected_aliases[low]
+
     replacements = {
         "fmoc-arg(pbf)-oh": "Fmoc-Arg(Pbf)-OH",
         "fmoc-asn(trt)-oh": "Fmoc-Asn(Trt)-OH",
@@ -597,10 +1021,67 @@ def normalize_amino_acid(value: Any) -> str:
         "fmoc-trp(boc)-oh": "Fmoc-Trp(Boc)-OH",
         "fmoc-tyr(tbu)-oh": "Fmoc-Tyr(tBu)-OH",
         "fmoc-hyp(tbu)-oh": "Fmoc-Hyp(tBu)-OH",
+        "fmoc-trans-4-hyp-oh": "Fmoc-trans-4-Hyp-OH",
         "fmoc-cit-oh": "Fmoc-Cit-OH",
+        "fmoc-dab(boc)-oh": "Fmoc-Dab(Boc)-OH",
         "fmoc-aeea-oh": "Fmoc-AEEA-OH",
+        "fmoc-n3-lys-oh": "Fmoc-N3-Lys-OH",
+        "fmoc-homo-cys(trt)-oh": "Fmoc-Homo-Cys(Trt)-OH",
     }
-    return replacements.get(compact.lower(), text)
+    # Canonical full Fmoc-D-* spellings are generated from the standard protected
+    # L building blocks so their protection remains explicit and separate.
+    replacements.update({_aa_alias_key(v): v for v in _D_AA_ALIASES.values()})
+    return replacements.get(low, text)
+
+
+def describe_amino_acid_identity(value: Any) -> dict[str, Any]:
+    """Describe the normalized loading building-block identity without inference.
+
+    This is presentation metadata only. Whether a recommendation is evidence-backed
+    is determined later from exact resin + exact normalized-AA records. Recognition
+    of an alias must never be interpreted as experimental support.
+    """
+    normalized = normalize_amino_acid(value)
+    low = normalized.casefold()
+    if not normalized:
+        category = "unknown"
+        origin = "unresolved"
+    elif low.startswith("fmoc-d-"):
+        category = "D-form"
+        origin = "D-form identity"
+    elif normalized in AA_ALIASES.values():
+        category = "standard L/unspecified"
+        origin = "standard identity"
+    elif normalized in _EMPIRICAL_LOADING_SPECIAL_IDENTITIES:
+        category = "non-natural / special building block"
+        origin = "data-supported loading alias"
+    else:
+        category = "non-natural / special building block"
+        origin = "literal building-block identity"
+    return {
+        "input": str(value or "").strip(),
+        "normalized": normalized,
+        "canonical_key": canonical_amino_acid_key(normalized) if normalized else "",
+        "stereochemistry": "D" if low.startswith("fmoc-d-") else "L/unspecified",
+        "category": category,
+        "identity_origin": origin,
+        "recognition_only": True,
+    }
+
+
+def observed_loading_amino_acid_identities(rows: Iterable[Mapping[str, Any]]) -> list[str]:
+    """Return canonical loaded-AA identities actually present in Loading records.
+
+    This intentionally derives the operator pick-list from observed data rather than
+    exposing a speculative non-natural-AA catalog as recommendation evidence.
+    """
+    identities: set[str] = set()
+    for row in rows:
+        raw = row.get("amino_acid_normalized") or row.get("amino_acid_raw") or ""
+        normalized = normalize_amino_acid(raw)
+        if normalized:
+            identities.add(normalized)
+    return sorted(identities, key=str.casefold)
 
 
 def _stereo(name: str) -> str:
@@ -637,7 +1118,9 @@ def _crude_g(text: str) -> float | None:
     return None
 
 
-def _insert_cleavage(con: sqlite3.Connection, row: Mapping[str, Any]) -> bool:
+def _insert_cleavage(
+    con: sqlite3.Connection, row: Mapping[str, Any], *, semantic_seed_dedup: bool = False
+) -> bool:
     existing = con.execute(
         """SELECT record_id FROM cleavage_records
            WHERE source_id=? AND source_locator=?""",
@@ -645,6 +1128,30 @@ def _insert_cleavage(con: sqlite3.Connection, row: Mapping[str, Any]) -> bool:
     ).fetchone()
     if existing:
         return False
+    # Semantic de-duplication is intentionally restricted to the bundled historical
+    # seed. General Cleavage Report imports may contain legitimate repeated runs, and
+    # those repetitions are evidence that must not be collapsed merely because their
+    # measured fields happen to be identical.
+    if semantic_seed_dedup:
+        semantic = con.execute(
+            """SELECT r.record_id FROM cleavage_records r
+               JOIN import_sources s ON s.source_id=r.source_id
+               WHERE lower(COALESCE(s.source_name,''))='cleavage_report_seed.xlsx'
+                 AND COALESCE(r.product_key,'')=COALESCE(?, '')
+                 AND COALESCE(r.scale_mmol,-999999)=COALESCE(?, -999999)
+                 AND COALESCE(r.cleavage_eq,-999999)=COALESCE(?, -999999)
+                 AND COALESCE(r.cleavage_time_h,-999999)=COALESCE(?, -999999)
+                 AND COALESCE(r.tfa_ml,-999999)=COALESCE(?, -999999)
+                 AND COALESCE(r.tis_ml,-999999)=COALESCE(?, -999999)
+                 AND COALESCE(r.water_ml,-999999)=COALESCE(?, -999999)
+                 AND COALESCE(r.raw_observation,'')=COALESCE(?, '')
+               LIMIT 1""",
+            (row.get('product_key'), row.get('scale_mmol'), row.get('cleavage_eq'),
+             row.get('cleavage_time_h'), row.get('tfa_ml'), row.get('tis_ml'),
+             row.get('water_ml'), row.get('raw_observation')),
+        ).fetchone()
+        if semantic:
+            return False
     keys = [
         "record_id", "status", "product", "product_key", "sequence", "sequence_key", "scale_mmol", "operator",
         "tfa_ml", "tis_ml", "water_ml", "other_scavengers_json", "cleavage_eq",
@@ -662,12 +1169,14 @@ def _insert_cleavage(con: sqlite3.Connection, row: Mapping[str, Any]) -> bool:
     return True
 
 
-def import_cleavage_report(path: str | Path, db_path: str | Path | None = None) -> dict[str, Any]:
+def import_cleavage_report(path: str | Path, db_path: str | Path | None = None, *, semantic_seed_dedup: bool | None = None) -> dict[str, Any]:
     from openpyxl import load_workbook
     source = Path(path)
     if not source.is_file():
         raise FileNotFoundError(source)
     initialize(db_path)
+    if semantic_seed_dedup is None:
+        semantic_seed_dedup = source.name.casefold() == "cleavage_report_seed.xlsx"
     workbook = load_workbook(source, data_only=True, read_only=True)
     inserted = 0
     with _connect(db_path) as con:
@@ -730,7 +1239,7 @@ def import_cleavage_report(path: str | Path, db_path: str | Path | None = None) 
                             "source_id": source_id, "source_locator": f"{sheet.title}!row{index + 1}",
                             "outlier_flag": 0, "created_at": _now(), "updated_at": _now(),
                         }
-                        inserted += int(_insert_cleavage(con, record))
+                        inserted += int(_insert_cleavage(con, record, semantic_seed_dedup=bool(semantic_seed_dedup)))
                         index = j
                         continue
                 index += 1
@@ -745,13 +1254,45 @@ def _mapping_value(row: Mapping[str, Any], *names: str) -> Any:
     return None
 
 
-def _insert_loading(con: sqlite3.Connection, row: Mapping[str, Any]) -> bool:
+def _insert_loading(
+    con: sqlite3.Connection, row: Mapping[str, Any], *, semantic_seed_dedup: bool = False
+) -> bool:
     existing = con.execute(
         "SELECT record_id FROM loading_records WHERE source_id=? AND source_locator=?",
         (row.get("source_id"), row.get("source_locator", "")),
     ).fetchone()
     if existing:
         return False
+    # Only historical seed revisions receive semantic de-duplication. Ordinary CSV
+    # imports are allowed to contain repeated experiments, including identical values.
+    # Repeats are scientifically useful evidence and must remain separate records.
+    if semantic_seed_dedup:
+        semantic = con.execute(
+            """SELECT r.record_id, r.source_locator FROM loading_records r
+               JOIN import_sources s ON s.source_id=r.source_id
+               WHERE lower(COALESCE(s.source_name,''))='loading_history_seed.csv'
+                 AND COALESCE(r.date,'')=COALESCE(?, '')
+                 AND COALESCE(r.resin_key,'')=COALESCE(?, '')
+                 AND COALESCE(r.amino_acid_key,'')=COALESCE(?, '')
+                 AND COALESCE(r.aa_eq,-999999)=COALESCE(?, -999999)
+                 AND COALESCE(r.base_eq,-999999)=COALESCE(?, -999999)
+                 AND COALESCE(r.absorbance,-999999)=COALESCE(?, -999999)
+                 AND COALESCE(r.loading_rate_mmol_g,-999999)=COALESCE(?, -999999)
+               LIMIT 1""",
+            (row.get('date'), row.get('resin_key'), row.get('amino_acid_key'), row.get('aa_eq'),
+             row.get('base_eq'), row.get('absorbance'), row.get('loading_rate_mmol_g')),
+        ).fetchone()
+        if semantic:
+            # A later seed revision can enrich an older seed record with an explicit original-source
+            # locator without changing any measured chemistry value or operator state.
+            previous_locator = str(semantic["source_locator"] or "").strip()
+            incoming_locator = str(row.get("source_locator") or "").strip()
+            if re.fullmatch(r"row\d+", previous_locator, flags=re.I) and incoming_locator and not re.fullmatch(r"row\d+", incoming_locator, flags=re.I):
+                con.execute(
+                    "UPDATE loading_records SET source_locator=?, updated_at=? WHERE record_id=?",
+                    (incoming_locator, _now(), semantic["record_id"]),
+                )
+            return False
     keys = [
         "record_id", "status", "date", "resin_type", "resin_key", "resin_note", "amino_acid_raw",
         "amino_acid_normalized", "amino_acid_key", "stereochemistry", "protecting_group", "aa_eq", "base",
@@ -767,11 +1308,13 @@ def _insert_loading(con: sqlite3.Connection, row: Mapping[str, Any]) -> bool:
     return True
 
 
-def import_loading_csv(path: str | Path, db_path: str | Path | None = None) -> dict[str, Any]:
+def import_loading_csv(path: str | Path, db_path: str | Path | None = None, *, semantic_seed_dedup: bool | None = None) -> dict[str, Any]:
     source = Path(path)
     if not source.is_file():
         raise FileNotFoundError(source)
     initialize(db_path)
+    if semantic_seed_dedup is None:
+        semantic_seed_dedup = source.name.casefold() == "loading_history_seed.csv"
     inserted = 0
     with source.open("r", encoding="utf-8-sig", newline="") as handle, _connect(db_path) as con:
         reader = csv.DictReader(handle)
@@ -785,14 +1328,30 @@ def import_loading_csv(path: str | Path, db_path: str | Path | None = None) -> d
             capping = None
             if capping_raw is not None and str(capping_raw).strip() != "":
                 capping = 1 if str(capping_raw).strip().lower() in {"1", "true", "yes", "y", "있음", "약식"} else 0
+            explicit_locator = str(_mapping_value(raw, "source_locator", "locator", "source_ref") or "").strip()
+            source_file = str(_mapping_value(raw, "source_file", "source_image", "source_photo") or "").strip()
+            if source_file and explicit_locator and source_file.casefold() not in explicit_locator.casefold():
+                source_locator = f"{source_file} | {explicit_locator}"
+            else:
+                source_locator = explicit_locator or source_file or f"row{number}"
+            resin_normalized = normalize_resin(resin_raw)
+            resin_key = canonical_resin_key(resin_raw)
+            base_raw = _mapping_value(raw, "base")
+            # Loading base is chemistry-specific. Historical Trityl/2-CTC rows may
+            # omit the explicit label while still carrying DIEA equivalents, but
+            # Wang/Rink coupling-based loading must never be silently relabelled DIEA.
+            if base_raw is None or str(base_raw).strip() == "":
+                base_value = "DIEA" if resin_key == canonical_resin_key("Trityl/2-CTC resin") else ""
+            else:
+                base_value = str(base_raw).strip()
             record = {
                 "record_id": _id(), "status": str(_mapping_value(raw, "status") or "parsed").lower(),
                 "date": str(_mapping_value(raw, "date", "날짜") or ""),
-                "resin_type": normalize_resin(resin_raw), "resin_key": canonical_resin_key(resin_raw), "resin_note": str(resin_raw or ""),
+                "resin_type": resin_normalized, "resin_key": resin_key, "resin_note": str(resin_raw or ""),
                 "amino_acid_raw": aa_raw, "amino_acid_normalized": aa, "amino_acid_key": canonical_amino_acid_key(aa),
                 "stereochemistry": _stereo(aa), "protecting_group": _protecting_group(aa),
                 "aa_eq": _float(_mapping_value(raw, "aa_eq", "loading_aa_eq")),
-                "base": str(_mapping_value(raw, "base") or "DIEA"),
+                "base": base_value,
                 "base_eq": _float(_mapping_value(raw, "base_eq", "diea_eq")),
                 "coupling_reagent": str(_mapping_value(raw, "coupling_reagent") or ""),
                 "coupling_reagent_eq": _float(_mapping_value(raw, "coupling_reagent_eq")),
@@ -805,13 +1364,13 @@ def import_loading_csv(path: str | Path, db_path: str | Path | None = None) -> d
                 "resin_sample_weight_mg": _float(_mapping_value(raw, "resin_sample_weight_mg", "resin_weight_mg")),
                 "absorbance": _float(_mapping_value(raw, "absorbance", "abs")),
                 "loading_rate_mmol_g": _float(_mapping_value(raw, "loading_rate_mmol_g", "loading_rate")),
-                "raw_note": note, "source_id": source_id, "source_locator": f"row{number}",
+                "raw_note": note, "source_id": source_id, "source_locator": source_locator,
                 "outlier_flag": int(str(_mapping_value(raw, "outlier_flag") or "0").strip() in {"1", "true", "True"}),
                 "created_at": _now(), "updated_at": _now(),
             }
             if record["status"] not in STATUSES:
                 record["status"] = "parsed"
-            inserted += int(_insert_loading(con, record))
+            inserted += int(_insert_loading(con, record, semantic_seed_dedup=bool(semantic_seed_dedup)))
     flag_loading_outliers(db_path)
     return {"kind": "loading", "inserted": inserted, "source": str(source)}
 
@@ -1146,7 +1705,7 @@ def _insert_cleavage_usage(con: sqlite3.Connection, row: Mapping[str, Any], *, r
 
 
 def import_cleavage_usage_workbook(path: str | Path, db_path: str | Path | None = None, *, source_file_label: str = "") -> dict[str, Any]:
-    from suite_gui.v5_material_usage import extract_cleavage_usage_workbook
+    from suite_gui.material_usage import extract_cleavage_usage_workbook
     source = Path(path)
     initialize(db_path)
     parsed = extract_cleavage_usage_workbook(source, source_file_label=source_file_label)
@@ -1196,8 +1755,13 @@ def add_outcome(values: Mapping[str, Any], db_path: str | Path | None = None, *,
         "work_item_id": str(values.get("work_item_id") or "").strip(), "run_id": str(values.get("run_id") or "").strip(), "result": str(values.get("result") or "").strip(),
         "success_flag": values.get("success_flag"), "yield_percent": _float(values.get("yield_percent")),
         "purity_percent": _float(values.get("purity_percent")), "doubling_required": values.get("doubling_required"),
+        "crude_g": _float(values.get("crude_g")),
         "observation": str(values.get("observation") or "").strip(), "source_id": values.get("source_id"),
-        "source_locator": str(values.get("source_locator") or "").strip(), "created_at": now, "updated_at": now,
+        "source_locator": str(values.get("source_locator") or "").strip(),
+        "record_state": str(values.get("record_state") or ("verified" if status == "verified" else "excluded" if status == "excluded" else "draft")).strip().lower(),
+        "planner_snapshot_json": str(values.get("planner_snapshot_json") or "{}").strip() or "{}",
+        "actual_condition_json": str(values.get("actual_condition_json") or "{}").strip() or "{}",
+        "created_at": now, "updated_at": now,
     }
     row["product_key"] = canonical_product_key(row["product"]); row["sequence_key"] = canonical_sequence_key(row["sequence"])
     with _connect(db_path) as con:
@@ -1238,6 +1802,7 @@ def add_issue(values: Mapping[str, Any], db_path: str | Path | None = None, *, s
         "parser_version": str(values.get("parser_version") or "").strip(),
         "detected_language": str(values.get("detected_language") or "").strip(),
         "planner_snapshot_json": str(values.get("planner_snapshot_json") or "{}").strip() or "{}",
+        "record_state": str(values.get("record_state") or ("verified" if status == "verified" else "excluded" if status == "excluded" else "draft")).strip().lower(),
         "created_at": now, "updated_at": now,
     }
     row["product_key"] = canonical_product_key(row["product"]); row["sequence_key"] = canonical_sequence_key(row["sequence"])
@@ -1248,7 +1813,7 @@ def add_issue(values: Mapping[str, Any], db_path: str | Path | None = None, *, s
 
 
 def review_cleavage_usage_units(record_id: str, units: Mapping[str, str], db_path: str | Path | None = None) -> dict[str, Any]:
-    from suite_gui.v5_material_usage import apply_unit_review
+    from suite_gui.material_usage import apply_unit_review
     initialize(db_path)
     with _connect(db_path) as con:
         found=con.execute("SELECT * FROM cleavage_usage_records WHERE record_id=?",(record_id,)).fetchone()
@@ -1292,7 +1857,7 @@ def import_path(path: str | Path, db_path: str | Path | None = None, *, source_l
         except Exception:
             looks_like_cleavage = False
         try:
-            from suite_gui.v5_material_usage import extract_cleavage_usage_workbook
+            from suite_gui.material_usage import extract_cleavage_usage_workbook
             material_rows = extract_cleavage_usage_workbook(source, source_file_label=source_label)
         except Exception:
             material_rows = []
@@ -1309,7 +1874,7 @@ def import_path(path: str | Path, db_path: str | Path | None = None, *, source_l
         return [{"kind": "registered_workbook", "inserted": 0, "source": str(source)}]
     if suffix == ".zip":
         results: list[dict[str, Any]] = []
-        with tempfile.TemporaryDirectory(prefix="spps_v5_import_") as temp:
+        with tempfile.TemporaryDirectory(prefix="spps_import_") as temp:
             with zipfile.ZipFile(source) as archive:
                 infos = [info for info in archive.infolist() if not info.is_dir()]
                 material_archive = sum(1 for info in infos if "원재료 관리대장" in Path(info.filename).name and not Path(info.filename).name.startswith("~$")) >= 5
@@ -1334,110 +1899,43 @@ def import_path(path: str | Path, db_path: str | Path | None = None, *, source_l
 
 
 
-def data_health(db_path: str | Path | None = None) -> dict[str, Any]:
-    """Return auditable data-quality metrics without claiming experimental success."""
+def set_record_state(kind: str, record_ids: Iterable[str], record_state: str, db_path: str | Path | None = None) -> int:
+    """Set the V6 lifecycle state without changing ML eligibility status."""
+    from suite_gui.decision_support import RECORD_STATES
+    state = str(record_state or "").strip().lower()
+    if state not in RECORD_STATES:
+        raise ValueError(f"Unsupported record_state: {record_state}")
+    table = {
+        "loading": "loading_records", "cleavage": "cleavage_records",
+        "outcome": "experimental_outcomes", "issue": "synthesis_issue_records",
+    }.get(kind)
+    if table is None:
+        raise ValueError("kind must be loading, cleavage, outcome, or issue")
+    ids = [str(value) for value in record_ids if str(value)]
+    if not ids:
+        return 0
     initialize(db_path)
     with _connect(db_path) as con:
-        def status_counts(table: str) -> dict[str, int]:
-            rows = con.execute(f"SELECT status,COUNT(*) AS n FROM {table} GROUP BY status").fetchall()
-            return {str(row["status"]): int(row["n"]) for row in rows}
+        cur = con.execute(
+            f"UPDATE {table} SET record_state=?, updated_at=? WHERE record_id IN ({','.join('?' for _ in ids)})",
+            [state, _now(), *ids],
+        )
+        return int(cur.rowcount)
 
-        loading_total = int(con.execute("SELECT COUNT(*) FROM loading_records").fetchone()[0])
-        cleavage_total = int(con.execute("SELECT COUNT(*) FROM cleavage_records").fetchone()[0])
-        sequence_total = int(con.execute("SELECT COUNT(*) FROM synthesis_sequence_records").fetchone()[0])
-        usage_total = int(con.execute("SELECT COUNT(*) FROM cleavage_usage_records").fetchone()[0])
-        outcome_total = int(con.execute("SELECT COUNT(*) FROM experimental_outcomes").fetchone()[0])
-        issue_total = int(con.execute("SELECT COUNT(*) FROM synthesis_issue_records").fetchone()[0])
-        usage_unit_review = int(con.execute("SELECT COUNT(*) FROM cleavage_usage_records WHERE unit_review_required=1").fetchone()[0])
-        usage_normalized = int(con.execute("SELECT COUNT(*) FROM cleavage_usage_records WHERE cocktail_ml_per_mmol IS NOT NULL").fetchone()[0])
-        missing_keys = {
-            "loading": int(con.execute("SELECT COUNT(*) FROM loading_records WHERE resin_key='' OR amino_acid_key='' ").fetchone()[0]),
-            "cleavage": int(con.execute("SELECT COUNT(*) FROM cleavage_records WHERE product<>'' AND product_key='' ").fetchone()[0]),
-            "sequence": int(con.execute("SELECT COUNT(*) FROM synthesis_sequence_records WHERE product_key='' OR sequence_key='' ").fetchone()[0]),
-        }
-        sequence_products = int(con.execute("SELECT COUNT(DISTINCT product_key) FROM synthesis_sequence_records WHERE product_key<>''").fetchone()[0])
-        linked_cleavage = int(con.execute("""
-            SELECT COUNT(*) FROM cleavage_records c
-            WHERE c.product_key<>'' AND EXISTS (
-                SELECT 1 FROM synthesis_sequence_records s WHERE s.product_key=c.product_key
-            )
-        """).fetchone()[0])
-        repeated_loading_groups = int(con.execute("""
-            SELECT COUNT(*) FROM (
-                SELECT resin_key,amino_acid_key FROM loading_records
-                WHERE resin_key<>'' AND amino_acid_key<>''
-                GROUP BY resin_key,amino_acid_key HAVING COUNT(*)>=2
-            )
-        """).fetchone()[0])
-        loading_rows = [dict(row) for row in con.execute("""
-            SELECT resin_key,amino_acid_key,loading_rate_mmol_g FROM loading_records
-            WHERE loading_rate_mmol_g IS NOT NULL AND resin_key<>'' AND amino_acid_key<>''
-        """).fetchall()]
-        cleavage_rows = [dict(row) for row in con.execute("""
-            SELECT product_key,cleavage_eq,cleavage_time_h FROM cleavage_records
-            WHERE product_key<>'' AND cleavage_eq IS NOT NULL AND cleavage_time_h IS NOT NULL
-        """).fetchall()]
-        explicit_edt = 0
-        for row in con.execute("SELECT other_scavengers_json FROM cleavage_records").fetchall():
-            try:
-                parsed = json.loads(str(row[0] or "{}"))
-            except Exception:
-                parsed = {}
-            if isinstance(parsed, dict) and any(str(k).strip().casefold()=="edt" and _float(v) not in (None,0) for k,v in parsed.items()):
-                explicit_edt += 1
 
-    # Leave-one-out exact-group loading replay. Report MAE, not a fabricated success rate.
-    groups: dict[tuple[str,str], list[float]] = {}
-    for row in loading_rows:
-        groups.setdefault((row["resin_key"], row["amino_acid_key"]), []).append(float(row["loading_rate_mmol_g"]))
-    errors: list[float] = []
-    for values in groups.values():
-        if len(values) < 2:
-            continue
-        for index, observed in enumerate(values):
-            peers = values[:index] + values[index+1:]
-            prediction = sorted(peers)[len(peers)//2]
-            errors.append(abs(observed-prediction))
-    loading_mae = (sum(errors)/len(errors)) if errors else None
+def v6_analytics(db_path: str | Path | None = None) -> dict[str, Any]:
+    from suite_gui.experimental_reporting import v6_analytics as report
+    return report(db_path)
 
-    # Historical eq/time replay agreement within a product key. This measures record
-    # consistency only; it is deliberately not presented as a biochemical success rate.
-    cgroups: dict[str, list[tuple[float,float]]] = {}
-    for row in cleavage_rows:
-        cgroups.setdefault(str(row["product_key"]), []).append((float(row["cleavage_eq"]),float(row["cleavage_time_h"])))
-    agree=0; evaluated=0
-    for values in cgroups.values():
-        if len(values)<2:
-            continue
-        counts: dict[tuple[float,float],int]={}
-        for value in values: counts[value]=counts.get(value,0)+1
-        mode=max(counts,key=counts.get)
-        agree += sum(value==mode for value in values)
-        evaluated += len(values)
-    cleavage_agreement = (100.0*agree/evaluated) if evaluated else None
 
-    return {
-        "counts": {"loading": loading_total, "cleavage": cleavage_total, "sequence": sequence_total, "cleavage_usage": usage_total, "outcome": outcome_total, "issue": issue_total},
-        "cleavage_usage_unit_review_required": usage_unit_review,
-        "cleavage_usage_normalized_records": usage_normalized,
-        "status_counts": {
-            "loading": status_counts("loading_records"), "cleavage": status_counts("cleavage_records"),
-            "sequence": status_counts("synthesis_sequence_records"),
-            "cleavage_usage": status_counts("cleavage_usage_records"),
-            "outcome": status_counts("experimental_outcomes"),
-            "issue": status_counts("synthesis_issue_records"),
-        },
-        "missing_canonical_keys": missing_keys,
-        "sequence_products": sequence_products,
-        "cleavage_records_linked_to_sequence_product": linked_cleavage,
-        "repeated_loading_groups": repeated_loading_groups,
-        "explicit_edt_records": explicit_edt,
-        "loading_leave_one_out_mae_mmol_g": loading_mae,
-        "loading_leave_one_out_evaluated": len(errors),
-        "cleavage_eq_time_replay_agreement_pct": cleavage_agreement,
-        "cleavage_eq_time_replay_evaluated": evaluated,
-    }
+def quality_findings(db_path: str | Path | None = None) -> list[dict[str, Any]]:
+    from suite_gui.experimental_reporting import quality_findings as report
+    return report(db_path)
 
+
+def data_health(db_path: str | Path | None = None) -> dict[str, Any]:
+    from suite_gui.experimental_reporting import data_health as report
+    return report(db_path)
 
 def preview_path(path: str | Path) -> dict[str, Any]:
     """Parse an import into an isolated temporary DB and return an audit preview.
@@ -1448,7 +1946,7 @@ def preview_path(path: str | Path) -> dict[str, Any]:
     source = Path(path)
     if not source.is_file():
         raise FileNotFoundError(source)
-    with tempfile.TemporaryDirectory(prefix="spps_v5_preview_") as temp:
+    with tempfile.TemporaryDirectory(prefix="spps_preview_") as temp:
         preview_db = Path(temp) / "preview.sqlite"
         results = import_path(source, preview_db)
         loading = list_records("loading", preview_db)
@@ -1461,7 +1959,7 @@ def preview_path(path: str | Path) -> dict[str, Any]:
         if registered:
             warnings.append(f"{registered} workbook(s) had no supported structured layout; no guessed records will be created.")
         if source.suffix.lower() in {".xlsx", ".xlsm", ".zip"} and not sequence and not cleavage and not usage:
-            warnings.append("No page-local STD sequence, Cleavage Report, or V5 material-usage record was recognized.")
+            warnings.append("No page-local STD sequence, Cleavage Report, or material-usage record was recognized.")
         unresolved_units = sum(int(row.get("unit_review_required") or 0) for row in usage)
         if unresolved_units:
             warnings.append(f"{unresolved_units} cleavage-usage record(s) contain unitless/unparsed amounts and are excluded from normalized volume learning until reviewed.")
@@ -1497,6 +1995,26 @@ def preview_path(path: str | Path) -> dict[str, Any]:
         }
 
 
+def record_counts(db_path: str | Path | None = None) -> dict[str, int]:
+    """Return indexed/table counts without materializing full history rows."""
+    initialize(db_path)
+    tables = {
+        "loading": "loading_records",
+        "cleavage": "cleavage_records",
+        "sequence": "synthesis_sequence_records",
+        "cleavage_usage": "cleavage_usage_records",
+        "outcome": "experimental_outcomes",
+        "issue": "synthesis_issue_records",
+        "recommendation_trace": "recommendation_traces",
+    }
+    counts: dict[str, int] = {}
+    with _connect(db_path) as con:
+        for key, table in tables.items():
+            row = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+            counts[key] = int(row[0]) if row else 0
+    return counts
+
+
 def list_records(kind: str, db_path: str | Path | None = None, *, statuses: Iterable[str] | None = None) -> list[dict[str, Any]]:
     initialize(db_path)
     table = {
@@ -1530,10 +2048,17 @@ def set_status(kind: str, record_ids: Iterable[str], status: str, db_path: str |
     if not ids:
         return 0
     with _connect(db_path) as con:
-        cur = con.execute(
-            f"UPDATE {table} SET status=?, updated_at=? WHERE record_id IN ({','.join('?' for _ in ids)})",
-            [status, _now(), *ids],
-        )
+        columns={str(row[1]) for row in con.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "record_state" in columns and status in {"verified","excluded"}:
+            cur = con.execute(
+                f"UPDATE {table} SET status=?, record_state=?, updated_at=? WHERE record_id IN ({','.join('?' for _ in ids)})",
+                [status, status, _now(), *ids],
+            )
+        else:
+            cur = con.execute(
+                f"UPDATE {table} SET status=?, updated_at=? WHERE record_id IN ({','.join('?' for _ in ids)})",
+                [status, _now(), *ids],
+            )
         return int(cur.rowcount)
 
 
@@ -1592,13 +2117,17 @@ def add_record(kind: str, values: Mapping[str, Any], db_path: str | Path | None 
     if table is None:
         raise ValueError("kind must be loading, cleavage, or cleavage_usage")
     editable = {
-        "loading": {"date", "resin_type", "resin_note", "amino_acid_raw", "amino_acid_normalized", "stereochemistry", "protecting_group", "aa_eq", "base", "base_eq", "coupling_reagent", "coupling_reagent_eq", "additive", "additive_eq", "loading_time_h", "loading_solvent", "capping_performed", "capping_method", "resin_sample_weight_mg", "absorbance", "loading_rate_mmol_g", "raw_note", "outlier_flag", "work_item_id", "run_id"},
-        "cleavage": {"product", "sequence", "scale_mmol", "operator", "tfa_ml", "tis_ml", "water_ml", "other_scavengers_json", "cleavage_eq", "cleavage_time_h", "temperature_c", "ether_ml", "ether_ratio", "filter_ether_ml", "filter_speed", "crude_g", "precipitation_good", "separation_problem", "concentration_recommended", "remove_tis_recommended", "overnight_hardening", "raw_observation", "raw_filter_note", "outlier_flag", "work_item_id", "run_id"},
+        "loading": {"date", "resin_type", "resin_note", "amino_acid_raw", "amino_acid_normalized", "stereochemistry", "protecting_group", "aa_eq", "base", "base_eq", "coupling_reagent", "coupling_reagent_eq", "additive", "additive_eq", "loading_time_h", "loading_solvent", "capping_performed", "capping_method", "resin_sample_weight_mg", "absorbance", "loading_rate_mmol_g", "raw_note", "outlier_flag", "work_item_id", "run_id", "record_state", "planner_snapshot_json", "actual_condition_json"},
+        "cleavage": {"product", "sequence", "scale_mmol", "operator", "tfa_ml", "tis_ml", "water_ml", "other_scavengers_json", "cleavage_eq", "cleavage_time_h", "temperature_c", "ether_ml", "ether_ratio", "filter_ether_ml", "filter_speed", "crude_g", "precipitation_good", "separation_problem", "concentration_recommended", "remove_tis_recommended", "overnight_hardening", "raw_observation", "raw_filter_note", "outlier_flag", "work_item_id", "run_id", "record_state", "planner_snapshot_json", "actual_condition_json"},
         "cleavage_usage": {"product_raw", "product", "sequence_raw", "sequence", "scale_mmol", "operator", "manufacture_period", "synthesis_key", "record_scope", "tfa_raw", "tfa_value", "tfa_unit", "tfa_ml", "tfa_status", "water_raw", "water_value", "water_unit", "water_ml", "water_status", "tis_raw", "tis_value", "tis_unit", "tis_ml", "tis_status", "ether_raw", "ether_value", "ether_unit", "ether_ml", "ether_status", "hexane_raw", "hexane_value", "hexane_unit", "hexane_ml", "hexane_status", "cocktail_total_ml", "cocktail_ml_per_mmol", "ether_ml_per_mmol", "hexane_ml_per_mmol", "composition_pct_json", "unit_review_required", "source_file", "source_page", "source_locator", "raw_note"},
     }[kind]
     now = _now()
     row = {str(k): v for k, v in values.items() if str(k) in editable}
     row.update({"record_id": _id(), "status": status, "created_at": now, "updated_at": now})
+    if kind in {"loading", "cleavage"}:
+        row.setdefault("record_state", "verified" if status == "verified" else "excluded" if status == "excluded" else "draft")
+        row.setdefault("planner_snapshot_json", "{}")
+        row.setdefault("actual_condition_json", "{}")
     if kind == "loading":
         raw = str(row.get("amino_acid_raw") or row.get("amino_acid_normalized") or "").strip()
         if raw and not row.get("amino_acid_normalized"):
@@ -1694,11 +2223,70 @@ def sources(db_path: str | Path | None = None) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
-__all__ = [
-    "SCHEMA_VERSION", "STATUSES", "default_db_path", "initialize", "import_cleavage_report",
+__all__ = ["performance_counters", 
+    "SCHEMA_VERSION", "STATUSES", "default_db_path", "legacy_db_candidates", "initialize", "set_record_state", "v6_analytics", "quality_findings", "import_cleavage_report",
     "import_loading_csv", "import_sequence_history_csv", "import_synthesis_workbook", "extract_synthesis_sequence_records",
     "import_cleavage_usage_workbook", "import_cleavage_usage_csv", "review_cleavage_usage_units", "add_outcome", "add_issue",
     "preview_path", "data_health", "canonical_product_key", "canonical_sequence_key", "canonical_resin_key", "canonical_amino_acid_key",
     "import_path", "list_records", "normalize_amino_acid", "normalize_resin",
+    "describe_amino_acid_identity", "observed_loading_amino_acid_identities",
     "set_status", "update_record", "add_record", "sources", "flag_loading_outliers",
 ]
+
+
+# --- R9 recommendation decision -> outcome trace domain -----------------------
+RECOMMENDATION_DECISIONS=("Applied as recommended","Applied with modification","Rejected","Not used / informational only")
+
+def add_recommendation_trace(values: Mapping[str,Any], db_path: str|Path|None=None) -> dict[str,Any]:
+    initialize(db_path); now=_now(); trace_id=str(values.get('trace_id') or _id())
+    recommended=dict(values.get('recommended_condition') or {})
+    with _connect(db_path) as con:
+        con.execute("""INSERT INTO recommendation_traces(trace_id,work_item_id,run_id,recommendation_type,evidence_source,confidence,evidence_count,recommended_condition_json,apply_allowed,operator_decision,actual_condition_json,final_result_links_json,created_at,resolved_at,note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(
+            trace_id,str(values.get('work_item_id') or ''),str(values.get('run_id') or ''),str(values.get('recommendation_type') or ''),
+            str(values.get('evidence_source') or ''),str(values.get('confidence') or ''),int(values.get('evidence_count') or 0),
+            json.dumps(recommended,ensure_ascii=False,default=str),1 if values.get('apply_allowed') else 0,str(values.get('operator_decision') or ''),
+            json.dumps(dict(values.get('actual_condition') or {}),ensure_ascii=False,default=str),json.dumps(list(values.get('final_result_links') or []),ensure_ascii=False,default=str),
+            now,str(values.get('resolved_at') or ''),str(values.get('note') or '')))
+    return get_recommendation_trace(trace_id,db_path)
+
+def get_recommendation_trace(trace_id:str, db_path: str|Path|None=None)->dict[str,Any]:
+    initialize(db_path)
+    with _connect(db_path) as con: row=con.execute('SELECT * FROM recommendation_traces WHERE trace_id=?',(str(trace_id),)).fetchone()
+    if row is None: raise ValueError('Recommendation trace was not found.')
+    out=dict(row)
+    for source,target,default in [('recommended_condition_json','recommended_condition',{}),('actual_condition_json','actual_condition',{}),('final_result_links_json','final_result_links',[])]:
+        try: out[target]=json.loads(out.get(source) or ('[]' if isinstance(default,list) else '{}'))
+        except Exception: out[target]=default
+    out['apply_allowed']=bool(out.get('apply_allowed')); return out
+
+def list_recommendation_traces(db_path: str|Path|None=None, *, run_id:str='', work_item_id:str='')->list[dict[str,Any]]:
+    initialize(db_path); clauses=[]; params=[]
+    if run_id: clauses.append('run_id=?'); params.append(str(run_id))
+    if work_item_id: clauses.append('work_item_id=?'); params.append(str(work_item_id))
+    sql='SELECT trace_id FROM recommendation_traces'+((' WHERE '+' AND '.join(clauses)) if clauses else '')+' ORDER BY created_at DESC'
+    with _connect(db_path) as con: ids=[r[0] for r in con.execute(sql,params).fetchall()]
+    return [get_recommendation_trace(x,db_path) for x in ids]
+
+def link_recommendation_results(trace_id: str, result_ids: Iterable[Any], db_path: str | Path | None = None) -> dict[str, Any]:
+    """Attach canonical Result IDs without changing the recorded operator decision."""
+    initialize(db_path)
+    existing = get_recommendation_trace(trace_id, db_path)
+    links = [str(value) for value in result_ids if str(value or "").strip()]
+    # Preserve order and avoid duplicate links.
+    links = list(dict.fromkeys(links))
+    with _connect(db_path) as con:
+        cur = con.execute(
+            "UPDATE recommendation_traces SET final_result_links_json=? WHERE trace_id=?",
+            (json.dumps(links, ensure_ascii=False), str(trace_id)),
+        )
+        if not cur.rowcount:
+            raise ValueError("Recommendation trace was not found.")
+    return get_recommendation_trace(trace_id, db_path)
+
+def resolve_recommendation_trace(trace_id:str, decision:str, *, actual_condition:Mapping[str,Any]|None=None, final_result_links:Iterable[Any]=(), note:str='', db_path: str|Path|None=None)->dict[str,Any]:
+    if decision not in RECOMMENDATION_DECISIONS: raise ValueError('Unsupported recommendation decision.')
+    initialize(db_path); now=_now()
+    with _connect(db_path) as con:
+        cur=con.execute('UPDATE recommendation_traces SET operator_decision=?,actual_condition_json=?,final_result_links_json=?,resolved_at=?,note=? WHERE trace_id=?',(decision,json.dumps(dict(actual_condition or {}),ensure_ascii=False,default=str),json.dumps(list(final_result_links or []),ensure_ascii=False,default=str),now,str(note or ''),str(trace_id)))
+        if not cur.rowcount: raise ValueError('Recommendation trace was not found.')
+    return get_recommendation_trace(trace_id,db_path)

@@ -1,5 +1,6 @@
 """Batch Manager tab for modern Tk GUI with real chunked cancel and consolidated totals."""
 from __future__ import annotations
+from suite_gui.runtime_state import get_active_index, set_active_index
 from . import gui_common as state
 
 
@@ -19,7 +20,7 @@ def cancel_batch(gui):
 
 
 def _one_summary_row(gui, i: int, item: dict):
-    gui._v2097_active_index=i
+    set_active_index(gui,i)
     state.load_item_to_editor(gui, i)
     _, meta, tables = state.core_tables(gui)
     summ = tables['summary'].iloc[0].to_dict() if not tables['summary'].empty else {}
@@ -27,7 +28,7 @@ def _one_summary_row(gui, i: int, item: dict):
 
 
 def _one_material_df(gui, i: int):
-    gui._v2097_active_index=i
+    set_active_index(gui,i)
     state.load_item_to_editor(gui, i)
     _, meta, tables = state.core_tables(gui)
     mat = tables['selected_materials_core'].copy()
@@ -70,7 +71,7 @@ def _batch_rows(gui):
     rows=[]
     items=list(getattr(gui,'pm_items',[]) or [])
     total=len(items)
-    old=getattr(gui,'_v2097_active_index',0)
+    old=get_active_index(gui,0)
     gui._batch_cancel_requested = False
     for i,item in enumerate(items):
         if getattr(gui, '_batch_cancel_requested', False):
@@ -82,7 +83,7 @@ def _batch_rows(gui):
         except Exception as exc:
             rows.append({'index':i,'project':item.get('project',''),'peptide':item.get('peptide',''),'sequence':item.get('sequence',''),'status':'ERROR','error':str(exc)})
     try:
-        gui._v2097_active_index=old
+        set_active_index(gui,old)
         state.load_item_to_editor(gui, old)
     except Exception: pass
     _set_progress(gui, len(rows), total, f"Done: {len(rows)}/{total}")
@@ -94,7 +95,7 @@ def _batch_materials(gui):
     mats=[]
     items=list(getattr(gui,'pm_items',[]) or [])
     total=len(items)
-    old=getattr(gui,'_v2097_active_index',0)
+    old=get_active_index(gui,0)
     for i,item in enumerate(items):
         if getattr(gui, '_batch_cancel_requested', False):
             break
@@ -104,7 +105,7 @@ def _batch_materials(gui):
         except Exception:
             pass
     try:
-        gui._v2097_active_index=old
+        set_active_index(gui,old)
         state.load_item_to_editor(gui, old)
     except Exception: pass
     return pd.concat(mats, ignore_index=True) if mats else pd.DataFrame()
@@ -138,7 +139,7 @@ def generate_batch_async(gui):
     gui._batch_async_mats=[]
     gui._batch_async_index=0
     gui._batch_async_total=len(items)
-    gui._batch_async_old=getattr(gui,'_v2097_active_index',0)
+    gui._batch_async_old=get_active_index(gui,0)
     _set_progress(gui, 0, len(items), 'Starting batch...')
 
     def step():
@@ -147,7 +148,7 @@ def generate_batch_async(gui):
         if getattr(gui,'_batch_cancel_requested',False) or i >= total:
             try:
                 old=getattr(gui,'_batch_async_old',0)
-                gui._v2097_active_index=old
+                set_active_index(gui,old)
                 state.load_item_to_editor(gui, old)
             except Exception: pass
             rows=pd.DataFrame(getattr(gui,'_batch_async_rows',[]))

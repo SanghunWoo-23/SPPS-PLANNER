@@ -1,4 +1,4 @@
-"""Build profile for SPPS Planner V5.0.0.
+"""Build profile for SPPS Planner V6.0.0.
 
 Only this small profile module and bundled data/policy files are allowed to differ
 between Public and Private packages. Shared planner/recommendation code remains common.

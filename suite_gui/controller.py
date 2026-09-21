@@ -1,4 +1,4 @@
-"""Direct V3.0.0 desktop controller.
+"""Direct SPPS Planner V6 desktop controller.
 
 This is the new public controller surface.  Every operator-facing route is a
 normal class method, so launchers and future modules no longer depend on the
@@ -33,9 +33,9 @@ from suite_gui.modules.release_ui import ACTIVE_RESINS
 
 
 class SPPSGui(ClassicControllerBase):
-    """Canonical SPPS Planner V3.0.0 controller with a static method surface."""
+    """Canonical SPPS Planner V6 controller with a static method surface."""
 
-    TITLE = "SPPS Planner V5.0.0"
+    TITLE = "SPPS Planner V6.0.0"
     RESIN_VALUES = list(ACTIVE_RESINS)
 
     def _build(self) -> Any:
@@ -46,14 +46,32 @@ class SPPSGui(ClassicControllerBase):
             return None
         self._direct_destroying = True
         try:
+            # Give owned Toplevels a chance to cancel their own tracked callbacks
+            # before the Tcl interpreter is torn down.  This keeps long Tk test
+            # sessions and real app shutdown from retaining orphaned after jobs.
             try:
-                for after_id in list(self.tk.call("after", "info")):
+                for child in list(self.winfo_children()):
+                    if isinstance(child, tk.Toplevel):
+                        try:
+                            child.destroy()
+                        except tk.TclError:
+                            pass
+            except tk.TclError:
+                pass
+            # after callbacks are interpreter-global.  Cancel to a fixed point in
+            # case a widget cleanup schedules one final idle callback.
+            for _pass in range(3):
+                try:
+                    pending = list(self.tk.call("after", "info"))
+                except tk.TclError:
+                    pending = []
+                if not pending:
+                    break
+                for after_id in pending:
                     try:
                         self.after_cancel(after_id)
-                    except Exception:
+                    except (tk.TclError, ValueError):
                         pass
-            except Exception:
-                pass
             try:
                 return super().destroy()
             except tk.TclError:
@@ -171,6 +189,18 @@ class SPPSGui(ClassicControllerBase):
 
     def data_change_history(self) -> Any:
         return data_workflow.change_history(self)
+
+    def upsert_analytical_record(self, values: Any, reason: str) -> Any:
+        return data_workflow.upsert_analytical(self, values, reason)
+
+    def delete_analytical_record(self, record_id: str, reason: str) -> Any:
+        return data_workflow.delete_analytical(self, record_id, reason)
+
+    def list_analytical_records(self) -> Any:
+        return data_workflow.list_analytical(self)
+
+    def import_analytical_table(self, path: Any = None, reason: str = "Imported analytical table") -> Any:
+        return data_workflow.import_analytical(self, path, reason)
 
     def export_data_workbook(self, path: Any = None) -> Any:
         return data_workflow.export_workbook(self, path)

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import pytest
+
 from suite_gui import batch_workflow
 from suite_gui import catalogs
 from suite_gui.modules import project_manager_workflow
@@ -64,10 +67,11 @@ def test_protected_fmoc_names_are_primary_unit_choices():
     assert "Fmoc-NH-PEG4-CH2COOH" in catalogs.UNIT_VALUES
 
 
-def test_v2_project_driven_batch_ui_remains_the_v3_default():
+def test_project_driven_batch_ui_uses_clean_controller_method():
     from suite_gui.classic_base import ClassicControllerBase
 
-    assert ClassicControllerBase._build_batch_tab.__name__ == "_v23_build_batch_tab"
+    assert ClassicControllerBase._build_batch_tab.__name__ == "_build_batch_tab"
+    assert ClassicControllerBase._build_batch_tab.__module__ == "suite_gui.modules.classic_batch_controller"
 
 
 def test_compact_batch_columns_receive_all_canonical_values():
@@ -167,7 +171,7 @@ def test_batch_sequence_does_not_misread_dashed_alanine_cysteine_as_acetyl():
     assert typed.core_tokens == ["FITC", "A", "C", "D", "PEG4"]
 
 
-def test_batch_restore_prefers_saved_operator_rows_and_falls_back_to_projects():
+def test_batch_restore_prefers_saved_operator_rows_and_empty_state_stays_empty():
     saved = {column: "" for column in BATCH_COLUMNS}
     saved.update({"Project": "Saved", "Peptide name": "Edited", "Region 1 seq": "ACD"})
     gui = type("Gui", (), {})()
@@ -178,13 +182,12 @@ def test_batch_restore_prefers_saved_operator_rows_and_falls_back_to_projects():
     batch_workflow.restore_input_rows(gui, [saved])
     assert batch_workflow._batch_input_rows(gui)[0]["Project"] == "Saved"
 
+    # No persisted Batch rows must not silently import Project Manager data.
     batch_workflow.restore_input_rows(gui, [])
-    row = batch_workflow._batch_input_rows(gui)[0]
-    assert row["Project"] == "Project"
-    assert row["Region 1 seq"] == "RRR"
+    assert batch_workflow._batch_input_rows(gui) == []
 
 
-def test_batch_generates_each_project_step_plan_once(monkeypatch):
+def test_batch_calculation_requires_explicit_project_sync(monkeypatch):
     from spps_planner import engine
 
     original = engine.generate_step_reagent_plan
@@ -196,15 +199,26 @@ def test_batch_generates_each_project_step_plan_once(monkeypatch):
 
     monkeypatch.setattr(engine, "generate_step_reagent_plan", counted)
     gui = type("Gui", (), {})()
+    gui.batch_columns = list(BATCH_COLUMNS)
+    gui.batch_tree = _Tree(BATCH_COLUMNS)
     gui.pm_items = [{
         "project": "P", "peptide": "Pep", "sequence": "Ac-ACD-NH2",
         "copies": "1", "scale": "0.2", "resin": "Rink Amide AM",
         "loading": "0.8", "chemistry": "DIC/HOBt",
     }]
 
-    batch_workflow.calculate(gui)
+    # Mere presence of Project Manager data does not create Batch work.
+    tables = batch_workflow.calculate(gui)
+    assert len(calls) == 0
+    assert tables["Summary"].empty
 
+    # Explicit operator sync makes the Project an editable Batch input.
+    batch_workflow.sync_input_from_projects(gui, replace=True)
+    batch_workflow.calculate(gui)
     assert len(calls) == 1
+    row = batch_workflow._batch_input_rows(gui)[0]
+    assert row["Project"] == "P"
+    assert row["Region 1 seq"] == "Ac-ACD-NH2"
 
 
 def test_ac_is_visible_in_project_plan_and_batch_chemical_preparation():
@@ -275,17 +289,18 @@ def test_classic_batch_dashboard_schema_is_fully_populated_and_separated():
         "no", "project", "peptide_name", "lot_no", "copies", "sequence",
         "scale_mmol", "resin", "output_folder",
     ])
-
+    # R19 compact Batch reads PM sequences, but preparation quantities come only
+    # from Solution prep defaults.  Project chemistry is not aggregated.
     batch_workflow.refresh(gui, force=True)
 
     aa_values = next(iter(gui.batch_aa_tree.rows.values()))
     assert aa_values[0].startswith("Fmoc-")
     assert aa_values[1] and aa_values[2] and aa_values[3]
     assert aa_values[4] and aa_values[5] and aa_values[6] and aa_values[7]
-    base_items = {row[0] for row in gui.batch_base_tree.rows.values()}
-    catalyst_items = {row[0] for row in gui.batch_catalyst_tree.rows.values()}
-    assert {"DIEA", "Piperidine"} <= base_items
-    assert "DIEA" not in catalyst_items
+    assert list(gui.batch_base_tree.rows.values()) == []
+    assert list(gui.batch_catalyst_tree.rows.values()) == []
+    coupling_items = {row[0] for row in gui.batch_coupling_reagent_tree.rows.values()}
+    assert coupling_items == {"HBTU"}
     modifier_items = {row[0] for row in gui.batch_modifier_tree.rows.values()}
     assert "Acetic anhydride" in modifier_items
     project_values = next(iter(gui.batch_project_tree.rows.values()))
@@ -334,9 +349,11 @@ def test_compact_material_list_groups_l_d_non_natural_then_chemical():
     assert ("D-AA", "Fmoc-D-Arg(Pbf)-OH") in pairs
     assert ("Non-natural AA", "Fmoc-Cit-OH") in pairs
     assert ("Chemical", "Acetic anhydride") in pairs
-    assert ("Chemical", "FITC isothiocyanate") in pairs
-    assert ("Chemical", "Fmoc-AEEA-OH") in pairs
-    assert any(category == "Chemical" and item.startswith("His6") for category, item in pairs)
+    # R19 intentionally ignores separate PM tag/label/linker fields: only the
+    # sequence itself is imported into the compact Batch preparation calculator.
+    assert ("Chemical", "FITC isothiocyanate") not in pairs
+    assert ("Chemical", "Fmoc-AEEA-OH") not in pairs
+    assert not any(category == "Chemical" and item.startswith("His6") for category, item in pairs)
     for category in ("L-AA", "D-AA", "Non-natural AA", "Chemical"):
         items = [item for current, item in pairs if current == category]
         assert items == sorted(items, key=str.casefold)
@@ -364,4 +381,178 @@ def test_shared_compact_tree_is_not_overwritten_by_chemical_repaint():
     assert ("L-AA", "Fmoc-Val-OH") in pairs
     assert ("D-AA", "Fmoc-D-Arg(Pbf)-OH") in pairs
     assert ("Non-natural AA", "Fmoc-Cit-OH") in pairs
-    assert ("Chemical", "FITC isothiocyanate") in pairs
+    assert ("Chemical", "FITC isothiocyanate") not in pairs
+
+
+def test_r18_legacy_editable_batch_still_restores_saved_operator_rows(tmp_path):
+    from suite_gui import state_persistence
+
+    path = tmp_path / "spps_planner_session_v1.json"
+    saved = {column: "" for column in BATCH_COLUMNS}
+    saved.update({
+        "Project": "Real batch", "Peptide name": "GHK run",
+        "Region 1 seq": "GHK", "Copies": "1",
+        "C-term": "NH2", "Scale mmol": "0.2",
+        "Resin": "Rink Amide AM", "Loading": "0.8",
+    })
+    state_persistence.atomic_write_json(path, {
+        "app_version": "V6.0.0",
+        "pm_items": [{"project": "Project A", "sequence": "GHK"}],
+        "batch_rows": [saved],
+    })
+    gui = type("Gui", (), {})()
+    gui.batch_columns = list(BATCH_COLUMNS)
+    gui.batch_tree = _Tree(BATCH_COLUMNS)
+    gui.pm_items = [{"project": "Project A", "sequence": "GHK"}]
+    gui.state_file = path
+
+    batch_workflow.initialize(gui)
+    rows = batch_workflow._batch_input_rows(gui)
+    assert len(rows) == 1
+    assert rows[0]["Project"] == "Real batch"
+    assert rows[0]["Region 1 seq"] == "GHK"
+
+
+class _Var:
+    def __init__(self, current):
+        self.current = current
+
+    def get(self):
+        return self.current
+
+
+def _r19_compact_gui(pm_items, *, scale="0.2", aa_conc="0.25", aa_eq="5", hbtu_eq="4", hbtu_conc="0.4", round_ml="10", extra_ml="10"):
+    gui = type("Gui", (), {})()
+    gui.pm_items = pm_items
+    gui.batch_default_scale = _Var(scale)
+    gui.batch_solution_conc = _Var(aa_conc)
+    gui.batch_coupling_eq = _Var(aa_eq)
+    gui.batch_hbtu_eq = _Var(hbtu_eq)
+    gui.batch_hbtu_conc = _Var(hbtu_conc)
+    gui.batch_actual_round_ml = _Var(round_ml)
+    gui.batch_actual_extra_ml = _Var(extra_ml)
+    return gui
+
+
+def test_r19_compact_batch_ignores_project_chemistry_and_uses_prep_defaults():
+    gui = _r19_compact_gui([{
+        "project": "P", "peptide": "GHK run", "sequence": "GHK",
+        "copies": "1", "scale": "9.9", "resin": "2-CTC",
+        "loading": "0.65", "chemistry": "DIC/HOBt",
+        "coupling_eq": "2",
+    }], scale="0.2", aa_eq="6", hbtu_eq="4", hbtu_conc="0.4")
+
+    tables = batch_workflow.calculate(gui)
+    coupling = tables["Coupling reagents"]
+    assert set(coupling["Item"]) == {"HBTU"}
+    assert set(coupling["Eq"]) == {4.0}
+    assert "DIC" not in set(coupling["Item"])
+    assert tables["Catalyst/additive"].empty
+    assert tables["Base/Deprotection"].empty
+    assert set(tables["AA stock"]["Eq"]) == {6.0}
+    summary = tables["Summary"].iloc[0]
+    assert float(summary["Scale mmol"]) == 0.2
+    assert summary["Chemistry"] == "Solution prep defaults"
+
+
+def test_r19_compact_batch_rounds_solution_volumes_from_defaults():
+    gui = _r19_compact_gui([{
+        "project": "P", "sequence": "G", "copies": "1",
+        "scale": "99", "chemistry": "DIC/HOBt",
+    }], scale="0.2", aa_conc="0.25", aa_eq="5", hbtu_eq="4", hbtu_conc="0.4", round_ml="10", extra_ml="10")
+
+    tables = batch_workflow.calculate(gui)
+    aa = tables["AA stock"].iloc[0]
+    # 1 residue × 0.2 mmol × 5 eq / 0.25 M = 4 mL -> 10 mL round + 10 mL reserve.
+    assert float(aa["Calculated_mL"]) == pytest.approx(4.0)
+    assert float(aa["Actual_mL"]) == pytest.approx(20.0)
+    hbtu = tables["Coupling reagents"].iloc[0]
+    # 1 × 0.2 × 4 / 0.4 M = 2 mL -> same practical 20 mL prep volume.
+    assert float(hbtu["Calculated_mL"]) == pytest.approx(2.0)
+    assert float(hbtu["Actual_mL"]) == pytest.approx(20.0)
+    nmp = tables["Solvents"].iloc[0]
+    assert nmp["Item"] == "NMP"
+    assert float(nmp["Actual_mL"]) == pytest.approx(20.0)
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="Tk GUI test requires DISPLAY")
+def test_r18_real_tk_batch_auto_aggregates_project_manager_only(monkeypatch, tmp_path):
+    from suite_gui import state_persistence
+    from suite_gui.classic_2094_tk_gui import SPPSGui
+
+    state_path = tmp_path / "spps_planner_session_v1.json"
+    state_persistence.atomic_write_json(state_path, {
+        "app_version": "V6.0.0",
+        "pm_items": [{
+            "project": "GHK project", "peptide": "GHK run",
+            "sequence": "GHK", "copies": "1", "scale": "0.2",
+            "resin": "Rink Amide AM", "loading": "0.8",
+            "chemistry": "DIC/HOBt", "status": "Ready",
+        }],
+        "batch_rows": [],
+    })
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    monkeypatch.setattr(SPPSGui, "_state_file_path", lambda self: state_path, raising=False)
+
+    gui = SPPSGui()
+    try:
+        gui.withdraw()
+        gui.update_idletasks()
+        assert [str(item.get("sequence", "")) for item in gui.pm_items] == ["GHK"]
+
+        # Opening Batch Manager automatically calculates the real PM collection.
+        for tab_id in gui.tabs.tabs():
+            if gui.tabs.tab(tab_id, "text") == "Batch Manager":
+                gui.tabs.select(tab_id)
+                break
+        gui.update()
+        rows = [gui.batch_project_tree.item(iid, "values") for iid in gui.batch_project_tree.get_children()]
+        assert len(rows) == 1
+        assert rows[0][4] == "GHK"
+        assert all("LN" not in str(value) for row in rows for value in row)
+
+        # Refresh is only a recalculation button; it is not an activation gate.
+        before = tuple(rows[0])
+        gui.batch_refresh_totals()
+        gui.update()
+        rows2 = [gui.batch_project_tree.item(iid, "values") for iid in gui.batch_project_tree.get_children()]
+        assert len(rows2) == 1
+        assert tuple(rows2[0]) == before
+    finally:
+        gui.destroy()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="Tk GUI test requires DISPLAY")
+def test_r18_real_tk_blank_project_placeholder_does_not_create_batch_sequence(monkeypatch, tmp_path):
+    from suite_gui import state_persistence
+    from suite_gui.classic_2094_tk_gui import SPPSGui
+
+    state_path = tmp_path / "spps_planner_session_v1.json"
+    state_persistence.atomic_write_json(state_path, {
+        "app_version": "V6.0.0",
+        "pm_items": [{
+            "project": "", "peptide": "", "sequence": "",
+            "copies": "1", "scale": "0.2", "resin": "Rink Amide AM",
+            "loading": "0.8", "chemistry": "DIC/HOBt", "status": "Ready",
+        }],
+        "batch_rows": [],
+    })
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    monkeypatch.setattr(SPPSGui, "_state_file_path", lambda self: state_path, raising=False)
+
+    gui = SPPSGui()
+    try:
+        gui.withdraw()
+        for tab_id in gui.tabs.tabs():
+            if gui.tabs.tab(tab_id, "text") == "Batch Manager":
+                gui.tabs.select(tab_id)
+                break
+        gui.update()
+        assert list(gui.batch_project_tree.get_children()) == []
+        assert list(gui.batch_aa_tree.get_children()) == []
+    finally:
+        gui.destroy()

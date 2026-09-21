@@ -28,7 +28,7 @@ def test_source_icon_is_transparent_and_square() -> None:
 
 
 def test_icon_code_is_structural_and_importable() -> None:
-    for relative in ("suite_gui/modern_tk_gui.py", "peptiforg_core/ui_helpers.py"):
+    for relative in ("suite_gui/classic_base.py", "peptiforg_core/ui_helpers.py"):
         source = (ROOT / relative).read_text(encoding="utf-8")
         ast.parse(source)
         assert "monkey" not in source.lower()
@@ -36,9 +36,17 @@ def test_icon_code_is_structural_and_importable() -> None:
 
 
 def test_windows_icon_is_not_overridden_by_png() -> None:
-    modern = (ROOT / "suite_gui/modern_tk_gui.py").read_text(encoding="utf-8")
     helpers = (ROOT / "peptiforg_core/ui_helpers.py").read_text(encoding="utf-8")
-    assert 'if not applied and png.exists()' in modern
+    classic = (ROOT / "suite_gui/classic_base.py").read_text(encoding="utf-8")
     assert 'if not applied:' in helpers
-    assert 'iconbitmap(default=str(ico))' in modern
     assert 'iconbitmap(default=str(ico))' in helpers
+    assert 'set_spps_planner_icon' in classic
+    assert 'modern_tk_gui' not in classic
+
+
+def test_legacy_pepforge_icons_are_not_packaged_or_used_as_fallback() -> None:
+    assert not (ROOT / "assets" / "Pepforge_Icon.ico").exists()
+    assert not (ROOT / "assets" / "Pepforge_Icon.png").exists()
+    helpers = (ROOT / "peptiforg_core" / "ui_helpers.py").read_text(encoding="utf-8")
+    assert "Pepforge_Icon.ico" not in helpers
+    assert "Pepforge_Icon.png" not in helpers

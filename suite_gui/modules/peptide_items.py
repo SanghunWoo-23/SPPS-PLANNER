@@ -1,10 +1,11 @@
 """Peptide Items list behavior for SPPS Planner V3.0.99.
 
 This is now an extracted implementation, not only a wrapper around legacy
-``_v2093_*`` globals.  It keeps Shift/Ctrl multi-select, Delete, Duplicate,
+historical version-numbered globals.  It keeps Shift/Ctrl multi-select, Delete, Duplicate,
 Ctrl+A, and drag-reorder on one stable route.
 """
 from __future__ import annotations
+from suite_gui import runtime_state
 import copy
 from . import gui_common as state
 
@@ -121,10 +122,10 @@ def move_selected_to(gui, target: int):
 def list_button_press(gui, event):
     try:
         idx = gui.pm_list.nearest(event.y)
-        gui._v2097_drag_start_index = idx
-        gui._v2097_drag_last_target = idx
-        gui._v2097_drag_start_y = event.y
-        gui._v2097_drag_started = False
+        runtime_state.update_drag_state(gui,drag_start_index=idx)
+        runtime_state.update_drag_state(gui,drag_last_target=idx)
+        runtime_state.update_drag_state(gui,drag_start_y=event.y)
+        runtime_state.update_drag_state(gui,drag_started=False)
     except Exception:
         pass
     return None
@@ -134,24 +135,22 @@ def list_motion(gui, event):
     try:
         lb = gui.pm_list
         sels = state.selected_indices(gui)
-        start = getattr(gui, "_v2097_drag_start_index", None)
+        start = runtime_state.get_drag_state(gui).drag_start_index
         if start is None or start not in sels:
             return None
-        if not getattr(gui, "_v2097_drag_started", False):
-            if abs(int(event.y) - int(getattr(gui, "_v2097_drag_start_y", event.y))) < 6:
+        if not runtime_state.get_drag_state(gui).drag_started:
+            if abs(int(event.y) - int(runtime_state.get_drag_state(gui).drag_start_y if runtime_state.get_drag_state(gui).drag_start_y is not None else event.y)) < 6:
                 return None
-            gui._v2097_drag_started = True
+            runtime_state.update_drag_state(gui,drag_started=True)
         target = lb.nearest(event.y)
-        if target != getattr(gui, "_v2097_drag_last_target", None):
+        if target != runtime_state.get_drag_state(gui).drag_last_target:
             move_selected_to(gui, target)
-            gui._v2097_drag_last_target = target
+            runtime_state.update_drag_state(gui,drag_last_target=target)
         return "break"
     except Exception:
         return None
 
 
 def list_release(gui, event=None):
-    for attr in ("_v2097_drag_start_index", "_v2097_drag_last_target", "_v2097_drag_started"):
-        try: setattr(gui, attr, None)
-        except Exception: pass
+    runtime_state.update_drag_state(gui, drag_start_index=None, drag_last_target=None, drag_started=False)
     return None

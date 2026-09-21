@@ -351,12 +351,29 @@ def _is_canonical_default_path(destination: Path) -> bool:
         return False
 
 
+class _ClosingConnection(sqlite3.Connection):
+    """SQLite connection whose context manager also releases the file handle.
+
+    ``sqlite3.Connection`` commits/rolls back on ``with`` exit but does not close
+    the connection.  That is easy to miss on POSIX because an open SQLite file can
+    still be unlinked, but it leaves ``preview.sqlite`` locked on Windows.  All
+    experimental-data connections are scoped with ``with _connect(...)`` so closing
+    here preserves transaction semantics and guarantees deterministic handle release.
+    """
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def _connect(path: str | Path | None = None) -> sqlite3.Connection:
     destination = Path(path) if path else default_db_path()
     if _is_canonical_default_path(destination):
         _maybe_clone_legacy_db(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(destination)
+    con = sqlite3.connect(destination, factory=_ClosingConnection)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
     return con

@@ -4,53 +4,145 @@
 
 # SPPS Planner v7.0.0
 
-**고체상 펩타이드 합성(SPPS) 계획·계산·기록을 지원하는 Windows 중심 데스크톱 프로그램**
+**고체상 펩타이드 합성(SPPS)의 계획·계산·Batch 준비·Cleavage/Workup·실험 근거 확인을 지원하는 Windows 중심 데스크톱 프로그램**
+
+Project Manager · Exact bottle setup · Editable Plan · Materials · Checklist · Batch Manager · Loading · Cleavage · Workup · Experimental History
 
 [![Release](https://img.shields.io/badge/release-v7.0.0-2563EB?style=for-the-badge)](VERSION)
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](requirements.txt)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white)](#빠른-시작)
 
-[English](README.md) · [사용자 매뉴얼](docs/USER_MANUAL_KO.md) · [Architecture](docs/ARCHITECTURE.md) · [Public Data Policy](PUBLIC_DATA_POLICY.md)
+**[English README](README.md) · [한국어 사용자 매뉴얼](docs/USER_MANUAL_KO.md) · [English User Manual](docs/USER_MANUAL_EN.md)**
+
+Repository: **SanghunWoo-23/SPPS-PLANNER**
 
 </div>
 
-## 소개
+> **현재 공개 버전: v7.0.0 Final R2.**  
+> GitHub 배포 ZIP은 프로그램 기능 변경 없이 패키징 문제만 수정한 revision이 추가될 수 있습니다.
 
-SPPS Planner는 peptide synthesis setup을 입력하면 합성 Plan, Materials, Checklist, Batch 계산과 관련 기록을 연결해 주는 데스크톱 도구입니다.
+---
 
-V7의 기본 흐름은 다음과 같습니다.
+## SPPS Planner란?
+
+SPPS Planner는 **고체상 펩타이드 합성(SPPS)** 조건을 설정하고 계산 결과를 한곳에서 관리하기 위한 데스크톱 작업 도구입니다.
+
+V7의 중심 흐름은 **Project Manager**입니다.
 
 ```text
-Project Manager
-  → Add / Edit peptide
-  → Sequence / Scale / Resin / Loading / exact bottle 설정
-  → Generate
-  → Plan / Materials / Checklist / Cleavage 검토
-  → Batch Manager / Export
+Add / Edit peptide
+      ↓
+Sequence + Scale + Resin + Loading + Exact bottles
+      ↓
+Generate
+      ↓
+Plan
+ ├─ Materials
+ ├─ Checklist
+ ├─ Total Materials
+ ├─ Cleavage Cocktail
+ └─ Workup
+      ↓
+Batch Manager / Experimental records / Recommendations
 ```
 
-## V7 주요 기능
+V7은 기존 검증된 계산 동작을 유지하면서 실제 사용 흐름을 단순화하고 입력 오류를 줄이는 데 초점을 두었습니다.
 
-- **Project Manager 중심 Add/Edit workflow**
-- Sequence, Scale, Copies, Resin, Loading, LOT를 한 화면에서 설정
-- Coupling reagent / Additive / Base / Solvent를 **exact bottle identity**로 관리
-- **My recipes** 저장 / 불러오기 / Rename / Delete / Favorite / Backup / Import
-- 최근 사용 recipe와 bottle을 빠르게 재사용
-- STEP 3에서 저장 전 setup 검토 및 변경사항 확인
-- synthesis-defining edit 시 해당 peptide의 오래된 계산 결과만 무효화
-- Project Manager에서 Ready / Calculated / Error 상태 확인
-- Batch Manager solution-prep defaults와 peptide-specific recipe 분리
-- Loading / Cleavage recommendation과 실험 기록 지원
-- Public build는 Private 실험 이력, 회사 로컬 DB, 원본 실험 사진을 포함하지 않음
+---
+
+## 주요 기능
+
+### Project Manager Add / Edit
+
+각 peptide에 다음 조건을 저장할 수 있습니다.
+
+- Project / Peptide name
+- Sequence
+- Scale / Copies
+- Resin / Loading
+- LOT No.
+- Coupling reagent / activator
+- Additive / catalyst
+- Base
+- Solvent
+
+Reagent library에서 정확한 bottle identity를 선택하거나 직접 입력할 수 있습니다.
+
+### My recipes
+
+자주 사용하는 coupling 조합을 로컬에 저장할 수 있습니다.
+
+지원 기능:
+
+- Save
+- Load
+- Rename
+- Delete
+- Favorite
+- Backup / Import
+- 최근 recipe / 최근 bottle 바로가기
+
+### 결과 통합 계산
+
+`Generate`를 실행하면 현재 peptide 조건을 기준으로 다음 결과가 함께 갱신됩니다.
+
+- Plan
+- Materials
+- Checklist
+- Total Materials
+- Cleavage Cocktail
+- Workup
+
+Plan을 직접 수정한 경우에는 기존 Apply Change workflow로 현재 수정값을 유지하면서 연동 결과를 다시 계산할 수 있습니다.
+
+### 2-CTC Direct loading
+
+**2-CTC**를 선택하면 Direct resin loading이 자동으로 활성화됩니다.
+
+기본 loading 조건:
+
+```text
+Resin        1 eq
+Amino acid   2 eq
+DIEA         4 eq
+```
+
+이미 loading 된 2-CTC resin을 사용하는 경우 사용자가 직접 체크를 해제할 수 있습니다.
+
+다른 resin은 Direct loading이 자동 적용되지 않습니다.
+
+### Cleavage / Workup
+
+Cleavage 계산은 Project Manager 결과 탭과 연결되어 있습니다.
+
+Post-cleavage workup 선택:
+
+- Ethyl Ether
+- n-Hexane
+- Ether / n-Hexane 1:1
+- 실제 사용 volume 직접 입력
+
+Workup solvent는 cleavage cocktail과 별도로 관리되며 Materials / Total Materials에도 반영됩니다.
+
+### Batch Manager
+
+Batch Manager는 Project Manager의 실제 peptide sequence를 읽어 solution preparation 양을 계산합니다.
+
+Project별 coupling bottle 설정이 Batch Manager의 preparation default를 자동으로 덮어쓰지 않습니다.
+
+---
 
 ## 빠른 시작
 
 ### 권장 환경
 
 - Windows 10 / 11
-- Python 3.11 또는 3.12 (64-bit)
+- 64-bit Python 3.11 또는 3.12
+- Tk 사용이 가능한 Python 환경
 
 ### 소스에서 실행
+
+Repository root에서:
 
 ```bat
 python -m venv .venv
@@ -60,58 +152,67 @@ python -m pip install -r requirements.txt
 python main_launcher.py
 ```
 
-### 개발 / 검증
+### Windows EXE / Installer 만들기
+
+배포 패키지에는 Windows build에 필요한 파일이 포함되어 있습니다.
+
+가장 간단한 방법:
 
 ```bat
-python -m pip install -r requirements.txt -r requirements-dev.txt
-python tools\verify_release.py
+INSTALL_BUILD_TOOLS_AND_BUILD.bat
 ```
 
-Windows 패키징은 [docs/WINDOWS_BUILD_KO.md](docs/WINDOWS_BUILD_KO.md)를 참고하십시오.
+개별 실행도 가능합니다.
 
-## 기본 사용법
+```bat
+BUILD_EXE_ONLY.bat
+BUILD_INSTALLER.bat
+```
 
-1. **Project Manager → Add**를 선택합니다.
-2. Sequence, Scale, Resin, Loading 등 peptide 조건을 입력합니다.
-3. Reagent / Additive / Base / Solvent를 선택합니다.
-4. STEP 3에서 setup을 검토한 뒤 저장합니다.
-5. **Generate**로 Plan을 생성합니다.
-6. 필요하면 Plan을 수정하고 **Apply Change**로 연결 계산을 갱신합니다.
-7. Materials / Checklist / Cleavage / Batch 정보를 확인합니다.
+`INSTALL_BUILD_TOOLS_AND_BUILD.bat`은 `requirements-dev.txt`를 사용하며, build 가능한 Release 패키지에는 해당 파일이 포함되어 있습니다.
 
-자세한 사용법은 [한국어 사용자 매뉴얼](docs/USER_MANUAL_KO.md)을 참고하십시오.
+---
 
-## 중요한 chemistry identity 예시
+## Public 데이터 정책
 
-- `NMM` = N-Methylmorpholine, **Base**
-- `NMP` = N-methyl-2-pyrrolidone, **Solvent**
-- `HOBt (anhydrous)`와 `HOBt hydrate / monohydrate`는 별도 bottle identity로 취급
+GitHub Public 패키지에는 다음 자료를 포함하지 않습니다.
 
-## 공개 데이터 정책
+- Private 실험 이력
+- 내부 실험 DB
+- 기밀 sample / sequence 정보
+- 원본 실험 사진
+- Private model artifact
+- 사용자 runtime/export 데이터
 
-Public repository에는 회사 내부 실험 history/seed, 원본 실험 사진, 로컬 SQLite DB, confidential sample 정보가 포함되지 않습니다.
+사용자가 직접 보유하고 사용 권한이 있는 데이터만 로컬로 추가하거나 공개해야 합니다.
 
-자세한 내용은 [PUBLIC_DATA_POLICY.md](PUBLIC_DATA_POLICY.md)를 참고하십시오.
+---
 
-## 문서
+## 과학적 사용 범위
 
-| 문서 | 내용 |
-| --- | --- |
-| [사용자 매뉴얼](docs/USER_MANUAL_KO.md) | 상세 사용법 |
-| [English User Manual](docs/USER_MANUAL_EN.md) | English manual |
-| [Architecture](docs/ARCHITECTURE.md) | 코드 구조 및 주요 컴포넌트 |
-| [Reagent DB Schema](docs/SPPS_REAGENT_DATABASE_SCHEMA.md) | Reagent database schema |
-| [Parser Contract](docs/SPPS_PARSER_CONTRACT.md) | Sequence parser contract |
-| [Windows Build](docs/WINDOWS_BUILD_KO.md) | Windows EXE / installer build |
-| [Release Notes](RELEASE_NOTES_V7.0.0_FINAL.md) | v7.0.0 릴리스 요약 |
+SPPS Planner는 연구 계획, 계산, 기록 및 의사결정 보조를 위한 프로그램입니다.
 
-## 개발 원칙
+다음을 대체하지 않습니다.
 
-- Public / Private 계보 분리
-- runtime monkey patch / placeholder / dummy production implementation 금지
-- 계산 결과와 실험 근거의 출처를 가능한 한 명확히 구분
-- 기존 검증된 chemistry behavior를 UI 변경 때문에 우발적으로 변경하지 않음
+- 승인된 SOP
+- SDS 및 기관 안전 규정
+- 숙련된 작업자의 판단
+- 검증된 분석법
+- 실제 합성 결과 확인
+- 필요한 경우의 GMP/GLP 공식 문서
 
-## License
+Recommendation은 표시된 근거와 provenance를 함께 확인해야 합니다.
 
-라이선스 조건은 [LICENSE](LICENSE)를 확인하십시오.
+---
+
+## License / Citation
+
+전체 라이선스 조건은 [LICENSE](LICENSE)를 확인하십시오.
+
+학술 연구에서 SPPS Planner를 사용한 경우 software와 해당 tagged release를 인용해 주십시오.
+
+권장 표기:
+
+> Woo, S. **SPPS Planner: Solid-Phase Peptide Synthesis Planning and Evidence-Driven Decision Support.** Version 7.0.0. GitHub repository, 2026.
+
+Citation metadata는 [CITATION.cff](CITATION.cff)를 참고하십시오.

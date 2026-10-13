@@ -4,42 +4,133 @@
 
 # SPPS Planner v7.0.0
 
-**Windows-first desktop software for solid-phase peptide synthesis planning, calculation, and experiment-aware workflow support**
+**Windows-first desktop software for solid-phase peptide synthesis planning, calculation, batch preparation, cleavage/workup planning, and evidence-assisted laboratory workflows**
+
+Project Manager · Exact bottle setup · Editable Plan · Materials · Checklist · Batch Manager · Loading · Cleavage · Workup · Experimental History
 
 [![Release](https://img.shields.io/badge/release-v7.0.0-2563EB?style=for-the-badge)](VERSION)
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](requirements.txt)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white)](#quick-start)
 
-[한국어](README_KO.md) · [User Manual](docs/USER_MANUAL_EN.md) · [Architecture](docs/ARCHITECTURE.md) · [Public Data Policy](PUBLIC_DATA_POLICY.md)
+**[한국어 README](README_KO.md) · [English User Manual](docs/USER_MANUAL_EN.md) · [한국어 사용자 매뉴얼](docs/USER_MANUAL_KO.md)**
+
+Repository: **SanghunWoo-23/SPPS-PLANNER**
 
 </div>
 
+> **Current release: v7.0.0 Final R2.**  
+> The GitHub release package may receive packaging-only revisions without changing the V7 chemistry engine or planner behavior.
+
+---
+
 ## Overview
 
-SPPS Planner connects peptide setup, synthesis planning, materials, checklists, batch calculations, cleavage settings, and experiment-aware records in one desktop workflow.
+SPPS Planner is a desktop workbench for planning and reviewing **solid-phase peptide synthesis (SPPS)** workflows.
+
+The V7 workflow is centered on **Project Manager**:
 
 ```text
-Project Manager
-  → Add / Edit peptide
-  → Sequence / Scale / Resin / Loading / exact bottle setup
-  → Generate
-  → Review Plan / Materials / Checklist / Cleavage
-  → Batch Manager / Export
+Add / Edit peptide
+      ↓
+Sequence + Scale + Resin + Loading + Exact bottles
+      ↓
+Generate
+      ↓
+Plan
+ ├─ Materials
+ ├─ Checklist
+ ├─ Total Materials
+ ├─ Cleavage Cocktail
+ └─ Workup
+      ↓
+Batch Manager / Experimental records / Recommendations
 ```
 
-## V7 highlights
+V7 focuses on making the synthesis setup easier to use while keeping the validated chemistry behavior stable.
 
-- Project Manager-centered Add/Edit workflow
-- Sequence, scale, copies, resin, loading, and LOT setup in one dialog
-- Exact bottle identity for coupling reagent / additive / base / solvent
-- **My recipes**: save, load, rename, delete, favorite, backup, and import
-- Recent recipe and bottle shortcuts
-- STEP 3 review before save and edit-change summary
-- Targeted stale-result invalidation after synthesis-defining edits
-- Ready / Calculated / Error status visibility in Project Manager
-- Peptide-specific recipes kept separate from Batch Manager solution-prep defaults
-- Loading / Cleavage recommendation and experimental-record support
-- Public build excludes private laboratory history, local company databases, and original experimental images
+---
+
+## Main features
+
+### Project Manager Add / Edit
+
+Each peptide can store:
+
+- Project and peptide name
+- Sequence
+- Scale and copies
+- Resin and loading
+- LOT number
+- Coupling reagent / activator
+- Additive / catalyst
+- Base
+- Solvent
+
+Exact bottle names can be selected from the local reagent library or entered manually.
+
+### My recipes
+
+Frequently used coupling combinations can be saved locally.
+
+Supported actions include:
+
+- Save
+- Load
+- Rename
+- Delete
+- Favorite
+- Backup / Import
+- Recent recipe and recent bottle shortcuts
+
+### Unified calculation
+
+`Generate` refreshes the connected calculation views from the current peptide setup:
+
+- Plan
+- Materials
+- Checklist
+- Total Materials
+- Cleavage Cocktail
+- Workup
+
+Manual Plan edits can be retained and recalculated through the existing Apply Change workflow.
+
+### 2-CTC direct loading
+
+When **2-CTC** is selected, Direct resin loading is enabled automatically.
+
+Default loading conditions:
+
+```text
+Resin        1 eq
+Amino acid   2 eq
+DIEA         4 eq
+```
+
+The option can be disabled manually when an already-loaded 2-CTC resin is used.
+
+Other resin types do not automatically enable Direct resin loading.
+
+### Cleavage and workup
+
+Cleavage calculation is integrated with the Project Manager result views.
+
+Post-cleavage workup options include:
+
+- Ethyl Ether
+- n-Hexane
+- Ether / n-Hexane 1:1
+- Custom workup volume
+
+Workup solvents are kept separate from the cleavage cocktail and are included in Materials / Total Materials.
+
+### Batch Manager
+
+Batch Manager reads real peptide sequences from Project Manager and calculates solution-preparation quantities from its own visible preparation defaults.
+
+Project-specific coupling bottle choices do not silently rewrite Batch Manager preparation defaults.
+
+---
 
 ## Quick start
 
@@ -47,8 +138,11 @@ Project Manager
 
 - Windows 10 / 11
 - 64-bit Python 3.11 or 3.12
+- Tk-capable Python installation
 
 ### Run from source
+
+From the repository root:
 
 ```bat
 python -m venv .venv
@@ -58,58 +152,62 @@ python -m pip install -r requirements.txt
 python main_launcher.py
 ```
 
-### Development / verification
+### Build the Windows executable / installer
+
+The release package includes the files required for the Windows build workflow.
+
+The easiest entry point is:
 
 ```bat
-python -m pip install -r requirements.txt -r requirements-dev.txt
-python tools\verify_release.py
+INSTALL_BUILD_TOOLS_AND_BUILD.bat
 ```
 
-See [docs/WINDOWS_BUILD_KO.md](docs/WINDOWS_BUILD_KO.md) for Windows packaging.
+Individual build scripts are also available:
 
-## Basic workflow
+```bat
+BUILD_EXE_ONLY.bat
+BUILD_INSTALLER.bat
+```
 
-1. Open **Project Manager → Add**.
-2. Enter the peptide sequence and synthesis setup.
-3. Select reagent / additive / base / solvent identities.
-4. Review STEP 3 and save.
-5. Select **Generate** to create the synthesis Plan.
-6. Edit the Plan when needed and use **Apply Change** to refresh connected calculations.
-7. Review Materials, Checklist, Cleavage, and Batch outputs.
+`requirements-dev.txt` is required for the build-tool installation workflow and is included in the buildable release package.
 
-For details, see the [User Manual](docs/USER_MANUAL_EN.md).
-
-## Chemistry identity examples
-
-- `NMM` = N-Methylmorpholine, **Base**
-- `NMP` = N-methyl-2-pyrrolidone, **Solvent**
-- `HOBt (anhydrous)` and `HOBt hydrate / monohydrate` remain separate bottle identities
+---
 
 ## Public data policy
 
-The public repository does not include private experimental history/seeds, source laboratory photographs, company-local SQLite databases, or confidential sample information.
+The public GitHub package does **not** bundle private laboratory history, private experimental databases, confidential sample/sequence information, private source photographs, or private model artifacts.
 
-See [PUBLIC_DATA_POLICY.md](PUBLIC_DATA_POLICY.md).
+Runtime data are stored outside the repository in the application's user-data area.
 
-## Documentation
+Only data that the user is authorized to use should be imported or published.
 
-| Document | Purpose |
-| --- | --- |
-| [User Manual](docs/USER_MANUAL_EN.md) | Detailed usage |
-| [한국어 사용자 매뉴얼](docs/USER_MANUAL_KO.md) | Korean manual |
-| [Architecture](docs/ARCHITECTURE.md) | Source architecture |
-| [Reagent DB Schema](docs/SPPS_REAGENT_DATABASE_SCHEMA.md) | Reagent database schema |
-| [Parser Contract](docs/SPPS_PARSER_CONTRACT.md) | Sequence parser contract |
-| [Windows Build](docs/WINDOWS_BUILD_KO.md) | EXE / installer build |
-| [Release Notes](RELEASE_NOTES_V7.0.0_FINAL.md) | v7.0.0 release summary |
+---
 
-## Development principles
+## Scientific scope
 
-- Keep Public and Private ancestry separate.
-- No runtime monkey-patch stack or placeholder/dummy production implementation.
-- Keep recommendation provenance explicit where possible.
-- Do not change validated chemistry behavior incidentally during UI refactoring.
+SPPS Planner is intended for research planning, calculation, traceability, and laboratory decision support.
 
-## License
+It does not replace:
 
-See [LICENSE](LICENSE).
+- approved SOPs
+- reagent SDS and institutional safety rules
+- trained operator review
+- validated analytical methods
+- experimental confirmation
+- formal GMP/GLP documentation where required
+
+Recommendation outputs should always be interpreted together with their displayed evidence/provenance.
+
+---
+
+## License and citation
+
+See [LICENSE](LICENSE) for the complete license terms.
+
+If SPPS Planner contributes to academic work, cite the software and the corresponding tagged release.
+
+Suggested citation:
+
+> Woo, S. **SPPS Planner: Solid-Phase Peptide Synthesis Planning and Evidence-Driven Decision Support.** Version 7.0.0. GitHub repository, 2026.
+
+See [CITATION.cff](CITATION.cff) for citation metadata.

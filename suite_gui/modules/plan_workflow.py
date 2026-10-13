@@ -28,8 +28,8 @@ from suite_gui import state_persistence
 from suite_gui import position_rules
 from suite_gui.error_policy import log_nonfatal
 
-VERSION = "V6.0.0"
-TITLE = "SPPS Planner V6.0.0"
+VERSION = "V7.0.0"
+TITLE = "SPPS Planner V7.0.0 Final"
 
 PLAN_COLUMNS = [
     "No", "Unit name", "MW", "Density(g/mL)", "Unit eq", "Unit mmol", "Unit amount",
@@ -134,6 +134,7 @@ def _lookup(gui, ns: dict[str, Any], name: str) -> tuple[float, float]:
         "aceticanhydrideac2o": (102.09, 1.08), "ac2o": (102.09, 1.08),
         "dic": (126.20, 0.815), "diea": (129.25, 0.742), "dipea": (129.25, 0.742),
         "hobt": (135.13, 0.0), "hobtanhydrous": (135.13, 0.0),
+        "hobthydrate": (153.14, 0.0),
         "dmf": (73.09, 0.944), "dcm": (84.93, 1.325), "mcdcm": (84.93, 1.325),
         "nmp": (99.13, 1.03), "piperidine": (85.15, 0.862),
     }
@@ -259,12 +260,19 @@ def _build_plan_input(gui, ns: dict[str, Any]):
     base_count = max(0, int(round(_num(_var(gui, "default_base_count", 0), 0))))
     reaction_solvent = str(getattr(base, "default_reaction_solvent", "") or "DMF")
 
-    if "HBTU" in chemistry and "10EQ" in chemistry:
+    if chemistry.replace(" ", "") in {"HBTU/NMM", "HBTU/NMP"}:
+        # Historical "NMP" in this saved route meant N-methylmorpholine (NMM),
+        # i.e. the coupling base, never the reaction solvent. Other HBTU recipes
+        # keep their explicitly selected additive/base from the Project item.
         follows = False
-        reagent_name, reagent_eq, reagent_count = "HBTU", 10.0, 1
+        reagent_name = "HBTU"
+        reagent_eq = _num(_var(gui, "default_reagent_eq", 10), 10.0)
+        reagent_count = max(1, int(round(_num(_var(gui, "default_reagent_count", 1), 1))))
         catalyst_name, catalyst_eq, catalyst_count = "", 0.0, 0
-        base_name, base_eq, base_count = "DIEA", 5.0, 1
-        reaction_solvent = "NMP"
+        base_name = "NMM"
+        base_eq = _num(_var(gui, "default_base_eq", 5), 5.0)
+        base_count = max(1, int(round(_num(_var(gui, "default_base_count", 1), 1))))
+        reaction_solvent = str(_var(gui, "default_coupling_solution_solvent", "DMF") or "DMF")
 
     return replace(
         base,
@@ -969,6 +977,42 @@ def _write_linked(
                 "note": f"{record.get('percent', '')}% {record.get('percent_basis', '')}".strip(),
                 "source": "Cleavage cocktail",
             })
+    # Precipitation/workup solvent is deliberately separate from the cleavage
+    # cocktail, but it belongs in Materials/Total Materials once a current-scale
+    # cocktail amount is known.  The operator may enter an exact volume; otherwise
+    # the visible ratio is applied to the calculated cocktail volume.
+    if include_cleavage and cleavage is not None and not cleavage.empty:
+        workup_solvent = str(_var(gui, "workup_solvent", "Ethyl Ether") or "Ethyl Ether").strip()
+        explicit_workup_ml = _num(_var(gui, "workup_volume_mL", ""), 0.0)
+        workup_ratio = _num(_var(gui, "workup_ratio", "10"), 10.0)
+        cocktail_ml = 0.0
+        for record in cleavage.fillna("").to_dict("records"):
+            component = str(record.get("component", "") or "").strip()
+            if component in {"Total cocktail", "Cys warning", "2-CTC/Trityl warning"}:
+                continue
+            cocktail_ml += max(0.0, _num(record.get("volume_mL"), 0.0))
+        workup_ml = explicit_workup_ml if explicit_workup_ml > 0 else cocktail_ml * max(0.0, workup_ratio)
+        if workup_solvent and workup_solvent.lower() != "none" and workup_ml > 0:
+            split = [(workup_solvent, workup_ml)]
+            if workup_solvent == "Ether/n-Hexane 1:1":
+                split = [("Ethyl Ether", workup_ml / 2.0), ("n-Hexane", workup_ml / 2.0)]
+            for solvent_name, solvent_ml in split:
+                materials.append({
+                    "step": "workup",
+                    "material": solvent_name,
+                    "class": "Precipitation/Workup solvent",
+                    "MW": "",
+                    "density_g_per_mL": "",
+                    "planned_mmol": "",
+                    "planned_g": "",
+                    "planned_mL": _fmt(solvent_ml),
+                    "use_count": 1,
+                    "repeat": 1,
+                    "phase": "Post-cleavage workup",
+                    "note": ("operator volume" if explicit_workup_ml > 0 else f"{_fmt(workup_ratio)}× cleavage cocktail volume"),
+                    "source": "Workup settings",
+                })
+
     total_rows = _total_rows(materials)
     cleavage_rows = (
         cleavage.fillna("").to_dict("records")
@@ -1024,10 +1068,6 @@ def _refresh_cleavage(gui, ns: dict[str, Any], inp=None, *, paint: bool = True):
     """Generate cleavage only from an explicit operator entry/preset."""
     components = str(_var(gui, "cleavage_components_text", "") or "").strip()
     preset = str(_var(gui, "cleavage_preset", "") or "").strip()
-    if not components and preset.upper() in {"", "AUTO"}:
-        if paint:
-            workspace_widgets._clear_tree(getattr(gui, "pm_cleavage_tree", None))
-        return pd.DataFrame()
     try:
         inp = inp or _build_plan_input(gui, ns)
         from spps_planner.engine import generate_cleavage_cocktail
@@ -1258,11 +1298,11 @@ def generate(gui, ns: dict[str, Any]):
         clear_dirty_columns(gui)
         _bind_plan_editor(gui, ns)
         # Generate is the one-click synthesis calculation: Plan, Materials,
-        # Checklist and Total Materials are all calculated and painted now.
-        # Cleavage remains an explicit Apply Change operation.
+        # Every result tab is calculated from the same current snapshot now:
+        # Plan, Materials, Checklist, Total Materials and Cleavage/Workup.
         _write_linked(
             gui, ns, inp,
-            include_cleavage=False,
+            include_cleavage=True,
             paint_all_linked=True,
         )
         index = _active_index(gui)
@@ -1525,6 +1565,10 @@ def _install_result_tabs(gui, ns):
 def _install_traces(gui):
     names = [
         "pm_project", "pm_peptide", "pm_sequence", "pm_scale", "pm_resin", "pm_loading", "pm_lot", "pm_chemistry", "pm_copies",
+        "coupling_eq", "default_reagent", "default_reagent_eq", "default_reagent_count",
+        "default_catalyst", "default_catalyst_eq", "default_catalyst_count",
+        "default_base", "default_base_eq", "default_base_count",
+        "default_coupling_solution_solvent", "reagent_eq_follows_coupling_eq",
         "apply_loading_calc", "loading_aa_eq", "loading_diea_eq", "loading_time_h", "cleavage_preset", "cleavage_eq_override", "cleavage_components_text", "cleavage_time_h",
         "post_cleavage_rescue", "nh4i_eq", "nh4i_concentration_m", "nh4i_time_h",
     ]
@@ -1757,7 +1801,7 @@ def export_outputs(gui, ns):
             "nh4i_eq": item.get("nh4i_eq", "2"), "nh4i_concentration_m": item.get("nh4i_concentration_m", "0.2"), "nh4i_time_h": item.get("nh4i_time_h", "1"),
         }])
 
-        xlsx = out / "project_manager_selected_outputs_v6.0.0.xlsx"
+        xlsx = out / "project_manager_selected_outputs_v7.0.0.xlsx"
         with pd.ExcelWriter(xlsx, engine="openpyxl") as writer:
             editor_summary.to_excel(writer, index=False, sheet_name="00_EDITOR_SUMMARY")
             visible_plan.to_excel(writer, index=False, sheet_name="01_SELECTED_PLAN_VISIBLE")
@@ -1783,7 +1827,7 @@ def export_outputs(gui, ns):
             "active_index": index, "pm_items": list(getattr(gui, "pm_items", []) or []),
             "visible_selected_plan_source": "current edited TreeView; Apply Change-linked V6.0.0 tables; no regeneration during export",
         }
-        (out / "project_manager_state_v6.0.0.json").write_text(
+        (out / "project_manager_state_v7.0.0.json").write_text(
             json.dumps(state, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
         )
         gui.last_outdir = out

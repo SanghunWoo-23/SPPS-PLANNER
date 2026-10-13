@@ -16,7 +16,7 @@ def _about(gui: Any) -> None:
     from suite_gui.runtime_selftest import BUILD_REVISION
     messagebox.showinfo(
         "About SPPS Planner",
-        "SPPS Planner V6.0.0\n\n"
+        "SPPS Planner V7.0.0 Final\n\n"
         f"Build revision: {BUILD_REVISION}\n"
         "Modern/Classic hybrid workspace\n"
         "V3 planning workflow preserved + V4 Experimental Data / ML Advisors",
@@ -136,7 +136,7 @@ def install_menu(gui: Any) -> tk.Menu:
     synthesis_menu.add_command(label="Apply Change", accelerator="Ctrl+Enter", command=_command(gui, "apply_change"))
     synthesis_menu.add_separator()
     synthesis_menu.add_command(label="DIC / HOBt Preset", command=_command(gui, "apply_dic_hobt_preset"))
-    synthesis_menu.add_command(label="HBTU / NMP 10 eq Preset", command=_command(gui, "apply_hbtu_nmp_preset"))
+    synthesis_menu.add_command(label="HBTU / NMM Preset", command=_command(gui, "apply_hbtu_nmp_preset"))
     menu.add_cascade(label="Synthesis", menu=synthesis_menu)
 
     view_menu = tk.Menu(menu, tearoff=False)

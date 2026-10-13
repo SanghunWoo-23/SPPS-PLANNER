@@ -29,6 +29,8 @@ def _fake_gui():
         default_base_count=Var(''),
         batch_hbtu_eq=Var(''),
         batch_hbtu_conc=Var(''),
+        batch_nmm_eq=Var(''),
+        batch_nmm_conc=Var(''),
         schedule_autosave=lambda: calls.__setitem__('autosave', calls['autosave'] + 1),
     )
     return gui, calls
@@ -45,14 +47,16 @@ def test_dic_hobt_button_updates_chemistry_without_generating_plan(monkeypatch):
     assert calls['autosave'] == 1
 
 
-def test_hbtu_nmp_button_updates_chemistry_without_generating_plan(monkeypatch):
+def test_hbtu_nmm_button_updates_chemistry_without_generating_plan(monkeypatch):
     gui, calls = _fake_gui()
-    chemistry_workflow.apply_hbtu_nmp(gui)
+    chemistry_workflow.apply_hbtu_nmm(gui)
 
-    assert gui.pm_chemistry.get() == 'HBTU/NMP 10eq'
+    assert gui.pm_chemistry.get() == 'HBTU/NMM'
     assert gui.default_reagent.get() == 'HBTU'
-    assert gui.default_base.get() == 'DIEA'
-    assert gui.default_coupling_solution_solvent.get() == 'NMP'
+    assert gui.default_base.get() == 'NMM'
+    assert gui.default_coupling_solution_solvent.get() == 'DMF'
     assert gui.batch_hbtu_eq.get() == '10'
     assert gui.batch_hbtu_conc.get() == '0.4'
+    assert gui.batch_nmm_eq.get() == '5'
+    assert gui.batch_nmm_conc.get() == '0.8'
     assert calls['autosave'] == 1

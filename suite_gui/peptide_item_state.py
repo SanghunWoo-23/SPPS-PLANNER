@@ -16,6 +16,18 @@ EDITOR_FIELDS = (
     ("pm_lot", "lot", ""),
     ("pm_chemistry", "chemistry", "DIC/HOBt"),
     ("pm_copies", "copies", "1"),
+    ("coupling_eq", "coupling_eq", "5"),
+    ("default_reagent", "default_reagent", "DIC"),
+    ("default_reagent_eq", "default_reagent_eq", "5"),
+    ("default_reagent_count", "default_reagent_count", "1"),
+    ("default_catalyst", "default_catalyst", "HOBt"),
+    ("default_catalyst_eq", "default_catalyst_eq", "5"),
+    ("default_catalyst_count", "default_catalyst_count", "1"),
+    ("default_base", "default_base", ""),
+    ("default_base_eq", "default_base_eq", "0"),
+    ("default_base_count", "default_base_count", "0"),
+    ("default_coupling_solution_solvent", "default_coupling_solution_solvent", "DMF"),
+    ("reagent_eq_follows_coupling_eq", "reagent_eq_follows_coupling_eq", True),
     ("loading_aa_eq", "loading_aa_eq", "2"),
     ("loading_diea_eq", "loading_diea_eq", "4"),
     ("loading_time_h", "loading_time_h", ""),
@@ -24,6 +36,9 @@ EDITOR_FIELDS = (
     ("cleavage_eq_override", "cleavage_eq_override", "0"),
     ("cleavage_components_text", "cleavage_components_text", ""),
     ("cleavage_time_h", "cleavage_time_h", ""),
+    ("workup_solvent", "workup_solvent", "Ethyl Ether"),
+    ("workup_volume_mL", "workup_volume_mL", ""),
+    ("workup_ratio", "workup_ratio", "10"),
 )
 
 OUTPUT_TREES = (

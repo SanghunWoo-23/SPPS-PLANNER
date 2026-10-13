@@ -7,8 +7,8 @@ authors:
     given-names: "Sanghun"
 repository-code: "https://github.com/SanghunWoo-23/SPPS-PLANNER"
 url: "https://github.com/SanghunWoo-23/SPPS-PLANNER"
-version: "6.0.0"
-date-released: "2026-09-21"
+version: "7.0.0-rc7"
+date-released: "2026-09-29"
 abstract: >-
   SPPS Planner is a Windows-first desktop application for solid-phase peptide
   synthesis planning, editable workflow calculation, material/checklist/batch

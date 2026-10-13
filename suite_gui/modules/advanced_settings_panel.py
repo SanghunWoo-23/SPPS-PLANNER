@@ -85,9 +85,9 @@ def build_advanced_tab(gui, notebook) -> None:
     chem.columnconfigure(1, weight=1)
     reagent_values = ["DIC", "HBTU", "HATU", "HCTU", "TBTU", "TSTU", "TNTU", "PyBOP", "PyBrOP", "PyClocK", "COMU", "DCC", "EDC-HCl", "DEPBT", "Ghosez reagent", ""]
     rows = [
-        ("Coupling reagent", gui.default_reagent, reagent_values),
-        ("Catalyst/additive", gui.default_catalyst, ["HOBt", "HOAt", "Oxyma", ""]),
-        ("Base", gui.default_base, ["", "DIEA", "DIPEA", "TEA", "NMM"]),
+        ("Activator / reagent", gui.default_reagent, reagent_values),
+        ("Additive (optional)", gui.default_catalyst, ["HOBt", "HOAt", "Oxyma", ""]),
+        ("Base (optional)", gui.default_base, ["", "NMM", "DIEA", "DIPEA", "TEA"]),
         ("Reaction solvent", gui.default_coupling_solution_solvent, ["DMF", "DCM", "NMP", "DMF/DCM"]),
     ]
     for r, (label, var, values) in enumerate(rows):

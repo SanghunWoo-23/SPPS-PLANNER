@@ -37,25 +37,33 @@ def apply_dic_hobt(gui: Any) -> None:
     _finish(gui)
 
 
-def apply_hbtu_nmp(gui: Any) -> None:
+def apply_hbtu_nmm(gui: Any) -> None:
+    """Apply the lab HBTU + NMM method without treating NMM as a solvent."""
     for name, value in (
-        ("pm_chemistry", "HBTU/NMP 10eq"),
+        ("pm_chemistry", "HBTU/NMM"),
         ("default_reagent", "HBTU"),
         ("default_reagent_eq", "10"),
         ("default_reagent_count", "1"),
         ("default_catalyst", ""),
         ("default_catalyst_eq", "0"),
         ("default_catalyst_count", "0"),
-        ("default_base", "DIEA"),
+        ("default_base", "NMM"),
         ("default_base_eq", "5"),
         ("default_base_count", "1"),
-        ("default_coupling_solution_solvent", "NMP"),
+        ("default_coupling_solution_solvent", "DMF"),
         ("coupling_eq", "10"),
         ("batch_hbtu_eq", "10"),
         ("batch_hbtu_conc", "0.4"),
+        ("batch_nmm_eq", "5"),
+        ("batch_nmm_conc", "0.8"),
     ):
         _set(gui, name, value)
     _finish(gui)
 
 
-__all__ = ["apply_dic_hobt", "apply_hbtu_nmp"]
+def apply_hbtu_nmp(gui: Any) -> None:
+    """Legacy name retained for saved V6 routes; behavior is HBTU + NMM."""
+    apply_hbtu_nmm(gui)
+
+
+__all__ = ["apply_dic_hobt", "apply_hbtu_nmm", "apply_hbtu_nmp"]

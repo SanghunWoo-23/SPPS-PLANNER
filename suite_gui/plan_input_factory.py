@@ -1,6 +1,8 @@
 """Build engine PlanInput objects from the accepted desktop UI conditions."""
 from __future__ import annotations
 
+import re
+
 from spps_planner.engine import PlanInput
 
 
@@ -60,25 +62,57 @@ def safe_scale(gui):
 
 
 def chemistry(gui, text=None):
+    """Resolve the Project Manager chemistry label without overriding explicit recipe fields.
+
+    V7 RC9 keeps the existing named presets but no longer collapses every DIC
+    method to HOBt or every HBTU method to NMM.  Manual/current settings always
+    use the peptide-specific reagent/additive/base/solvent values.
+    """
     text = str(
         text if text is not None else value(gui, "pm_chemistry", "DIC/HOBt")
         or ""
     ).strip()
     normalized = text.upper().replace(" ", "")
     coupling_eq = number(gui, "coupling_eq", 5.0)
-    if "HBTU" in normalized:
-        return "HBTU", "", "DIEA", "NMP", 10.0
-    if "HATU" in normalized:
-        return "HATU", "", "DIEA", "DMF", coupling_eq
-    if "COMU" in normalized:
-        return "COMU", "", "DIEA", "DMF", coupling_eq
-    if "DIC" in normalized or "HOBT" in normalized or not text:
-        return "DIC", "HOBt", "", "DMF", coupling_eq
+    solvent = value(gui, "default_coupling_solution_solvent", "DMF") or "DMF"
+
+    exact = {
+        "DIC/HOBT": ("DIC", "HOBt", "", solvent),
+        "DIC/OXYMA": ("DIC", "Oxyma", "", solvent),
+        "HBTU/NMM": ("HBTU", "", "NMM", solvent),
+        "HBTU/NMP": ("HBTU", "", "NMM", solvent),  # legacy label: NMP meant NMM
+        "HBTU/HOBT/DIPEA": ("HBTU", "HOBt", "DIPEA", solvent),
+        "HBTU/DIEA": ("HBTU", "", "DIEA", solvent),
+        "HATU/DIPEA": ("HATU", "", "DIPEA", solvent),
+        "HCTU/DIPEA": ("HCTU", "", "DIPEA", solvent),
+        "PYBOP/DIPEA": ("PyBOP", "", "DIPEA", solvent),
+        "COMU/DIPEA": ("COMU", "", "DIPEA", solvent),
+    }
+    if normalized in exact:
+        reagent, additive, base, resolved_solvent = exact[normalized]
+        # New V7 Add items can carry a bottle-form-specific additive while
+        # retaining a familiar Project chemistry label (for example DIC/HOBt).
+        # Preserve that exact stored identity instead of collapsing hydrate and
+        # anhydrous HOBt back to the legacy generic token.
+        explicit_additive = str(value(gui, "default_catalyst", "") or "").strip()
+        if additive and explicit_additive:
+            generic = re.sub(r"[^A-Z0-9]+", "", additive.upper())
+            explicit = re.sub(r"[^A-Z0-9]+", "", explicit_additive.upper())
+            if generic == "HOBT" and explicit.startswith("HOBT"):
+                additive = explicit_additive
+            elif generic == "OXYMA" and explicit.startswith("OXYMA"):
+                additive = explicit_additive
+        return reagent, additive, base, resolved_solvent, coupling_eq
+    if normalized.startswith("HBTU/NMM") or normalized.startswith("HBTU/NMP"):
+        # Legacy labels may carry suffixes such as "10eq"; NMP in this route
+        # historically meant the NMM base, not N-methyl-2-pyrrolidone solvent.
+        return "HBTU", "", "NMM", solvent, coupling_eq
+
     return (
         value(gui, "default_reagent", "DIC") or "DIC",
         value(gui, "default_catalyst", "HOBt") or "",
         value(gui, "default_base", "") or "",
-        value(gui, "default_coupling_solution_solvent", "DMF") or "DMF",
+        solvent,
         coupling_eq,
     )
 
@@ -193,7 +227,11 @@ def build_batch_plan_input(gui, row, reagent_eq_follows=None):
     )
     chemistry_text = str(row.get("Chemistry", "") or "DIC/HOBt")
     if "HBTU" in chemistry_text.upper().replace(" ", ""):
-        reagent, catalyst, base, solvent = "HBTU", "", "DIEA", "NMP"
+        reagent, catalyst, base, solvent = (
+            "HBTU", "",
+            str(value(gui, "default_base", "NMM") or "NMM"),
+            str(value(gui, "default_coupling_solution_solvent", "DMF") or "DMF"),
+        )
         reagent_eq = number(gui, "batch_hbtu_eq", 10.0)
         reagent_count, catalyst_eq, catalyst_count = 1, 0.0, 0
         base_eq = number(gui, "default_base_eq", reagent_eq)

@@ -18,7 +18,7 @@ import pandas as pd
 from suite_gui.gui_primitives import EditableTree, StaticValue as _StaticValue, bind_combobox_first_letter_jump, const_var as const_var, open_path
 from suite_gui import catalogs as _catalogs
 from suite_gui.session_state import SessionStateMixin
-APP_VERSION = 'V6.0.0'
+APP_VERSION = 'V7.0.0'
 APP = ROOT / 'apps' / 'spps_planner_app'
 if str(APP) not in sys.path:
     sys.path.insert(0, str(APP))
@@ -76,7 +76,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         style.configure('TNotebook.Tab', padding=(24, 10), font=('Segoe UI', 11, 'bold'))
         main = ttk.Frame(self, padding=10)
         main.pack(fill='both', expand=True)
-        self.app_title_label = ttk.Label(main, text='SPPS Planner V6.0.0 - Modern / Classic Hybrid', font=('Segoe UI', 18, 'bold'))
+        self.app_title_label = ttk.Label(main, text='SPPS Planner V7.0.0 Final', font=('Segoe UI', 18, 'bold'))
         self.app_title_label.pack(anchor='w')
         self.project_name = tk.StringVar(value='')
         self.seq = tk.StringVar(value='')
@@ -174,7 +174,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         self.setup_generate_button = ttk.Button(action_bar, text='Generate', width=22, command=self.generate_update_plan)
         self.setup_generate_button.pack(side='left', padx=3)
         ttk.Button(action_bar, text='Use DIC/HOBt', width=14, command=self.apply_dic_hobt_preset).pack(side='left', padx=3)
-        ttk.Button(action_bar, text='Use HBTU/NMP 10eq', width=18, command=self.apply_hbtu_nmp_preset).pack(side='left', padx=3)
+        ttk.Button(action_bar, text='Use HBTU/NMM', width=18, command=self.apply_hbtu_nmp_preset).pack(side='left', padx=3)
         self.setup_load_project_button = ttk.Button(action_bar, text='Load Project', width=14, command=self.load_project)
         self.setup_load_project_button.pack(side='left', padx=3)
         ttk.Button(action_bar, text='Import Output', width=14, command=self.load_output_folder).pack(side='left', padx=3)
@@ -718,7 +718,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         self.pm_list.bind('<<ListboxSelect>>', self.pm_on_select)
         self.pm_list.bind('<Double-Button-1>', self.pm_on_double_click)
         self.pm_list.bind('<Return>', self.pm_on_double_click)
-        paned.add(left, minsize=130, width=190)
+        paned.add(left, minsize=145, width=175)
         right = ttk.Frame(paned)
         right.rowconfigure(1, weight=1)
         right.columnconfigure(0, weight=1)
@@ -766,7 +766,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         lab(2, 4, 'Loading')
         ent(2, 4, self.pm_loading, 10)
         lab(2, 6, 'Chemistry')
-        pm_chem_combo = ttk.Combobox(edit, textvariable=self.pm_chemistry, values=['DIC/HOBt', 'DIC/Oxyma', 'HBTU/NMP 10eq', 'HBTU/HOBt/DIPEA', 'HBTU/DIEA', 'HATU/DIPEA', 'HCTU/DIPEA', 'PyBOP/DIPEA', 'Current single-plan settings', 'Manual'], state='readonly', width=20)
+        pm_chem_combo = ttk.Combobox(edit, textvariable=self.pm_chemistry, values=['DIC/HOBt', 'DIC/Oxyma', 'HBTU/NMM', 'HBTU/HOBt/DIPEA', 'HBTU/DIEA', 'HATU/DIPEA', 'HCTU/DIPEA', 'PyBOP/DIPEA', 'Current single-plan settings', 'Manual'], state='readonly', width=20)
         bind_combobox_first_letter_jump(pm_chem_combo)
         pm_chem_combo.grid(row=2, column=7, sticky='ew', padx=(0, 8), pady=2)
         actions = ttk.Frame(edit)
@@ -784,7 +784,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         moved_actions.grid(row=4, column=0, columnspan=10, sticky='ew', pady=(5, 0))
         ttk.Label(moved_actions, text='Global actions:').pack(side='left', padx=(0, 4))
         ttk.Button(moved_actions, text='Use DIC/HOBt', command=self.apply_dic_hobt_preset).pack(side='left', padx=3)
-        ttk.Button(moved_actions, text='Use HBTU/NMP 10eq', command=self.apply_hbtu_nmp_preset).pack(side='left', padx=3)
+        ttk.Button(moved_actions, text='Use HBTU/NMM', command=self.apply_hbtu_nmp_preset).pack(side='left', padx=3)
         self.pm_load_project_button = ttk.Button(moved_actions, text='Load Project', command=self.load_project)
         self.pm_load_project_button.pack(side='left', padx=3)
         self.pm_import_output_button = ttk.Button(moved_actions, text='Import Output', command=self.load_output_folder)
@@ -794,7 +794,9 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         setup_btn.pack(side='left', padx=(10, 3))
         self.setup_toggle_buttons = getattr(self, 'setup_toggle_buttons', []) + [setup_btn]
         self._build_pm_setup_panel(edit)
-        results = ttk.Notebook(right)
+        pm_style = ttk.Style(self)
+        pm_style.configure('PM.Results.TNotebook.Tab', font=('Segoe UI Semibold', 10), padding=(16, 9))
+        results = ttk.Notebook(right, style='PM.Results.TNotebook')
         results.grid(row=1, column=0, sticky='nsew', padx=4, pady=4)
         sel_plan = ttk.Frame(results)
         sel_mat = ttk.Frame(results)
@@ -905,7 +907,8 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
                 pass
 
     def pm_display_name(self, item):
-        return f"{item.get('project', '')} | {item.get('peptide', '')} | {item.get('lot', '')}"
+        status = str(item.get('status', 'Ready') or 'Ready').strip()
+        return f"[{status}] {item.get('project', '')} | {item.get('peptide', '')} | {item.get('lot', '')}"
 
     def pm_refresh_list(self, keep_index=None, reload_editor=True):
         if not hasattr(self, 'pm_list'):
@@ -1178,15 +1181,17 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         self.batch_default_loading = tk.StringVar(value='0.8')
         self.batch_hbtu_eq = tk.StringVar(value='10')
         self.batch_hbtu_conc = tk.StringVar(value='0.4')
+        self.batch_nmm_eq = tk.StringVar(value='5')
+        self.batch_nmm_conc = tk.StringVar(value='0.8')
         self.batch_hbtu_mw = tk.StringVar(value='379.25')
         self.batch_nmp_density = tk.StringVar(value='1.03')
-        fields = [('Scale / column (mmol)', self.batch_default_scale), ('AA solution conc. (M)', self.batch_solution_conc), ('AA coupling eq', self.batch_coupling_eq), ('Actual round mL', self.batch_actual_round_ml), ('Extra mL', self.batch_actual_extra_ml), ('Default resin', self.batch_default_resin), ('Loading mmol/g', self.batch_default_loading), ('HBTU eq', self.batch_hbtu_eq), ('HBTU conc M', self.batch_hbtu_conc)]
+        fields = [('Scale / column (mmol)', self.batch_default_scale), ('AA solution conc. (M)', self.batch_solution_conc), ('AA coupling eq', self.batch_coupling_eq), ('Actual round mL', self.batch_actual_round_ml), ('Extra mL', self.batch_actual_extra_ml), ('Default resin', self.batch_default_resin), ('Loading mmol/g', self.batch_default_loading), ('HBTU eq', self.batch_hbtu_eq), ('HBTU conc M', self.batch_hbtu_conc), ('NMM eq', self.batch_nmm_eq), ('NMM conc M', self.batch_nmm_conc)]
         for i, (label, var) in enumerate(fields):
             ttk.Label(defaults, text=label).grid(row=0, column=i * 2, sticky='w', padx=(2, 3))
             width = 11 if i < 5 else 18
             ttk.Entry(defaults, textvariable=var, width=width).grid(row=0, column=i * 2 + 1, sticky='ew', padx=(0, 8))
         defaults.columnconfigure(11, weight=1)
-        for _v in [self.batch_solution_conc, self.batch_coupling_eq, self.batch_actual_round_ml, self.batch_actual_extra_ml, self.batch_default_scale, self.batch_default_resin, self.batch_default_loading, self.batch_hbtu_eq, self.batch_hbtu_conc, self.batch_hbtu_mw, self.batch_nmp_density]:
+        for _v in [self.batch_solution_conc, self.batch_coupling_eq, self.batch_actual_round_ml, self.batch_actual_extra_ml, self.batch_default_scale, self.batch_default_resin, self.batch_default_loading, self.batch_hbtu_eq, self.batch_hbtu_conc, self.batch_nmm_eq, self.batch_nmm_conc, self.batch_hbtu_mw, self.batch_nmp_density]:
             try:
                 _v.trace_add('write', lambda *_: self.after_idle(self.refresh_batch_workspace_preview))
             except Exception:
@@ -1196,7 +1201,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         input_box.rowconfigure(0, weight=1)
         input_box.columnconfigure(0, weight=1)
         self.batch_columns = ['No', 'Project', 'Peptide name', 'Form', 'Copies', 'N-term', 'Region 1 seq', 'Region 1 eq', 'Linker', 'Region 2 seq', 'Region 2 eq', 'Tag', 'Label', 'C-term', 'Chemistry', 'Scale mmol', 'AA conc M', 'AA coupling eq', 'Resin', 'Loading', 'LOT No', 'Status']
-        combo = {'Form': ['linear', 'branched', 'cyclic', 'bivalent', 'manual'], 'N-term': ['', 'Ac', 'Pal', 'Myr', 'Gal', 'Nic', 'Caf', 'Biotin', 'FITC', 'FAM', 'TAMRA', 'CY3', 'CY5', 'DOTA', 'NOTA', 'Manual'], 'Linker': ['', *self.FMOC_LINKER_VALUES, 'Manual'], 'Tag': ['', 'His6', 'His8', 'His10', 'FLAG', 'HA', 'Myc', 'StrepII', 'TwinStrep', 'V5', 'T7', 'ALFA', 'AviTag', 'SpyTag', 'Manual'], 'Label': ['', 'Biotin', 'Biotin-NHS', 'FITC', 'FAM', 'TAMRA', 'ROX', 'CY3', 'CY5', 'CY5.5', 'CY7', 'Alexa488', 'Dabcyl', 'BHQ1', 'BHQ2', 'Manual'], 'C-term': ['NH2', 'OH', 'COOH', 'acid', 'amide', 'Manual'], 'Chemistry': ['DIC/HOBt', 'DIC/Oxyma', 'HBTU/NMP 10eq', 'HBTU/HOBt/DIPEA', 'HBTU/DIEA', 'HATU/DIPEA', 'Manual'], 'Resin': self.RESIN_VALUES}
+        combo = {'Form': ['linear', 'branched', 'cyclic', 'bivalent', 'manual'], 'N-term': ['', 'Ac', 'Pal', 'Myr', 'Gal', 'Nic', 'Caf', 'Biotin', 'FITC', 'FAM', 'TAMRA', 'CY3', 'CY5', 'DOTA', 'NOTA', 'Manual'], 'Linker': ['', *self.FMOC_LINKER_VALUES, 'Manual'], 'Tag': ['', 'His6', 'His8', 'His10', 'FLAG', 'HA', 'Myc', 'StrepII', 'TwinStrep', 'V5', 'T7', 'ALFA', 'AviTag', 'SpyTag', 'Manual'], 'Label': ['', 'Biotin', 'Biotin-NHS', 'FITC', 'FAM', 'TAMRA', 'ROX', 'CY3', 'CY5', 'CY5.5', 'CY7', 'Alexa488', 'Dabcyl', 'BHQ1', 'BHQ2', 'Manual'], 'C-term': ['NH2', 'OH', 'COOH', 'acid', 'amide', 'Manual'], 'Chemistry': ['DIC/HOBt', 'DIC/Oxyma', 'HBTU/NMM', 'HBTU/HOBt/DIPEA', 'HBTU/DIEA', 'HATU/DIPEA', 'Manual'], 'Resin': self.RESIN_VALUES}
         self.batch_tree = EditableTree(input_box, self.batch_columns, on_edit=self.batch_on_edit, combo_values=combo)
         by = ttk.Scrollbar(input_box, orient='vertical', command=self.batch_tree.yview)
         bx = ttk.Scrollbar(input_box, orient='horizontal', command=self.batch_tree.xview)
@@ -1497,16 +1502,21 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         return total
 
     def _batch_hbtu_nmp_summary(self, rows=None) -> pd.DataFrame:
+        """Compatibility name; V7 calculates HBTU and NMM stocks independently."""
         rows = rows if rows is not None else self._batch_rows_from_tree()
         count = self._batch_coupling_count_by_rows(rows)
         if count <= 0:
             return pd.DataFrame(columns=['material', 'count', 'calc_mL', 'actual_mL', 'MW', 'weight_g', 'note'])
         hbtu_eq = self._to_float(getattr(self, 'batch_hbtu_eq', const_var('10')).get(), 10)
         hbtu_conc = self._to_float(getattr(self, 'batch_hbtu_conc', const_var('0.4')).get(), 0.4)
+        nmm_eq = self._to_float(getattr(self, 'batch_nmm_eq', const_var('5')).get(), 5)
+        nmm_conc = self._to_float(getattr(self, 'batch_nmm_conc', const_var('0.8')).get(), 0.8)
         hbtu_mw = self._to_float(getattr(self, 'batch_hbtu_mw', const_var('379.25')).get(), 379.25)
+        nmm_mw = self._to_float(self.MW_FALLBACK.get('NMM', 101.15), 101.15)
         round_ml = max(self._to_float(getattr(self, 'batch_actual_round_ml', const_var('10')).get(), 10), 1)
         extra_ml = max(self._to_float(getattr(self, 'batch_actual_extra_ml', const_var('10')).get(), 10), 0)
-        calc_ml = 0.0
+        hbtu_calc_ml = 0.0
+        nmm_calc_ml = 0.0
         for r in rows:
             copies = int(round(self._to_float(r.get('Copies'), 1))) or 1
             scale = self._to_float(r.get('Scale mmol'), self._to_float(getattr(self, 'batch_default_scale', const_var('0.2')).get(), 0.2))
@@ -1515,10 +1525,21 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
                 if region_eq <= 0:
                     continue
                 local_count = copies * region_eq * len(self._aa_letters_from_sequence(seq))
-                calc_ml += local_count * scale * hbtu_eq / hbtu_conc if hbtu_conc else 0.0
-        actual_ml = int((calc_ml + round_ml - 1) // round_ml) * round_ml + extra_ml if calc_ml else 0.0
-        hbtu_g = actual_ml / 1000.0 * hbtu_conc * hbtu_mw if actual_ml and hbtu_conc and hbtu_mw else 0.0
-        rows_out = [{'material': 'HBTU', 'count': int(count) if float(count).is_integer() else round(count, 3), 'calc_mL': round(calc_ml, 2), 'actual_mL': round(actual_ml, 2), 'MW': round(hbtu_mw, 2), 'weight_g': round(hbtu_g, 2), 'note': f'{hbtu_eq} eq, {hbtu_conc} M in NMP'}, {'material': 'NMP', 'count': int(count) if float(count).is_integer() else round(count, 3), 'calc_mL': round(calc_ml, 2), 'actual_mL': round(actual_ml, 2), 'MW': round(self.MW_FALLBACK.get('NMP', 99.13), 2), 'weight_g': '', 'note': 'solvent volume for HBTU solution'}]
+                if hbtu_conc:
+                    hbtu_calc_ml += local_count * scale * hbtu_eq / hbtu_conc
+                if nmm_conc:
+                    nmm_calc_ml += local_count * scale * nmm_eq / nmm_conc
+        def actual(value):
+            return int((value + round_ml - 1) // round_ml) * round_ml + extra_ml if value else 0.0
+        hbtu_actual_ml = actual(hbtu_calc_ml)
+        nmm_actual_ml = actual(nmm_calc_ml)
+        hbtu_g = hbtu_actual_ml / 1000.0 * hbtu_conc * hbtu_mw if hbtu_actual_ml and hbtu_conc else 0.0
+        nmm_g = nmm_actual_ml / 1000.0 * nmm_conc * nmm_mw if nmm_actual_ml and nmm_conc else 0.0
+        common_count = int(count) if float(count).is_integer() else round(count, 3)
+        rows_out = [
+            {'material': 'HBTU', 'count': common_count, 'calc_mL': round(hbtu_calc_ml, 2), 'actual_mL': round(hbtu_actual_ml, 2), 'MW': round(hbtu_mw, 2), 'weight_g': round(hbtu_g, 2), 'note': f'{hbtu_eq} eq, {hbtu_conc} M stock'},
+            {'material': 'NMM', 'count': common_count, 'calc_mL': round(nmm_calc_ml, 2), 'actual_mL': round(nmm_actual_ml, 2), 'MW': round(nmm_mw, 2), 'weight_g': round(nmm_g, 2), 'note': f'N-Methylmorpholine base: {nmm_eq} eq, {nmm_conc} M stock'},
+        ]
         return pd.DataFrame(rows_out, columns=['material', 'count', 'calc_mL', 'actual_mL', 'MW', 'weight_g', 'note'])
 
     def _batch_project_index_df(self, rows=None) -> pd.DataFrame:
@@ -1557,7 +1578,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
             lines.append('')
             col_no += copies
         lines.append('Combined AA table uses: count × scale × AA coupling eq / concentration.')
-        lines.append('HBTU/NMP table uses: coupling count × scale × HBTU eq / HBTU concentration.')
+        lines.append('HBTU/NMM stocks use independent HBTU and NMM eq/concentration settings.')
         lines.append('N-term Ac table detects Ac- at the start of Region 1 and calculates Ac2O separately.')
         lines.append('Actual mL = round up to selected mL increment + extra mL reserve.')
         return '\n'.join(lines)
@@ -1581,7 +1602,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
 
     def _density_for_token(self, token):
         t = self._normalize_batch_modifier(token) if token else ''
-        aliases = {'DIC': 0.815, 'DIEA': 0.742, 'DIPEA': 0.742, 'TEA': 0.726, 'Piperidine': 0.862, 'DMF': 0.944, 'NMP': 1.03, 'DCM': 1.33, 'TFA': 1.49, 'TIS': 0.773, 'Acetic anhydride (Ac2O)': 1.08, 'Ac2O': 1.08}
+        aliases = {'DIC': 0.815, 'DIEA': 0.742, 'DIPEA': 0.742, 'NMM': 0.92, 'TEA': 0.726, 'Piperidine': 0.862, 'DMF': 0.944, 'NMP': 1.03, 'DCM': 1.33, 'TFA': 1.49, 'TIS': 0.773, 'Acetic anhydride (Ac2O)': 1.08, 'Ac2O': 1.08}
         return aliases.get(t, aliases.get(str(token or ''), 0.0))
 
     def _add_total_record(self, records, item, purpose, count=0, eq=0, conc=0, amount=0, unit_hint='g', note=''):
@@ -1653,13 +1674,15 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
             total_step_mmol = local_steps * scale
             volume_factor = self._volume_factor_for_resin(r.get('Resin'))
             if local_steps:
-                if 'HBTU/NMP' in chem:
+                if 'HBTU/NMM' in chem or 'HBTU/NMP' in chem:
                     hbtu_eq = self._to_float(getattr(self, 'batch_hbtu_eq', const_var('10')).get(), 10)
                     hbtu_conc = self._to_float(getattr(self, 'batch_hbtu_conc', const_var('0.4')).get(), 0.4)
+                    nmm_eq = self._to_float(getattr(self, 'batch_nmm_eq', const_var('5')).get(), 5)
+                    nmm_conc = self._to_float(getattr(self, 'batch_nmm_conc', const_var('0.8')).get(), 0.8)
                     hbtu_mmol = total_step_mmol * hbtu_eq
-                    hbtu_solution_ml = hbtu_mmol / hbtu_conc if hbtu_conc else 0.0
-                    self._add_total_record(coupling, 'HBTU', 'activation solution', local_steps, hbtu_eq, hbtu_conc, hbtu_mmol, 'solution_mL', 'Prepare HBTU solution in NMP')
-                    self._add_total_record(solvent, 'NMP', 'HBTU cocktail solvent', local_steps, '', '', hbtu_solution_ml, 'direct_mL', 'Solvent volume for HBTU/NMP cocktail')
+                    nmm_mmol = total_step_mmol * nmm_eq
+                    self._add_total_record(coupling, 'HBTU', 'activation solution', local_steps, hbtu_eq, hbtu_conc, hbtu_mmol, 'solution_mL', 'Prepare HBTU stock in configured coupling solvent')
+                    self._add_total_record(base, 'NMM', 'coupling base stock', local_steps, nmm_eq, nmm_conc, nmm_mmol, 'solution_mL', 'N-Methylmorpholine base stock calculated independently from HBTU')
                 elif 'HBTU' in chem:
                     self._add_total_record(coupling, 'HBTU', 'coupling reagent', local_steps, 5.0, '', total_step_mmol * 5.0, 'mmol', 'solid HBTU total + reserve')
                     self._add_total_record(catalyst, 'HOBt', 'additive', local_steps, 5.0, '', total_step_mmol * 5.0, 'mmol', 'if selected chemistry uses HOBt')
@@ -1922,11 +1945,11 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
             total_reagents.to_csv(batch_root / 'BATCH_TOTAL_REAGENT_USAGE.csv', index=False, encoding='utf-8-sig')
             total_solvents.to_csv(batch_root / 'BATCH_TOTAL_SOLVENT_USAGE.csv', index=False, encoding='utf-8-sig')
             aa_prep_df.to_csv(batch_root / 'SYNTHESIZER_AA_PREP_TOTAL.csv', index=False, encoding='utf-8-sig')
-            hbtu_prep_df.to_csv(batch_root / 'SYNTHESIZER_HBTU_NMP_PREP_TOTAL.csv', index=False, encoding='utf-8-sig')
+            hbtu_prep_df.to_csv(batch_root / 'SYNTHESIZER_HBTU_NMM_PREP_TOTAL.csv', index=False, encoding='utf-8-sig')
             ac_prep_df.to_csv(batch_root / 'SYNTHESIZER_NTERM_CAP_PREP_TOTAL.csv', index=False, encoding='utf-8-sig')
             with pd.ExcelWriter(batch_root / 'BATCH_WORKSPACE.xlsx', engine='openpyxl') as writer:
                 self._write_synthesizer_excel(writer, raw_rows, aa_prep_df, index_df)
-                hbtu_prep_df.to_excel(writer, index=False, sheet_name='04_HBTU_NMP_PREP_TOTAL')
+                hbtu_prep_df.to_excel(writer, index=False, sheet_name='04_HBTU_NMM_PREP_TOTAL')
                 total_materials.to_excel(writer, index=False, sheet_name='10_TOTAL_MATERIALS')
                 total_aa.to_excel(writer, index=False, sheet_name='11_TOTAL_AA_ENGINE')
                 total_reagents.to_excel(writer, index=False, sheet_name='12_TOTAL_REAGENTS')
@@ -2033,19 +2056,19 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
             self.refresh_outputs_from_tree()
             if hasattr(self, 'refresh_batch_workspace_preview'):
                 self.refresh_batch_workspace_preview()
-            self._log('Applied DIC/HOBt preset: DIC 5 eq + HOBt 5 eq in DMF. HBTU/NMP and manual options are still available.\n')
+            self._log('Applied DIC/HOBt preset: DIC 5 eq + HOBt 5 eq in DMF. HBTU/NMM and manual options are still available.\n')
         except Exception as e:
             messagebox.showerror('DIC/HOBt preset', str(e))
 
     def apply_chemistry_preset_from_string(self, chemistry: str):
         c = str(chemistry or '').upper().replace(' ', '')
-        if c.startswith('HBTU') or 'HBTU/NMP' in c:
+        if c.startswith('HBTU') or 'HBTU/NMM' in c or 'HBTU/NMP' in c:
             self.apply_hbtu_nmp_preset()
         elif c.startswith('DIC') or 'DIC/HOBT' in c:
             self.apply_dic_hobt_preset()
 
     def apply_hbtu_nmp_preset(self):
-        """Apply the bench HBTU/NMP chemistry preset without deleting existing functions."""
+        """Legacy method name retained; apply the canonical HBTU/NMM preset."""
         try:
             self.default_reagent.set('HBTU')
             self.default_reagent_eq.set(10.0)
@@ -2053,19 +2076,26 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
             self.default_catalyst.set('')
             self.default_catalyst_eq.set(0.0)
             self.default_catalyst_count.set(0)
-            self.default_coupling_solution_solvent.set('NMP')
+            self.default_base.set('NMM')
+            self.default_base_eq.set(5.0)
+            self.default_base_count.set(1)
+            self.default_coupling_solution_solvent.set('DMF')
             self.coupling_eq.set(10.0)
             if hasattr(self, 'batch_hbtu_eq'):
                 self.batch_hbtu_eq.set('10')
             if hasattr(self, 'batch_hbtu_conc'):
                 self.batch_hbtu_conc.set('0.4')
+            if hasattr(self, 'batch_nmm_eq'):
+                self.batch_nmm_eq.set('5')
+            if hasattr(self, 'batch_nmm_conc'):
+                self.batch_nmm_conc.set('0.8')
             self.rebuild_table()
             self.refresh_outputs_from_tree()
             if hasattr(self, 'refresh_batch_workspace_preview'):
                 self.refresh_batch_workspace_preview()
-            self._log('Applied HBTU/NMP preset: HBTU 10 eq, 0.4 M in NMP. Existing DIC/HOBt/manual options are still available.\n')
+            self._log('Applied HBTU/NMM preset: HBTU 10 eq / 0.4 M + NMM 5 eq / 0.8 M in DMF. Existing DIC/HOBt/manual options are still available.\n')
         except Exception as e:
-            messagebox.showerror('HBTU/NMP preset', str(e))
+            messagebox.showerror('HBTU/NMM preset', str(e))
 
     def _input(self):
         return PlanInput(sequence=self.seq.get().strip(), resin=self.resin.get(), scale_mmol=float(self.scale.get()), resin_loading_mmol_g=float(self.loading.get()), coupling_eq=float(self.coupling_eq.get()), ac_eq=float(self.modifier_eq.get()), default_coupling_repeats=int(self.coupling_repeats.get()), default_modifier_repeats=int(self.modifier_repeats.get()), default_coupling_reagent=self.default_reagent.get().strip(), default_catalyst=self.default_catalyst.get().strip(), default_base=self.default_base.get().strip(), default_reaction_solvent=self.default_solvent1.get().strip(), step_overrides_text='')

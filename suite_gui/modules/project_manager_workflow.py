@@ -20,8 +20,8 @@ import tkinter as tk
 from tkinter import ttk
 from suite_gui import peptide_item_collection
 
-APP_VERSION = "V6.0.0"
-VERSION_LABEL = "SPPS Planner V6.0.0"
+APP_VERSION = "V7.0.0"
+VERSION_LABEL = "SPPS Planner V7.0.0 Final"
 
 
 def _walk(widget):
@@ -114,6 +114,7 @@ def _empty_editor_outputs(gui):
             "pm_project", "pm_peptide", "pm_sequence", "pm_scale", "pm_resin",
             "pm_loading", "pm_lot", "pm_chemistry", "pm_copies",
             "loading_time_h", "cleavage_time_h", "cleavage_preset", "cleavage_eq_override", "cleavage_components_text",
+            "workup_solvent", "workup_volume_mL", "workup_ratio",
             "post_cleavage_rescue", "nh4i_eq", "nh4i_concentration_m", "nh4i_time_h",
         ):
             var = getattr(gui, name, None)

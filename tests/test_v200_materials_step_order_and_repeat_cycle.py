@@ -81,8 +81,14 @@ def test_materials_and_checklist_follow_exact_repeat_cycle_step_order(monkeypatc
         assert step1[12]["use_count"] == "2"
 
         # Step 2 must begin only after every Step 1 material/protocol row.
-        positions = [r["step"] for r in materials if r["step"] != "resin"]
+        # Final R1+ also appends cleavage/workup materials because Generate now
+        # refreshes every result tab from one calculation snapshot.  Numeric
+        # synthesis steps must still remain in strict order; post-synthesis
+        # phases are intentionally non-numeric and follow afterward.
+        positions = [r["step"] for r in materials if str(r["step"]).isdigit()]
         assert positions == sorted(positions, key=int)
+        non_synthesis = [r["step"] for r in materials if r["step"] not in {"resin"} and not str(r["step"]).isdigit()]
+        assert all(step in {"cleavage", "workup"} for step in non_synthesis)
 
         # Split per-coupling material rows must still sum to the Plan total.
         gly_materials = [r for r in materials if r["material"] == "Fmoc-Gly-OH"]

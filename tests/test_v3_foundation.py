@@ -34,9 +34,9 @@ class _Tree:
 
 
 def test_v3_identity_is_separate_and_consistent():
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "V6.0.0"
-    assert (ROOT / "VERSION.txt").read_text(encoding="utf-8").strip() == "V6.0.0"
-    assert SPPSGui.TITLE == "SPPS Planner V6.0.0"
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "V7.0.0"
+    assert (ROOT / "VERSION.txt").read_text(encoding="utf-8").strip() == "V7.0.0"
+    assert SPPSGui.TITLE == "SPPS Planner V7.0.0 Final"
     assert callable(SPPSGui.open_work_item)
 
 

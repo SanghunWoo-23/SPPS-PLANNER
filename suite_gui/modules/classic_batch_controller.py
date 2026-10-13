@@ -149,6 +149,14 @@ class ClassicBatchControllerMixin:
             hbtu_conc = float(self.batch_hbtu_conc.get())
         except Exception:
             hbtu_conc = 0.4
+        try:
+            nmm_eq = float(self.batch_nmm_eq.get())
+        except Exception:
+            nmm_eq = 5.0
+        try:
+            nmm_conc = float(self.batch_nmm_conc.get())
+        except Exception:
+            nmm_conc = 0.8
         for r in rows:
             try:
                 copies = max(int(float(r.get('Copies', 1) or 1)), 1)
@@ -163,10 +171,10 @@ class ClassicBatchControllerMixin:
             chem = str(r.get('Chemistry', 'DIC/HOBt') or 'DIC/HOBt')
             step_mmol = steps * scale
             if steps:
-                if 'HBTU/NMP' in chem:
-                    self._add_solution_record(coupling, 'HBTU', 'coupling reagent stock', steps, hbtu_eq, 'NMP', hbtu_conc, step_mmol * hbtu_eq, 'prepare HBTU/NMP stock for synthesizer bottle')
-                    calc_ml = step_mmol * hbtu_eq / hbtu_conc if hbtu_conc else 0.0
-                    self._add_solution_record(solvent, 'NMP', 'HBTU stock solvent', steps, '', '', 0, calc_ml, 'mL of NMP needed before reserve shown as volume')
+                if 'HBTU' in chem.upper():
+                    stock_solvent = str(getattr(self, 'default_coupling_solution_solvent', const_var('DMF')).get() or 'DMF')
+                    self._add_solution_record(coupling, 'HBTU', 'coupling reagent stock', steps, hbtu_eq, stock_solvent, hbtu_conc, step_mmol * hbtu_eq, 'prepare HBTU stock for synthesizer bottle')
+                    self._add_solution_record(catalyst, 'NMM', 'coupling base stock', steps, nmm_eq, stock_solvent, nmm_conc, step_mmol * nmm_eq, 'N-methylmorpholine base stock; independent of HBTU')
                 else:
                     self._add_solution_record(coupling, 'DIC', 'coupling reagent', steps, 5.0, 'neat/DMF', 0, step_mmol * 5.0, 'DIC amount for synthesizer coupling preparation')
                     add = 'Oxyma' if 'Oxyma' in chem else 'HOBt'
@@ -207,11 +215,13 @@ class ClassicBatchControllerMixin:
         self.batch_actual_extra_ml = tk.StringVar(value='10')
         self.batch_hbtu_eq = tk.StringVar(value='10')
         self.batch_hbtu_conc = tk.StringVar(value='0.4')
+        self.batch_nmm_eq = tk.StringVar(value='5')
+        self.batch_nmm_conc = tk.StringVar(value='0.8')
         self.batch_default_resin = tk.StringVar(value='Rink Amide AM')
         self.batch_default_loading = tk.StringVar(value='0.8')
         self.batch_hbtu_mw = tk.StringVar(value='379.25')
         self.batch_nmp_density = tk.StringVar(value='1.03')
-        fields = [('Scale mmol', self.batch_default_scale), ('AA conc M', self.batch_solution_conc), ('AA eq', self.batch_coupling_eq), ('Round-up mL', self.batch_actual_round_ml), ('Extra reserve mL', self.batch_actual_extra_ml), ('HBTU eq', self.batch_hbtu_eq), ('HBTU conc M', self.batch_hbtu_conc)]
+        fields = [('Scale mmol', self.batch_default_scale), ('AA conc M', self.batch_solution_conc), ('AA eq', self.batch_coupling_eq), ('Round-up mL', self.batch_actual_round_ml), ('Extra reserve mL', self.batch_actual_extra_ml), ('HBTU eq', self.batch_hbtu_eq), ('HBTU conc M', self.batch_hbtu_conc), ('NMM eq', self.batch_nmm_eq), ('NMM conc M', self.batch_nmm_conc)]
         for i, (lab, var) in enumerate(fields):
             ttk.Label(defaults, text=lab).grid(row=0, column=i * 2, sticky='w', padx=(2, 3))
             ttk.Entry(defaults, textvariable=var, width=10).grid(row=0, column=i * 2 + 1, sticky='ew', padx=(0, 8))
@@ -233,6 +243,7 @@ class ClassicBatchControllerMixin:
         common = ['item', 'purpose', 'count', 'eq', 'solvent', 'conc_M', 'calculated', 'actual', 'unit', 'MW', 'density', 'weight_g', 'volume_mL', 'note']
         self.batch_coupling_reagent_tree = tab('HBTU stock', common)
         self.batch_catalyst_tree = None
+        self.batch_base_tree = tab('NMM / Base', common)
         self.batch_solvent_tree = tab('Solvents / reservoirs', common)
         self.batch_project_tree = tab('Project summary', ['no', 'project', 'peptide_name', 'lot_no', 'sequence', 'copies', 'scale_mmol'])
         # One visible material list. batch_workflow.refresh recognizes this shared

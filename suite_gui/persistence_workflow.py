@@ -14,7 +14,7 @@ from suite_gui.modules.release_ui import _normalize_resin
 from suite_gui.session_state import DEFAULT_STATE_FIELDS
 
 
-VERSION = "V6.0.0"
+VERSION = "V7.0.0"
 EXTRA_DEFAULT_FIELDS = (
     "solvent_volume_mode",
     "amide_ml_per_mmol",

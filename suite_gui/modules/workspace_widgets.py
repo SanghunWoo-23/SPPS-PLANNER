@@ -23,8 +23,8 @@ from suite_gui.runtime_state import (
     get_active_index, set_active_index, is_switching, set_switching, get_calculation_namespace,
 )
 
-VERSION = "V6.0.0"
-TITLE = "SPPS Planner V6.0.0"
+VERSION = "V7.0.0"
+TITLE = "SPPS Planner V7.0.0 Final"
 # Public UI contract retained from the validated V4 workflow; actions now bind by explicit refs.
 PRIMARY_ML_ENTRY_CONTRACT = "Experimental / ML (V4)"
 
@@ -224,6 +224,20 @@ def _editor_payload(gui):
         "lot_no": value("pm_lot"),
         "chemistry": value("pm_chemistry", "DIC/HOBt"),
         "copies": value("pm_copies", "1"),
+        # V7 Add-dialog chemistry is peptide-specific.  Persist the exact recipe
+        # without changing Batch Manager solution-prep defaults.
+        "coupling_eq": value("coupling_eq", "5"),
+        "default_reagent": value("default_reagent", "DIC"),
+        "default_reagent_eq": value("default_reagent_eq", "5"),
+        "default_reagent_count": value("default_reagent_count", "1"),
+        "default_catalyst": value("default_catalyst", "HOBt"),
+        "default_catalyst_eq": value("default_catalyst_eq", "5"),
+        "default_catalyst_count": value("default_catalyst_count", "1"),
+        "default_base": value("default_base", ""),
+        "default_base_eq": value("default_base_eq", "0"),
+        "default_base_count": value("default_base_count", "0"),
+        "default_coupling_solution_solvent": value("default_coupling_solution_solvent", "DMF"),
+        "reagent_eq_follows_coupling_eq": flag("reagent_eq_follows_coupling_eq", True),
         # Direct-loading settings are peptide-specific.  Keeping these fields in
         # the item payload prevents a 2-CTC item from leaking into a preloaded
         # CTC synthesizer item when the operator clicks between peptides.
@@ -235,6 +249,9 @@ def _editor_payload(gui):
         "cleavage_eq_override": value("cleavage_eq_override", "0"),
         "cleavage_components_text": value("cleavage_components_text", ""),
         "cleavage_time_h": value("cleavage_time_h", ""),
+        "workup_solvent": value("workup_solvent", "Ethyl Ether"),
+        "workup_volume_mL": value("workup_volume_mL", ""),
+        "workup_ratio": value("workup_ratio", "10"),
         "post_cleavage_rescue": value("post_cleavage_rescue", "None"),
         "nh4i_eq": value("nh4i_eq", "2"),
         "nh4i_concentration_m": value("nh4i_concentration_m", "0.2"),
@@ -317,6 +334,18 @@ def restore_item(gui, index, ns):
         _set_var(gui, "pm_lot", item.get("lot", item.get("lot_no", "")))
         _set_var(gui, "pm_chemistry", item.get("chemistry", "DIC/HOBt"))
         _set_var(gui, "pm_copies", item.get("copies", "1"))
+        _set_var(gui, "coupling_eq", item.get("coupling_eq", "5"))
+        _set_var(gui, "default_reagent", item.get("default_reagent", "DIC"))
+        _set_var(gui, "default_reagent_eq", item.get("default_reagent_eq", "5"))
+        _set_var(gui, "default_reagent_count", item.get("default_reagent_count", "1"))
+        _set_var(gui, "default_catalyst", item.get("default_catalyst", "HOBt"))
+        _set_var(gui, "default_catalyst_eq", item.get("default_catalyst_eq", "5"))
+        _set_var(gui, "default_catalyst_count", item.get("default_catalyst_count", "1"))
+        _set_var(gui, "default_base", item.get("default_base", ""))
+        _set_var(gui, "default_base_eq", item.get("default_base_eq", "0"))
+        _set_var(gui, "default_base_count", item.get("default_base_count", "0"))
+        _set_var(gui, "default_coupling_solution_solvent", item.get("default_coupling_solution_solvent", "DMF"))
+        _set_bool(gui, "reagent_eq_follows_coupling_eq", item.get("reagent_eq_follows_coupling_eq", True))
         _set_bool(gui, "apply_loading_calc", item.get("apply_loading_calc", False))
         _set_var(gui, "loading_aa_eq", item.get("loading_aa_eq", "2"))
         _set_var(gui, "loading_diea_eq", item.get("loading_diea_eq", "4"))
@@ -325,6 +354,9 @@ def restore_item(gui, index, ns):
         _set_var(gui, "cleavage_eq_override", item.get("cleavage_eq_override", "0"))
         _set_var(gui, "cleavage_components_text", item.get("cleavage_components_text", ""))
         _set_var(gui, "cleavage_time_h", item.get("cleavage_time_h", ""))
+        _set_var(gui, "workup_solvent", item.get("workup_solvent", "Ethyl Ether"))
+        _set_var(gui, "workup_volume_mL", item.get("workup_volume_mL", ""))
+        _set_var(gui, "workup_ratio", item.get("workup_ratio", "10"))
         _set_var(gui, "post_cleavage_rescue", item.get("post_cleavage_rescue", "None"))
         _set_var(gui, "nh4i_eq", item.get("nh4i_eq", "2"))
         _set_var(gui, "nh4i_concentration_m", item.get("nh4i_concentration_m", "0.2"))
@@ -799,7 +831,7 @@ def _install_cleavage(gui, notebook):
             child.destroy()
         except Exception:
             pass
-    frame.rowconfigure(2, weight=1)
+    frame.rowconfigure(3, weight=1)
     frame.columnconfigure(0, weight=1)
     if not hasattr(gui, "loading_time_h"):
         gui.loading_time_h = tk.StringVar(value="")
@@ -813,6 +845,12 @@ def _install_cleavage(gui, notebook):
         gui.cleavage_preset = tk.StringVar(value="AUTO")
     if not hasattr(gui, "cleavage_components_text"):
         gui.cleavage_components_text = tk.StringVar(value="")
+    if not hasattr(gui, "workup_solvent"):
+        gui.workup_solvent = tk.StringVar(value="Ethyl Ether")
+    if not hasattr(gui, "workup_volume_mL"):
+        gui.workup_volume_mL = tk.StringVar(value="")
+    if not hasattr(gui, "workup_ratio"):
+        gui.workup_ratio = tk.StringVar(value="10")
 
     controls = ttk.Frame(frame, padding=(4, 4))
     controls.grid(row=0, column=0, columnspan=2, sticky="ew")
@@ -830,10 +868,20 @@ def _install_cleavage(gui, notebook):
     ttk.Entry(controls, textvariable=gui.cleavage_time_h, width=7).pack(side="left", padx=(0, 8))
     ttk.Label(controls, text="Min total (mL)").pack(side="left", padx=(2, 3))
     ttk.Entry(controls, textvariable=gui.cleavage_reserve_mL, width=9).pack(side="left", padx=(0, 8))
-    ttk.Button(controls, text="Apply cleavage", command=lambda: refresh_cleavage(gui, get_calculation_namespace(gui, {}))).pack(side="left")
+    ttk.Button(controls, text="Apply & recalc all", command=lambda: (gui.apply_change() if list(gui.pm_selected_plan_tree.get_children()) else gui.generate_update_plan())).pack(side="left")
+
+    workup = ttk.Frame(frame, padding=(4, 2))
+    workup.grid(row=1, column=0, columnspan=2, sticky="ew")
+    ttk.Label(workup, text="Precipitation / workup").pack(side="left", padx=(0, 6))
+    ttk.Combobox(workup, textvariable=gui.workup_solvent, values=["Ethyl Ether", "n-Hexane", "Ether/n-Hexane 1:1", "None"], state="readonly", width=21).pack(side="left", padx=(0, 8))
+    ttk.Label(workup, text="Volume (mL)").pack(side="left", padx=(0, 3))
+    ttk.Entry(workup, textvariable=gui.workup_volume_mL, width=10).pack(side="left", padx=(0, 8))
+    ttk.Label(workup, text="or cocktail ×").pack(side="left", padx=(0, 3))
+    ttk.Entry(workup, textvariable=gui.workup_ratio, width=6).pack(side="left", padx=(0, 8))
+    ttk.Label(workup, text="Blank volume = use ratio; default 10×. This is workup, not cocktail.").pack(side="left")
 
     from suite_gui.modules import cleavage_panel as _cleavage_panel
-    _cleavage_panel.install_post_cleavage_rescue_controls(gui, frame, row=1)
+    _cleavage_panel.install_post_cleavage_rescue_controls(gui, frame, row=2)
 
     tree = ttk.Treeview(frame, columns=["component", "role", "recommended_eq", "percent", "percent_basis", "volume_mL", "density_g_mL", "approx_g", "physical_state", "selected_preset", "auto_recommended_preset", "include", "note"], show="headings")
     for column in tree["columns"]:
@@ -842,9 +890,9 @@ def _install_cleavage(gui, notebook):
     ybar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
     xbar = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
     tree.configure(yscrollcommand=ybar.set, xscrollcommand=xbar.set)
-    tree.grid(row=2, column=0, sticky="nsew")
-    ybar.grid(row=2, column=1, sticky="ns")
-    xbar.grid(row=3, column=0, sticky="ew")
+    tree.grid(row=3, column=0, sticky="nsew")
+    ybar.grid(row=3, column=1, sticky="ns")
+    xbar.grid(row=4, column=0, sticky="ew")
     gui.pm_cleavage_tree = tree
 
 

@@ -35,7 +35,7 @@ from suite_gui.modules.release_ui import ACTIVE_RESINS
 class SPPSGui(ClassicControllerBase):
     """Canonical SPPS Planner V6 controller with a static method surface."""
 
-    TITLE = "SPPS Planner V6.0.0"
+    TITLE = "SPPS Planner V7.0.0 Final"
     RESIN_VALUES = list(ACTIVE_RESINS)
 
     def _build(self) -> Any:
@@ -121,8 +121,12 @@ class SPPSGui(ClassicControllerBase):
     def apply_dic_hobt_preset(self) -> Any:
         return chemistry_workflow.apply_dic_hobt(self)
 
+    def apply_hbtu_nmm_preset(self) -> Any:
+        return chemistry_workflow.apply_hbtu_nmm(self)
+
     def apply_hbtu_nmp_preset(self) -> Any:
-        return chemistry_workflow.apply_hbtu_nmp(self)
+        """Compatibility alias for legacy V6 callers."""
+        return chemistry_workflow.apply_hbtu_nmm(self)
 
     def export_outputs(self, *args: Any, **kwargs: Any) -> Any:
         return export_workflow.export(self, *args, **kwargs)

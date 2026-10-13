@@ -1,10 +1,23 @@
-# SPPS Planner v6.0.0 User Manual
+# SPPS Planner v7.0.0 Final User Manual
 
 SPPS Planner turns a peptide sequence plus resin, scale, loading and chemistry
 settings into an editable synthesis Plan connected to Materials, Totals,
 Checklist, Cleavage, execution records, HPLC, reviewed outcomes and risk review.
 It supports planning and traceability; it does not replace an approved SOP,
 SDS, instrument qualification or operator approval.
+
+## Add a peptide — easiest path
+
+Start in **Project Manager**.
+
+1. Press **Add**.
+2. In Step 1, enter the sequence, scale, copies, resin, loading and the other normal peptide fields. These core synthesis inputs stay visible.
+3. In Step 2, choose the coupling reagent / activator, additive / catalyst, base, and solvent. Use **My recipes** to save or reload an exact bottle combination you use repeatedly.
+4. Step 3 shows the exact recipe before saving. Press **Add peptide** to create the Project Manager item.
+5. Select an existing peptide and use **Edit setup…** to reopen the same exact-bottle dialog without changing Batch Solution prep defaults.
+6. Continue with the existing **Generate / Apply Change / Loading Advice / Cleavage Advice** workflow.
+
+`NMM` is a coupling **base** and `NMP` is a **solvent**. The recipe selected in Add is stored with that peptide and does not replace Batch Manager Solution prep defaults.
 
 ## Core workflow
 

@@ -18,12 +18,13 @@ from suite_gui.modules import (
     plan_workflow,
     project_manager_workflow,
     release_ui,
+    add_peptide_dialog,
     workspace_widgets as workbench,
     ui_ownership,
 )
 
 
-TITLE = "SPPS Planner V6.0.0"
+TITLE = "SPPS Planner V7.0.0 Final"
 
 
 def build_base_interface(gui: Any) -> None:
@@ -64,6 +65,7 @@ def apply_operator_workspace(gui: Any) -> None:
     """Apply the four accepted operator-facing UI corrections in order."""
     namespace = calculation_context.namespace()
     ui_ownership.finalize(gui, plan_workflow, namespace)
+    add_peptide_dialog.configure_add_button(gui)
 
 
 def apply_final_release_ui(gui: Any) -> None:

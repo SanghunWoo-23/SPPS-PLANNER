@@ -32,7 +32,7 @@ REAGENT_VALUES = [
 ]
 
 CATALYST_VALUES = [
-    "", "HOBt", "HOBt hydrate", "Cl-HOBt", "6-Cl-HOBt", "HOAt", "Oxyma",
+    "", "HOBt (anhydrous)", "HOBt hydrate", "HOBt", "Cl-HOBt", "6-Cl-HOBt", "HOAt", "Oxyma",
     "Oxyma Pure", "K-Oxyma", "Ethyl cyano(hydroxyimino)acetate", "DMAP",
     "NHS", "Sulfo-NHS", "HOSu", "HODhbt", "DHO", "HOOBt", "HOSBt",
     "CuCl", "CuBr", "Pd(PPh3)4", "Phenylsilane", "Manual",
@@ -227,7 +227,7 @@ MW_FALLBACK = {
     "HATU": 380.23, "HCTU": 413.69, "TBTU": 321.08, "PyBOP": 520.39,
     "PyAOP": 521.36, "BOP": 442.28, "COMU": 427.35, "T3P": 318.18,
     "DMTMM": 276.72, "TFFH": 226.19, "BTC": 296.75, "CDI": 162.15,
-    "MSNT": 284.29, "HOBt": 135.13, "Cl-HOBt": 169.57,
+    "MSNT": 284.29, "HOBt": 135.13, "HOBt (anhydrous)": 135.13, "HOBt hydrate": 153.14, "Cl-HOBt": 169.57,
     "6-Cl-HOBt": 169.57, "HOAt": 136.11, "Oxyma": 142.11,
     "Oxyma Pure": 142.11, "K-Oxyma": 180.20, "DMAP": 122.17,
     "NHS": 115.09, "Sulfo-NHS": 217.13, "HOSu": 115.09,

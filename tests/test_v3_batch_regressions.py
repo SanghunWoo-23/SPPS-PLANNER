@@ -297,7 +297,8 @@ def test_classic_batch_dashboard_schema_is_fully_populated_and_separated():
     assert aa_values[0].startswith("Fmoc-")
     assert aa_values[1] and aa_values[2] and aa_values[3]
     assert aa_values[4] and aa_values[5] and aa_values[6] and aa_values[7]
-    assert list(gui.batch_base_tree.rows.values()) == []
+    base_items = {row[0] for row in gui.batch_base_tree.rows.values()}
+    assert base_items == {"NMM"}
     assert list(gui.batch_catalyst_tree.rows.values()) == []
     coupling_items = {row[0] for row in gui.batch_coupling_reagent_tree.rows.values()}
     assert coupling_items == {"HBTU"}
@@ -448,7 +449,7 @@ def test_r19_compact_batch_ignores_project_chemistry_and_uses_prep_defaults():
     assert set(coupling["Eq"]) == {4.0}
     assert "DIC" not in set(coupling["Item"])
     assert tables["Catalyst/additive"].empty
-    assert tables["Base/Deprotection"].empty
+    assert set(tables["Base/Deprotection"]["Item"]) == {"NMM"}
     assert set(tables["AA stock"]["Eq"]) == {6.0}
     summary = tables["Summary"].iloc[0]
     assert float(summary["Scale mmol"]) == 0.2
@@ -470,9 +471,11 @@ def test_r19_compact_batch_rounds_solution_volumes_from_defaults():
     # 1 × 0.2 × 4 / 0.4 M = 2 mL -> same practical 20 mL prep volume.
     assert float(hbtu["Calculated_mL"]) == pytest.approx(2.0)
     assert float(hbtu["Actual_mL"]) == pytest.approx(20.0)
-    nmp = tables["Solvents"].iloc[0]
-    assert nmp["Item"] == "NMP"
-    assert float(nmp["Actual_mL"]) == pytest.approx(20.0)
+    stock_solvent = tables["Solvents"].iloc[0]
+    assert stock_solvent["Item"] == "DMF"
+    assert float(stock_solvent["Actual_mL"]) == pytest.approx(20.0)
+    nmm = tables["Base/Deprotection"].iloc[0]
+    assert nmm["Item"] == "NMM"
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="Tk GUI test requires DISPLAY")

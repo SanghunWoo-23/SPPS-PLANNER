@@ -27,7 +27,7 @@ SUMMARY_COLUMNS = [
     "No", "Project", "Peptide name", "LOT No", "Sequence", "Copies",
     "Scale mmol", "Resin", "Loading", "Resin_g", "Chemistry",
 ]
-VERSION = "V6.0.0"
+VERSION = "V7.0.0"
 
 
 def _float(current: Any, default: float = 0.0) -> float:
@@ -632,7 +632,7 @@ def _calculate_compact_sequence_prep(gui: Any) -> dict[str, pd.DataFrame]:
 
     This is the operator-facing synthesizer preparation calculator.  It deliberately
     ignores Project Manager DIC/HOBt/HBTU selections and any project-specific reagent
-    equivalents.  AA stock and HBTU/NMP quantities are controlled only by the visible
+    equivalents.  AA stock, HBTU stock and NMM base-stock quantities are controlled only by the visible
     ``Solution prep defaults`` fields.  Sequence-defined modifiers (Ac, linker, tag,
     label, non-natural residues) are still recognized from the sequence itself.
     """
@@ -642,14 +642,18 @@ def _calculate_compact_sequence_prep(gui: Any) -> dict[str, pd.DataFrame]:
     aa_records: dict[tuple[Any, ...], dict[str, Any]] = {}
     chemical_records: dict[tuple[Any, ...], dict[str, Any]] = {}
     reagent_records: dict[tuple[Any, ...], dict[str, Any]] = {}
+    base_records: dict[tuple[Any, ...], dict[str, Any]] = {}
     solvent_totals: dict[tuple[str, str], dict[str, Any]] = {}
 
     aa_concentration = number(gui, "batch_solution_conc", 0.25)
     aa_eq = number(gui, "batch_coupling_eq", 10.0)
     hbtu_eq = number(gui, "batch_hbtu_eq", 10.0)
     hbtu_concentration = number(gui, "batch_hbtu_conc", 0.4)
+    nmm_eq = number(gui, "batch_nmm_eq", 5.0)
+    nmm_concentration = number(gui, "batch_nmm_conc", 0.8)
     total_coupling_count = 0.0
     total_hbtu_mmol = 0.0
+    total_nmm_mmol = 0.0
 
     for project in projects:
         sequence = str(project.get("Sequence", "") or "").strip()
@@ -669,6 +673,7 @@ def _calculate_compact_sequence_prep(gui: Any) -> dict[str, pd.DataFrame]:
         local_residue_count = sum(aa_counts.values())
         total_coupling_count += local_residue_count * copies
         total_hbtu_mmol += local_residue_count * copies * scale_each * hbtu_eq
+        total_nmm_mmol += local_residue_count * copies * scale_each * nmm_eq
 
         for amino_acid, local_count in aa_counts.items():
             count = local_count * copies
@@ -693,19 +698,26 @@ def _calculate_compact_sequence_prep(gui: Any) -> dict[str, pd.DataFrame]:
                 unit.get("note") or "Detected from sequence; verify reagent form/vendor when required",
             )
 
+    stock_solvent = str(value(gui, "default_coupling_solution_solvent", "DMF") or "DMF")
     if total_coupling_count > 0 and hbtu_eq > 0:
         _add_record(
-            reagent_records, "Coupling reagent stock", "HBTU", "NMP",
+            reagent_records, "Coupling reagent stock", "HBTU", stock_solvent,
             total_coupling_count, hbtu_eq, hbtu_concentration, total_hbtu_mmol,
             "Batch default HBTU stock; independent of Project Manager coupling chemistry",
         )
         if hbtu_concentration > 0:
-            calculated_nmp = total_hbtu_mmol / hbtu_concentration
-            solvent_totals[("HBTU stock solvent", "NMP")] = {
-                "mL": calculated_nmp,
+            calculated_stock_solvent = total_hbtu_mmol / hbtu_concentration
+            solvent_totals[("HBTU stock solvent", stock_solvent)] = {
+                "mL": calculated_stock_solvent,
                 "count": total_coupling_count,
-                "note": "NMP volume for HBTU stock; actual mL uses Batch round-up + reserve",
+                "note": "Configured solvent volume for HBTU stock; actual mL uses Batch round-up + reserve",
             }
+    if total_coupling_count > 0 and nmm_eq > 0:
+        _add_record(
+            base_records, "Coupling base stock", "NMM", stock_solvent,
+            total_coupling_count, nmm_eq, nmm_concentration, total_nmm_mmol,
+            "N-Methylmorpholine (NMM) base stock; calculated independently from HBTU",
+        )
 
     aa_frame = _records_frame(gui, aa_records)
     chemical_frame = _records_frame(gui, chemical_records)
@@ -715,12 +727,21 @@ def _calculate_compact_sequence_prep(gui: Any) -> dict[str, pd.DataFrame]:
         "Resin loading": pd.DataFrame(columns=BATCH_COLUMNS),
         "Coupling reagents": _records_frame(gui, reagent_records),
         "Catalyst/additive": pd.DataFrame(columns=BATCH_COLUMNS),
-        "Base/Deprotection": pd.DataFrame(columns=BATCH_COLUMNS),
+        "Base/Deprotection": _records_frame(gui, base_records),
         "Solvents": _direct_volume_frame(gui, solvent_totals),
         "Chemicals": chemical_frame,
         "Summary": pd.DataFrame(projects, columns=SUMMARY_COLUMNS),
     }
 
+
+
+def calculate_compact(gui: Any) -> dict[str, pd.DataFrame]:
+    """Public V7 entry point for sequence-driven preparation totals.
+
+    The compact path always uses Project Manager sequences/copies plus visible
+    Solution prep defaults and never re-aggregates project-specific chemistry.
+    """
+    return _calculate_compact_sequence_prep(gui)
 
 def calculate(gui: Any) -> dict[str, pd.DataFrame]:
     """Calculate Batch tables.
@@ -969,7 +990,7 @@ def _write_tree(tree: Any, frame: pd.DataFrame) -> None:
 
 _SIGNATURE_SETTINGS = (
     "batch_default_scale", "batch_solution_conc", "batch_coupling_eq",
-    "batch_hbtu_eq", "batch_hbtu_conc",
+    "batch_hbtu_eq", "batch_hbtu_conc", "batch_nmm_eq", "batch_nmm_conc",
     "batch_actual_round_ml", "batch_actual_extra_ml",
     "reagent_eq_follows_coupling_eq", "coupling_eq",
     "solvent_volume_mode", "amide_ml_per_mmol", "ctc_ml_per_mmol",
@@ -1122,6 +1143,8 @@ def export(
                 "aa_eq": number(gui, "batch_coupling_eq", 5.0),
                 "hbtu_eq": number(gui, "batch_hbtu_eq", 10.0),
                 "hbtu_conc_M": number(gui, "batch_hbtu_conc", 0.4),
+                "nmm_eq": number(gui, "batch_nmm_eq", 5.0),
+                "nmm_conc_M": number(gui, "batch_nmm_conc", 0.8),
                 "solvent_volume_mode": value(gui, "solvent_volume_mode", "resin_factor"),
                 "amide_mL_per_mmol": number(gui, "amide_ml_per_mmol", 10.0),
                 "ctc_mL_per_mmol": number(gui, "ctc_ml_per_mmol", 5.0),
@@ -1147,7 +1170,7 @@ def export(
 
 
 __all__ = [
-    "BATCH_COLUMNS", "calculate", "export", "initialize", "invalidate",
+    "BATCH_COLUMNS", "calculate", "calculate_compact", "export", "initialize", "invalidate",
     "invalidate_and_refresh_if_visible", "is_visible", "refresh",
     "request_refresh", "restore_input_rows",
     "sync_input_from_projects", "grouped_aa_chemical_frame",

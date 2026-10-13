@@ -133,7 +133,7 @@ class WorkItemWindow:
             label = self.gui.pm_display_name(item)
         except Exception:
             label = "Selected Work Item"
-        return f"{label} — SPPS Planner V6.0.0"
+        return f"{label} — SPPS Planner V7.0.0 Final"
 
     def _build(self) -> None:
         outer = ttk.Frame(self.window, padding=10)
@@ -177,7 +177,7 @@ class WorkItemWindow:
         ttk.Label(form, text="Chemistry").grid(row=1, column=2, sticky="w", padx=3, pady=(7, 0))
         ttk.Combobox(
             form, textvariable=self.gui.pm_chemistry,
-            values=("DIC/HOBt", "HBTU/NMP 10eq"), state="normal", width=22,
+            values=("DIC/HOBt", "HBTU/NMM"), state="normal", width=22,
         ).grid(row=1, column=3, sticky="ew", padx=(0, 8), pady=(7, 0))
 
         notebook = ttk.Notebook(outer)

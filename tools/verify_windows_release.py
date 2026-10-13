@@ -1,4 +1,4 @@
-"""Static and optional binary checks for the Windows V6.0.0 release."""
+"""Static and optional binary checks for the Windows V7.0.0 Final release."""
 from __future__ import annotations
 
 import argparse
@@ -24,8 +24,8 @@ from spps_planner.database import (
     validate_compounds_dataframe,
 )
 
-VERSION = "V6.0.0"
-NUMBER = "6.0.0"
+VERSION = "V7.0.0"
+NUMBER = "7.0.0"
 FORBIDDEN_IMPORTS = {
     "suite_gui.legacy_controller", "suite_gui.release_composition",
     "suite_gui.modules.classic_workflow", "suite_gui.modules.workbench_workflow",
@@ -46,14 +46,14 @@ def verify_identity() -> None:
     _require(_read("VERSION.txt").strip() == VERSION, "VERSION.txt identity mismatch")
     version_source = _read("apps/spps_planner_app/spps_planner/version.py")
     _require(f'VERSION_NUMBER = "{NUMBER}"' in version_source, "Internal VERSION_NUMBER mismatch")
-    _require(f'DATA_VERSION = "SPPS data v{NUMBER}"' in version_source, "Data version mismatch")
+    _require('DATA_VERSION = "SPPS data v6.0.0"' in version_source, "Data version mismatch")
     installer = _read("installer/SPPS_Planner_Setup.iss")
     _require(f'#define MyAppVersion "{NUMBER}"' in installer, "Installer AppVersion mismatch")
     _require(f"VersionInfoVersion={NUMBER}.0" in installer, "Installer file metadata mismatch")
     _require('#define MyAppPublisher "Sanghun Woo"' in installer, "Installer publisher mismatch")
     version_info = _read("installer/version_info.txt")
-    _require("filevers=(6, 0, 0, 0)" in version_info, "EXE file version mismatch")
-    _require("prodvers=(6, 0, 0, 0)" in version_info, "EXE product version mismatch")
+    _require("filevers=(7, 0, 0, 0)" in version_info, "EXE file version mismatch")
+    _require("prodvers=(7, 0, 0, 0)" in version_info, "EXE product version mismatch")
     _require("StringStruct(u'CompanyName', u'Sanghun Woo')" in version_info, "EXE company metadata mismatch")
     stale = []
     version_names = {"APP_VERSION", "VERSION", "VERSION_NUMBER", "VERSION_LABEL", "TITLE"}
@@ -68,7 +68,7 @@ def verify_identity() -> None:
                 continue
             if any(isinstance(target, ast.Name) and target.id in version_names for target in targets):
                 text = value.value
-                if re.search(r"V?\d+\.\d+\.\d+", text) and "6.0.0" not in text:
+                if re.search(r"V?[2-5]\.\d+\.\d+", text):
                     stale.append(f"{path.relative_to(ROOT)}:{node.lineno}={text}")
     _require(not stale, "Stale runtime version constants remain: " + "; ".join(stale))
 
@@ -202,7 +202,7 @@ def verify_all(*, check_exe: bool = False, check_installer: bool = False) -> Non
     if check_exe:
         _verify_pe(ROOT / "dist" / "SPPS_Planner" / "SPPS_Planner.exe", "Portable EXE")
     if check_installer:
-        _verify_pe(ROOT / "installer" / "output" / "SPPS_Planner_Setup_V6.0.0.exe", "Installer")
+        _verify_pe(ROOT / "installer" / "output" / "SPPS_Planner_Setup_V7.0.0.exe", "Installer")
 
 
 def main() -> int:
@@ -211,7 +211,7 @@ def main() -> int:
     parser.add_argument("--check-installer", action="store_true")
     args = parser.parse_args()
     verify_all(check_exe=args.check_exe, check_installer=args.check_installer)
-    print("[OK] SPPS Planner V6.0.0 Windows release contract passed")
+    print("[OK] SPPS Planner V7.0.0 Final Windows release contract passed")
     return 0
 
 

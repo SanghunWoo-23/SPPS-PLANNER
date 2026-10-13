@@ -2,8 +2,8 @@
 from __future__ import annotations
 from tkinter import ttk
 
-APP_VERSION='V6.0.0'
-VERSION_LABEL='SPPS Planner V6.0.0'
+APP_VERSION='V7.0.0'
+VERSION_LABEL='SPPS Planner V7.0.0 Final'
 
 ACTIVE_RESINS = [
 'Rink Amide AM','Rink Amide MBHA','Rink Amide ChemMatrix','Rink Amide Tentagel',

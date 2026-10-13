@@ -45,13 +45,16 @@ def test_editor_factory_preserves_scale_copies_and_dic_hobt_defaults():
     assert plan.reagent_eq_follows_coupling_eq is True
 
 
-def test_editor_factory_preserves_hbtu_nmp_profile_and_safe_fallbacks():
+def test_editor_factory_preserves_legacy_hbtu_nmp_name_but_uses_nmm_semantics():
     gui = _Gui(
         pm_sequence="AEK",
         pm_scale="0",
         pm_copies="1",
         pm_loading="",
         pm_chemistry="HBTU/NMP 10eq",
+        default_base="NMM",
+        default_coupling_solution_solvent="DMF",
+        coupling_eq="10",
     )
 
     plan = plan_input_factory.build_editor_plan_input(
@@ -64,8 +67,8 @@ def test_editor_factory_preserves_hbtu_nmp_profile_and_safe_fallbacks():
     assert gui.pm_loading.get() == ""
     assert plan.default_coupling_reagent == "HBTU"
     assert plan.default_catalyst == ""
-    assert plan.default_base == "DIEA"
-    assert plan.default_reaction_solvent == "NMP"
+    assert plan.default_base == "NMM"
+    assert plan.default_reaction_solvent == "DMF"
     assert plan.coupling_eq == 10.0
 
 
@@ -73,6 +76,8 @@ def test_batch_factory_uses_explicit_batch_conditions():
     gui = _Gui(
         batch_coupling_eq="5",
         batch_hbtu_eq="10",
+        default_base="NMM",
+        default_coupling_solution_solvent="DMF",
         default_base_eq="5",
         default_base_count="1",
         loading_aa_eq="2",
@@ -93,8 +98,8 @@ def test_batch_factory_uses_explicit_batch_conditions():
     assert plan.resin == "CTC(합성기)"
     assert plan.default_coupling_reagent == "HBTU"
     assert plan.default_catalyst == ""
-    assert plan.default_base == "DIEA"
-    assert plan.default_reaction_solvent == "NMP"
+    assert plan.default_base == "NMM"
+    assert plan.default_reaction_solvent == "DMF"
     assert plan.default_reagent_eq == 10.0
     assert plan.reagent_eq_follows_coupling_eq is False
     assert plan.auto_short_peptide_eq is False

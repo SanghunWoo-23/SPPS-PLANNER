@@ -38,7 +38,11 @@ class ExperimentalDataWindow(tk.Toplevel):
     def __init__(self, gui: Any) -> None:
         super().__init__(gui)
         self.gui = gui
-        self.title("Recommendations & Lab History — SPPS Planner V6.0.0")
+        try:
+            from spps_planner.version import VERSION_NAME
+        except Exception:
+            VERSION_NAME = "SPPS Planner"
+        self.title(f"Recommendations & Lab History — {VERSION_NAME}")
         self._configure_styles()
         try:
             self.transient(gui)
@@ -46,7 +50,7 @@ class ExperimentalDataWindow(tk.Toplevel):
             self._transient_error = exc
         self._pending_after_ids: set[str] = set()
         self._build()
-        ui_system.fit_window(self, preferred_width=1180, preferred_height=760, minimum_width=1040, minimum_height=680)
+        ui_system.fit_window(self, preferred_width=1480, preferred_height=900, minimum_width=1180, minimum_height=720)
         # Paint the window first; load DB-backed history immediately afterward.
         # Track the callback so a closed recommendation window cannot leave a
         # Tcl job behind during application/test shutdown.
@@ -249,7 +253,7 @@ class ExperimentalDataWindow(tk.Toplevel):
         self.recommend_notebook.select(target)
         self._sync_advisor_from_planner("loading" if loading else "cleavage")
         self.deiconify(); self.lift()
-        ui_system.fit_window(self, preferred_width=1180, preferred_height=760, minimum_width=1040, minimum_height=680)
+        ui_system.fit_window(self, preferred_width=1480, preferred_height=900, minimum_width=1180, minimum_height=720)
         self._schedule(0, self.run_loading_advisor if loading else self.run_cleavage_advisor, idle=True)
 
     def focus_optimizer(self) -> None:
@@ -258,7 +262,7 @@ class ExperimentalDataWindow(tk.Toplevel):
         self._sync_advisor_from_planner("loading")
         self._sync_advisor_from_planner("cleavage")
         self.deiconify(); self.lift()
-        ui_system.fit_window(self, preferred_width=1180, preferred_height=760, minimum_width=1040, minimum_height=680)
+        ui_system.fit_window(self, preferred_width=1480, preferred_height=900, minimum_width=1180, minimum_height=720)
         self._schedule(0, self.run_condition_optimizer, idle=True)
 
     def _sync_advisor_from_planner(self, kind: str) -> None:
@@ -1517,15 +1521,15 @@ class ExperimentalDataWindow(tk.Toplevel):
         sequence = _value(getattr(self.gui, "pm_sequence", ""))
         try:
             from spps_planner.parser import parse_sequence
-            from suite_gui.material_presentation import AA_BOTTLE_NAME
+            from suite_gui.material_presentation import AA_REAGENT_NAMES
             parsed = parse_sequence(sequence)
             tokens = list(parsed.core_tokens or [])
             if tokens:
                 token = str(tokens[-1])
                 if token.startswith("d") and len(token) == 2:
-                    base = AA_BOTTLE_NAME.get(token[1:].upper(), token)
+                    base = AA_REAGENT_NAMES.get(token[1:].upper(), token)
                     return base.replace("Fmoc-", "Fmoc-D-", 1)
-                return AA_BOTTLE_NAME.get(token.upper(), token)
+                return AA_REAGENT_NAMES.get(token.upper(), token)
         except Exception as exc:
             self._cterm_parse_error = exc
         return ""
@@ -2028,6 +2032,14 @@ class ExperimentalDataWindow(tk.Toplevel):
             reserve_var = getattr(self.gui, "cleavage_reserve_mL", None)
             if reserve_var is not None and hasattr(reserve_var, "set"):
                 reserve_var.set(str(scaled_total))
+        if workup_solvent:
+            solvent_var = getattr(self.gui, "workup_solvent", None)
+            if solvent_var is not None and hasattr(solvent_var, "set"):
+                solvent_var.set(str(workup_solvent))
+        if workup_ml is not None:
+            amount_var = getattr(self.gui, "workup_volume_mL", None)
+            if amount_var is not None and hasattr(amount_var, "set"):
+                amount_var.set(str(workup_ml))
         preset = str(rec.get("preset") or "").strip()
         if rec.get("condition_source") == "exact_lab_record" and comp:
             self.gui.cleavage_preset.set("CUSTOM")

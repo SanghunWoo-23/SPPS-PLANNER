@@ -10,8 +10,8 @@ from suite_gui.modules.final_ui_adjustments import (
 )
 
 
-APP_VERSION = "V7.0.0"
-VERSION_LABEL = "SPPS Planner V7.0.0 Final"
+APP_VERSION = "V8.0.0"
+VERSION_LABEL = "SPPS Planner V8.0.0"
 
 def apply_post_build(gui):
     _restore_resin_widgets(gui)

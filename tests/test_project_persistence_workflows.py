@@ -116,7 +116,7 @@ def test_session_round_trip_preserves_items_defaults_and_custom_db(
 
     assert persistence_workflow.save_autosave_state(source) == path
     saved = persistence_workflow.state_persistence.read_json_object(path)
-    assert saved["app_version"] == "V7.0.0"
+    assert saved["app_version"] == "V8.0.0"
     assert saved["pm_items"][0]["sequence"] == "GHK"
     assert saved["defaults"]["coupling_eq"] == "5"
     assert saved["defaults"]["position_doubling_rules"] == "7:2"

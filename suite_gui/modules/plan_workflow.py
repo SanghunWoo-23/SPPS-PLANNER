@@ -28,8 +28,8 @@ from suite_gui import state_persistence
 from suite_gui import position_rules
 from suite_gui.error_policy import log_nonfatal
 
-VERSION = "V7.0.0"
-TITLE = "SPPS Planner V7.0.0 Final"
+VERSION = "V8.0.0"
+TITLE = "SPPS Planner V8.0.0"
 
 PLAN_COLUMNS = [
     "No", "Unit name", "MW", "Density(g/mL)", "Unit eq", "Unit mmol", "Unit amount",
@@ -1376,9 +1376,6 @@ def _install_action_buttons(gui, ns):
         "pm_generate_button": gui.generate_update_plan,
         "pm_apply_button": gui.apply_change,
         "pm_condition_button": gui.open_condition_optimizer,
-        "pm_loading_advice_button": gui.open_loading_advisor,
-        "pm_cleavage_advice_button": gui.open_cleavage_advisor,
-        "pm_record_lab_button": gui.open_experimental_data,
         "pm_save_session_button": gui.save_autosave_state,
     }
     for attr, command in bindings.items():
@@ -1801,7 +1798,7 @@ def export_outputs(gui, ns):
             "nh4i_eq": item.get("nh4i_eq", "2"), "nh4i_concentration_m": item.get("nh4i_concentration_m", "0.2"), "nh4i_time_h": item.get("nh4i_time_h", "1"),
         }])
 
-        xlsx = out / "project_manager_selected_outputs_v7.0.0.xlsx"
+        xlsx = out / "project_manager_selected_outputs_v8.0.0.xlsx"
         with pd.ExcelWriter(xlsx, engine="openpyxl") as writer:
             editor_summary.to_excel(writer, index=False, sheet_name="00_EDITOR_SUMMARY")
             visible_plan.to_excel(writer, index=False, sheet_name="01_SELECTED_PLAN_VISIBLE")
@@ -1827,7 +1824,7 @@ def export_outputs(gui, ns):
             "active_index": index, "pm_items": list(getattr(gui, "pm_items", []) or []),
             "visible_selected_plan_source": "current edited TreeView; Apply Change-linked V6.0.0 tables; no regeneration during export",
         }
-        (out / "project_manager_state_v7.0.0.json").write_text(
+        (out / "project_manager_state_v8.0.0.json").write_text(
             json.dumps(state, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
         )
         gui.last_outdir = out

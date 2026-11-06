@@ -23,8 +23,8 @@ from suite_gui.runtime_state import (
     get_active_index, set_active_index, is_switching, set_switching, get_calculation_namespace,
 )
 
-VERSION = "V7.0.0"
-TITLE = "SPPS Planner V7.0.0 Final"
+VERSION = "V8.0.0"
+TITLE = "SPPS Planner V8.0.0"
 # Public UI contract retained from the validated V4 workflow; actions now bind by explicit refs.
 PRIMARY_ML_ENTRY_CONTRACT = "Experimental / ML (V4)"
 
@@ -1104,17 +1104,12 @@ def _install_action_buttons(gui, ns):
         "pm_generate_button": gui.generate_update_plan,
         "pm_apply_button": gui.apply_change,
         "pm_condition_button": gui.open_condition_optimizer,
-        "pm_loading_advice_button": gui.open_loading_advisor,
-        "pm_cleavage_advice_button": gui.open_cleavage_advisor,
         "pm_save_session_button": gui.save_autosave_state,
     }
     for attr, command in bindings.items():
         widget = getattr(gui, attr, None)
         if widget is not None:
             widget.configure(command=command)
-    # Experimental / ML (V4) remains a visible primary action; explicit ref, no text scan.
-    if getattr(gui, "pm_record_lab_button", None) is not None:
-        gui.pm_record_lab_button.configure(command=gui.open_experimental_data)
 
 def _install_plan_toolbar(gui, ns):
     tree = gui.pm_selected_plan_tree

@@ -19,7 +19,10 @@ _SEEDED_DB_PATHS: set[str] = set()
 
 def db_path(gui: Any = None) -> Path:
     override = getattr(gui, "experimental_db_path", None) if gui is not None else None
-    return Path(override) if override else experimental_data.default_db_path()
+    if override:
+        from spps_planner.user_paths import assert_profile_path
+        return assert_profile_path(override)
+    return experimental_data.default_db_path()
 
 
 def _set_gui_diagnostic(gui: Any, name: str, value: Any) -> None:

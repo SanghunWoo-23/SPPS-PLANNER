@@ -47,7 +47,9 @@ def test_atomic_write_and_read_support_unicode_and_replace(tmp_path):
 def test_read_non_object_root_is_empty_state(tmp_path):
     path = tmp_path / "state.json"
     path.write_text("[1, 2, 3]", encoding="utf-8")
-    assert state_persistence.read_json_object(path) == {}
+    import pytest
+    with pytest.raises(ValueError, match="top-level object"):
+        state_persistence.read_json_object(path)
 
 
 def test_normalize_items_migrates_saved_one_letter_aa_display_rows():

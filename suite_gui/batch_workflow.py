@@ -27,7 +27,7 @@ SUMMARY_COLUMNS = [
     "No", "Project", "Peptide name", "LOT No", "Sequence", "Copies",
     "Scale mmol", "Resin", "Loading", "Resin_g", "Chemistry",
 ]
-VERSION = "V7.0.0"
+VERSION = "V8.0.0"
 
 
 def _float(current: Any, default: float = 0.0) -> float:

@@ -26,7 +26,7 @@ def test_project_and_plan_action_buttons_use_stable_widget_refs():
     assert '"pm_apply_button": gui.apply_change' in plan
     assert 'text == "Generate"' not in plan
     assert 'text == "Apply Change"' not in plan
-    for attr in ("pm_generate_button", "pm_apply_button", "pm_condition_button", "pm_record_lab_button"):
+    for attr in ("pm_generate_button", "pm_apply_button", "pm_condition_button", "pm_auto_plan_button"):
         assert f"self.{attr}" in classic
 
 

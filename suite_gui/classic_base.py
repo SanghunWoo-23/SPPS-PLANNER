@@ -18,7 +18,7 @@ import pandas as pd
 from suite_gui.gui_primitives import EditableTree, StaticValue as _StaticValue, bind_combobox_first_letter_jump, const_var as const_var, open_path
 from suite_gui import catalogs as _catalogs
 from suite_gui.session_state import SessionStateMixin
-APP_VERSION = 'V7.0.0'
+APP_VERSION = 'V8.0.0'
 APP = ROOT / 'apps' / 'spps_planner_app'
 if str(APP) not in sys.path:
     sys.path.insert(0, str(APP))
@@ -76,7 +76,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         style.configure('TNotebook.Tab', padding=(24, 10), font=('Segoe UI', 11, 'bold'))
         main = ttk.Frame(self, padding=10)
         main.pack(fill='both', expand=True)
-        self.app_title_label = ttk.Label(main, text='SPPS Planner V7.0.0 Final', font=('Segoe UI', 18, 'bold'))
+        self.app_title_label = ttk.Label(main, text='SPPS Planner V8.0.0', font=('Segoe UI', 18, 'bold'))
         self.app_title_label.pack(anchor='w')
         self.project_name = tk.StringVar(value='')
         self.seq = tk.StringVar(value='')
@@ -772,12 +772,13 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         actions = ttk.Frame(edit)
         self.pm_action_bar = actions
         actions.grid(row=3, column=0, columnspan=10, sticky='ew', pady=(6, 0))
+        # Synthesis actions run left-to-right: Generate, Apply Change, optional
+        # preview/generation.  Recommendations remains the single evidence hub.
         self.pm_generate_button = ttk.Button(actions, text='Generate', command=self.pm_generate_selected); self.pm_generate_button.pack(side='left', padx=3)
         self.pm_apply_button = ttk.Button(actions, text='Apply Change', command=self.apply_change); self.pm_apply_button.pack(side='left', padx=3)
-        self.pm_condition_button = ttk.Button(actions, text='Recommend Conditions', command=self.open_condition_optimizer); self.pm_condition_button.pack(side='left', padx=(9, 3))
-        self.pm_loading_advice_button = ttk.Button(actions, text='Loading Advice', command=self.open_loading_advisor); self.pm_loading_advice_button.pack(side='left', padx=3)
-        self.pm_cleavage_advice_button = ttk.Button(actions, text='Cleavage Advice', command=self.open_cleavage_advisor); self.pm_cleavage_advice_button.pack(side='left', padx=3)
-        self.pm_record_lab_button = ttk.Button(actions, text='Record Lab Data', command=self.open_experimental_data); self.pm_record_lab_button.pack(side='left', padx=3)
+        self.pm_auto_plan_button = ttk.Button(actions, text='Auto Plan (Optional)', command=self.open_auto_plan_option, style='Accent.TButton'); self.pm_auto_plan_button.pack(side='left', padx=(3, 9))
+        self.pm_condition_button = ttk.Button(actions, text='Recommendations & Lab History', command=self.open_condition_optimizer); self.pm_condition_button.pack(side='left', padx=3)
+        self.pm_risk_map_button = ttk.Button(actions, text='Sequence Risk Map', command=lambda: __import__('suite_gui.sequence_risk_ui_v8', fromlist=['open_sequence_risk_window']).open_sequence_risk_window(self)); self.pm_risk_map_button.pack(side='left', padx=3)
         self.pm_save_session_button = ttk.Button(actions, text='Save Session Now', command=self.save_autosave_state); self.pm_save_session_button.pack(side='left', padx=3)
         moved_actions = ttk.Frame(edit)
         self.pm_global_actions = moved_actions
@@ -1072,6 +1073,10 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
             vals += [''] * max(0, len(cols) - len(vals))
             rows.append(dict(zip(cols, vals)))
         return pd.DataFrame(rows, columns=cols)
+
+    def open_auto_plan_option(self):
+        from suite_gui.auto_plan_option_v8 import open_auto_plan
+        return open_auto_plan(self)
 
     def pm_generate_selected(self):
         self.pm_save_selected()

@@ -20,8 +20,8 @@ import tkinter as tk
 from tkinter import ttk
 from suite_gui import peptide_item_collection
 
-APP_VERSION = "V7.0.0"
-VERSION_LABEL = "SPPS Planner V7.0.0 Final"
+APP_VERSION = "V8.0.0"
+VERSION_LABEL = "SPPS Planner V8.0.0"
 
 
 def _walk(widget):

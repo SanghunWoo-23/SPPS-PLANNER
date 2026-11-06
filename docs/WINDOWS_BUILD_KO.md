@@ -1,51 +1,47 @@
-# SPPS Planner V7.0.0 Final Windows 빌드
+# SPPS Planner V8.0.0 — Windows 빌드 안내
 
-## 자동 설치와 전체 빌드
+배포 ZIP은 **소스 패키지**이며 EXE 또는 Installer 완성품을 포함하지 않습니다. Windows 10/11 x64에서 전체 ZIP을 압축 해제한 후 루트의 **`INSTALL_BUILD_TOOLS_AND_BUILD.bat`**을 실행하세요.
 
-압축을 완전히 해제한 뒤 다음 파일을 실행한다.
+## 단일 BAT 사용법
 
 ```bat
 INSTALL_BUILD_TOOLS_AND_BUILD.bat
 ```
 
-이 스크립트는 Python 3.11/3.12와 Inno Setup을 확인하고, 없으면 Windows
-Package Manager(`winget`)로 현재 사용자 범위에 설치한다. 이어서 Python
-의존성, V7 release contract, PyInstaller EXE, Inno Setup Installer를 순서대로
-만든다. 관리자 권한 설치를 요구하지 않는다.
-
-최종 결과:
-
-```text
-dist\SPPS_Planner\SPPS_Planner.exe
-installer\output\SPPS_Planner_Setup_V7.0.0.exe
-```
-
-## 개별 빌드
+명령행에서 자동화할 때:
 
 ```bat
-BUILD_EXE_ONLY.bat
-BUILD_INSTALLER.bat
+INSTALL_BUILD_TOOLS_AND_BUILD.bat --no-pause
 ```
 
-CI나 자동화에서는 두 스크립트에 `--no-pause`를 전달할 수 있다. 빌드는
-V7.0.0 내부 version, EXE version resource, Installer metadata, 삭제된 legacy
-import 부재와 생성된 PE 파일의 `MZ` header를 검사한다.
+스크립트는 다음 순서로 진행합니다.
 
-## 실제 Windows 최종 확인
+1. Python 3.11/3.12 **64비트** 확인. 없다면 `winget`을 통해 Python 3.12 설치 시도.
+2. `requirements.txt`와 `requirements-dev.txt` 의존성 설치.
+3. Inno Setup 6/7 (`ISCC.exe`) 탐색. 없다면 `winget` 설치 시도.
+4. Python 문법 검사, `tools/verify_windows_release.py` 정적 검사, 소스 self-test.
+5. PyInstaller로 `dist\SPPS_Planner\SPPS_Planner.exe` 빌드 및 구조 검사.
+6. 생성된 EXE의 `--self-test`와 self-test 보고서 검증.
+7. Inno Setup을 통해 `installer\output\SPPS_Planner_Setup_V8.0.0.exe` 생성.
+8. EXE/Installer 파일 검사.
 
-1. Windows 10/11 64-bit에서 Installer 실행 및 일반 사용자 경로 설치
-2. 시작 메뉴/바탕화면 shortcut 실행
-3. 빈 Work Item startup, V7.0.0 Final title/icon 확인
-4. Generate → Plan 편집 → Apply Change → Export 확인
-5. Work Item 독립 창과 모든 5개 업무 탭 확인
-6. Project Save/Load/Save As, `.bak` 복구, Data Workbook 왕복 확인
-7. 한글 경로와 공백 포함 경로에서 HPLC data/method link 확인
-8. 종료 후 재실행, 제거 프로그램 실행 확인
+`winget`이 없거나 설치 후 실행 파일 검색에 실패하면 오류를 출력하고 종료합니다. 필요한 프로그램을 수동으로 설치하고 다시 실행해야 할 수 있습니다. 인터넷, 해당 도구 설치 권한 및 보안 정책에 영향을 받습니다.
 
-Windows에서 생성한 EXE/Installer 자체는 다른 OS에서 교차 빌드한 파일로
-대체하지 않는다. 최종 배포물은 위 체크를 실제 Windows에서 통과한 파일을
-사용한다.
-빌드가 끝나면 `BUILD_EXE_ONLY.bat`가 생성된 EXE 자체를 `--self-test`로
-실행합니다. 이 검사는 V7.0.0 Final 모듈, Fmoc 보호 아미노산, Batch 계산,
-chemical/linker/tag/label 파싱이 실제 패키지 안에서도 동작하는지 확인하며,
-하나라도 실패하면 빌드를 실패로 종료합니다.
+**주의:** 이 BAT은 *설치 프로그램을 만드는 빌드 도구*이며 SPPS Planner를 PC에 설치하지 않습니다. Installer가 정상 작동하는지는 실제 Windows에서 설치·업그레이드·제거·GUI 동작을 직접 확인해야 합니다. 위 단계가 자동 테스트로 모두 완료되더라도 실험 SOP나 GUI 사용성을 검증한 것은 아닙니다.
+
+## 소스 실행 및 테스트
+
+```bat
+python -m pip install -r requirements.txt -r requirements-dev.txt
+python main_launcher.py
+python -m pytest -q
+python tools\verify_windows_release.py
+```
+
+## Windows 배포 체크리스트 (미실행 환경에서는 미검증)
+
+- 앱 실행 및 제목·아이콘·Project Manager·Step 1/2·Batch Manager 확인
+- Auto Plan → Generate → Plan/Materials/Cleavage/Workup 확인
+- 휠/드래그 스크롤과 화면 하단 위젯 높이 확인
+- JSON 저장·로드·외부 변경·복구·한글 경로 확인
+- EXE 실행 및 Installer 설치·업그레이드·제거·재설치, 사용자 데이터 보존 확인

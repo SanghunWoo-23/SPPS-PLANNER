@@ -16,7 +16,7 @@ def _about(gui: Any) -> None:
     from suite_gui.runtime_selftest import BUILD_REVISION
     messagebox.showinfo(
         "About SPPS Planner",
-        "SPPS Planner V7.0.0 Final\n\n"
+        "SPPS Planner V8.0.0\n\n"
         f"Build revision: {BUILD_REVISION}\n"
         "Modern/Classic hybrid workspace\n"
         "V3 planning workflow preserved + V4 Experimental Data / ML Advisors",

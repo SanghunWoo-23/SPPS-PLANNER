@@ -1,4 +1,4 @@
-# SPPS Planner v7.0.0 Final User Manual
+# SPPS Planner V8.0.0 User Manual
 
 SPPS Planner turns a peptide sequence plus resin, scale, loading and chemistry
 settings into an editable synthesis Plan connected to Materials, Totals,
@@ -15,9 +15,28 @@ Start in **Project Manager**.
 3. In Step 2, choose the coupling reagent / activator, additive / catalyst, base, and solvent. Use **My recipes** to save or reload an exact bottle combination you use repeatedly.
 4. Step 3 shows the exact recipe before saving. Press **Add peptide** to create the Project Manager item.
 5. Select an existing peptide and use **Edit setup…** to reopen the same exact-bottle dialog without changing Batch Solution prep defaults.
-6. Continue with the existing **Generate / Apply Change / Loading Advice / Cleavage Advice** workflow.
+6. Continue with the existing **Generate / Apply Change / Recommendations & Lab History** workflow.
 
 `NMM` is a coupling **base** and `NMP` is a **solvent**. The recipe selected in Add is stored with that peptide and does not replace Batch Manager Solution prep defaults.
+
+
+## V8.0.0 — Optional Auto Plan and recommendations
+
+Select **Auto Plan (Optional)** in Project Manager to preview the active
+sequence, scale, resin, loading, copies, and coupling settings.
+Only after selecting **Generate Full Plan** does the existing engine generate
+Plan, Materials, Checklist, and connected Cleavage/Workup planning views.
+Opening the preview alone does not change project inputs.
+
+The Project Manager action bar is ordered: **Generate → Apply Change → Auto Plan (Optional) → Recommendations & Lab History → Sequence Risk Map → Save Session Now**. Auto Plan uses the same blue visual treatment as Generate, but is optional.
+
+In **Recommendations & Lab History**, use the buttons from left to right for a normal run: **Preflight → Start Experiment → Add Result / Add Issue → Final Result → Finish → Repeat Run**. **Refresh, Data Store, and Backup DB** are maintenance tools on the far right. Add Issue is event-driven, not a mandatory step. Start Experiment freezes the planner condition to link measurements and issues to that Run.
+
+The Sequence Risk Map provides deterministic warnings, not experimental
+failure probabilities. Review the evidence class of any Loading/Cleavage
+recommendation. A peptide sequence alone cannot establish a validated
+cleavage cocktail or reaction time.
+
 
 ## Core workflow
 

@@ -10,8 +10,8 @@ from suite_gui.runtime_state import set_active_index, get_calculation_namespace
 import tkinter as tk
 from tkinter import ttk
 
-APP_VERSION = "V7.0.0"
-VERSION_LABEL = "SPPS Planner V7.0.0 Final"
+APP_VERSION = "V8.0.0"
+VERSION_LABEL = "SPPS Planner V8.0.0"
 
 
 ACTIVE_RESINS = [

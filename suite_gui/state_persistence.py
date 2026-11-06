@@ -6,6 +6,10 @@ import hashlib
 from copy import deepcopy
 from pathlib import Path
 import shutil
+import os
+import tempfile
+import time
+from contextlib import contextmanager
 from typing import Any, Iterable, Mapping
 
 from suite_gui.material_presentation import AA_REAGENT_NAMES
@@ -48,19 +52,35 @@ def normalize_items(items: Iterable[Any] | None) -> list[dict[str, Any]]:
 def read_json_object(path: Path) -> dict[str, Any]:
     """Read a JSON object; a non-object root represents an empty state."""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
-    return dict(data) if isinstance(data, Mapping) else {}
+    if not isinstance(data, Mapping):
+        raise ValueError(f"Invalid SPPS JSON: top-level object required: {path}")
+    return dict(data)
+
+
+def _write_temp_json(destination: Path, state: Mapping[str, Any]) -> Path:
+    """Flush a unique temporary file in the destination directory before publish."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent)
+    temporary = Path(name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(dict(state), stream, ensure_ascii=False, indent=2, default=str)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    return temporary
 
 
 def atomic_write_json(path: Path, state: Mapping[str, Any]) -> Path:
-    """Write readable UTF-8 JSON and atomically replace the destination."""
+    """Publish an entire JSON document without leaving a partial destination."""
     destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(destination.suffix + ".tmp")
-    temporary.write_text(
-        json.dumps(dict(state), ensure_ascii=False, indent=2, default=str),
-        encoding="utf-8",
-    )
-    temporary.replace(destination)
+    temporary = _write_temp_json(destination, state)
+    try:
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
     return destination
 
 
@@ -73,27 +93,85 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def atomic_write_json_with_backup(path: Path, state: Mapping[str, Any]) -> Path:
-    """Atomically write JSON while retaining the last complete file as .bak."""
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(destination.suffix + ".tmp")
-    backup = destination.with_suffix(destination.suffix + ".bak")
-    temporary.write_text(
-        json.dumps(dict(state), ensure_ascii=False, indent=2, default=str),
-        encoding="utf-8",
-    )
-    if destination.exists():
+@contextmanager
+def project_file_lock(path: Path, *, timeout: float = 8.0):
+    """Cooperative cross-process lock, using Windows or POSIX OS file locking.
+
+    The sidecar lock is intentionally persistent: deleting a lock file while
+    another process has it open would allow two independent locks to coexist.
+    """
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = target.with_name(target.name + ".lock")
+    with lock_path.open("a+b") as handle:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                handle.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except (OSError, BlockingIOError) as exc:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"Project is locked by another process: {target}") from exc
+                time.sleep(0.05)
         try:
-            read_json_object(destination)
-        except Exception:
-            pass
-        else:
-            backup_tmp = backup.with_suffix(backup.suffix + ".tmp")
-            shutil.copy2(destination, backup_tmp)
-            backup_tmp.replace(backup)
-    temporary.replace(destination)
-    return destination
+            yield
+        finally:
+            handle.seek(0)
+            if os.name == "nt":
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def atomic_write_json_with_backup(
+    path: Path, state: Mapping[str, Any], *, expected_sha256: str | None = None,
+    expected_absent: bool = False,
+) -> Path:
+    """Atomically save with an OS lock and optional compare-and-swap guard.
+
+    A failed optimistic check leaves both the original and its backup intact.
+    All project writes from this application use the same sidecar lock.
+    """
+    destination = Path(path)
+    with project_file_lock(destination):
+        if expected_absent and destination.exists():
+            raise RuntimeError("Destination appeared after Save As confirmation; choose a different path.")
+        if expected_sha256 is not None:
+            if not destination.exists() or file_sha256(destination) != expected_sha256:
+                raise RuntimeError("Project changed outside SPPS Planner during save; reload or Save As a different file.")
+        backup = destination.with_suffix(destination.suffix + ".bak")
+        temporary = _write_temp_json(destination, state)
+        backup_tmp = None
+        try:
+            if destination.exists():
+                try:
+                    read_json_object(destination)
+                except (ValueError, OSError, UnicodeError):
+                    pass
+                else:
+                    fd, name = tempfile.mkstemp(prefix=f".{backup.name}.", suffix=".tmp", dir=destination.parent)
+                    backup_tmp = Path(name)
+                    with os.fdopen(fd, "wb") as target, destination.open("rb") as source:
+                        shutil.copyfileobj(source, target)
+                        target.flush()
+                        os.fsync(target.fileno())
+                    os.replace(backup_tmp, backup)
+            os.replace(temporary, destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+            if backup_tmp is not None:
+                backup_tmp.unlink(missing_ok=True)
+        return destination
 
 
 def read_json_with_recovery(path: Path) -> tuple[dict[str, Any], Path, bool]:
@@ -148,6 +226,7 @@ def project_state(
 
 __all__ = [
     "atomic_write_json",
+    "project_file_lock",
     "atomic_write_json_with_backup",
     "file_sha256",
     "normalize_items",

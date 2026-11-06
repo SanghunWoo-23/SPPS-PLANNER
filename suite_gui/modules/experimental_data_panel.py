@@ -50,6 +50,10 @@ class ExperimentalDataWindow(tk.Toplevel):
             self._transient_error = exc
         self._pending_after_ids: set[str] = set()
         self._build()
+        self._bind_scrollable_children()
+        self.bind("<MouseWheel>", self._on_window_wheel, add="+")
+        self.bind("<Button-4>", self._on_window_wheel, add="+")
+        self.bind("<Button-5>", self._on_window_wheel, add="+")
         ui_system.fit_window(self, preferred_width=1480, preferred_height=900, minimum_width=1180, minimum_height=720)
         # Paint the window first; load DB-backed history immediately afterward.
         # Track the callback so a closed recommendation window cannot leave a
@@ -121,8 +125,12 @@ class ExperimentalDataWindow(tk.Toplevel):
         style.map("SPPS.TNotebook.Tab", background=[("selected", self.recommendation_colors["lavender_active"]), ("active", self.recommendation_colors["lavender"])], foreground=[("selected", self.recommendation_colors["accent"])])
         style.configure("SPPS.Primary.TButton", font=("Segoe UI Semibold", 9), padding=(12, 7))
         style.configure("SPPS.Secondary.TButton", font=("Segoe UI", 9), padding=(10, 6))
-        style.configure("Treeview", font=("Segoe UI", 9), rowheight=24)
-        style.configure("Treeview.Heading", font=("Segoe UI Semibold", 9))
+        # ttk styles belong to the whole Tk interpreter, not to this Toplevel.
+        # Never reconfigure the shared Treeview / Treeview.Heading styles here:
+        # doing so silently unbolds the Project Manager's Plan headers.
+        # Use a window-specific style for all history/evidence tables instead.
+        style.configure("SPPS.History.Treeview", font=("Segoe UI", 9), rowheight=24)
+        style.configure("SPPS.History.Treeview.Heading", font=("Segoe UI", 9, "bold"))
 
     def _style_text(self, widget: tk.Text, *, compact: bool = False) -> None:
         widget.configure(
@@ -143,23 +151,26 @@ class ExperimentalDataWindow(tk.Toplevel):
         self.status.pack(side="right", padx=(12,0))
 
         top = ttk.Frame(self, padding=(14, 5, 14, 4), style="SPPS.Root.TFrame"); top.pack(fill="x")
-        self.add_result_button = ttk.Button(top, text="Add Result", command=self.record_result, style="SPPS.Primary.TButton"); self.add_result_button.pack(side="left")
-        self.final_result_button = ttk.Button(top, text="Final Result", command=lambda: self.record_result("Cleavage / Final"), style="SPPS.Secondary.TButton"); self.final_result_button.pack(side="left", padx=(6,0))
-        self.add_issue_button = ttk.Button(top, text="Add Issue", command=self.record_issue, style="SPPS.Secondary.TButton"); self.add_issue_button.pack(side="left", padx=(6,0))
-        self.preflight_button = ttk.Button(top, text="Preflight", command=self._show_preflight, style="SPPS.Secondary.TButton"); self.preflight_button.pack(side="left", padx=(12,0))
+        # Operator workflow: validate -> start -> record -> finish -> repeat.
+        # Data maintenance actions remain at the end and are not part of a Run.
+        self.preflight_button = ttk.Button(top, text="Preflight", command=self._show_preflight, style="SPPS.Secondary.TButton"); self.preflight_button.pack(side="left")
         self.start_experiment_button = ttk.Button(top, text="Start Experiment", command=self._start_experiment, style="SPPS.Secondary.TButton"); self.start_experiment_button.pack(side="left", padx=(6,0))
+        self.add_result_button = ttk.Button(top, text="Add Result", command=self.record_result, style="SPPS.Primary.TButton"); self.add_result_button.pack(side="left", padx=(12,0))
+        self.add_issue_button = ttk.Button(top, text="Add Issue", command=self.record_issue, style="SPPS.Secondary.TButton"); self.add_issue_button.pack(side="left", padx=(6,0))
+        self.final_result_button = ttk.Button(top, text="Final Result", command=lambda: self.record_result("Cleavage / Final"), style="SPPS.Secondary.TButton"); self.final_result_button.pack(side="left", padx=(6,0))
         self.finish_experiment_button = ttk.Button(top, text="Finish", command=self._finish_experiment, style="SPPS.Secondary.TButton"); self.finish_experiment_button.pack(side="left", padx=(6,0))
         self.repeat_run_button = ttk.Button(top, text="Repeat Run", command=self._repeat_run, style="SPPS.Secondary.TButton"); self.repeat_run_button.pack(side="left", padx=(6,0))
-        ttk.Button(top, text="Refresh", command=self.refresh_all, style="SPPS.Secondary.TButton").pack(side="left", padx=(12,0))
-        self.data_store_button = ttk.Button(top, text="Data Store", command=self._show_data_store, style="SPPS.Secondary.TButton")
-        self.data_store_button.pack(side="left", padx=(6,0))
-        self.backup_store_button = ttk.Button(top, text="Backup DB", command=self._backup_data_store, style="SPPS.Secondary.TButton")
-        self.backup_store_button.pack(side="left", padx=(6,0))
-        ttk.Label(top, text="Start freezes the Planner condition; measured records reuse that frozen Run context.", style="SPPS.Muted.TLabel").pack(side="left", padx=(14,0))
+        self.refresh_button = ttk.Button(top, text="Refresh", command=self.refresh_all, style="SPPS.Secondary.TButton"); self.refresh_button.pack(side="left", padx=(12,0))
+        self.data_store_button = ttk.Button(top, text="Data Store", command=self._show_data_store, style="SPPS.Secondary.TButton"); self.data_store_button.pack(side="left", padx=(6,0))
+        self.backup_store_button = ttk.Button(top, text="Backup DB", command=self._backup_data_store, style="SPPS.Secondary.TButton"); self.backup_store_button.pack(side="left", padx=(6,0))
 
         runbar = ttk.Frame(self, padding=(14, 0, 14, 6), style="SPPS.Root.TFrame"); runbar.pack(fill="x")
         self.run_context_var = tk.StringVar(value="Run context not loaded")
         ttk.Label(runbar, textvariable=self.run_context_var, style="SPPS.Muted.TLabel").pack(side="left")
+        # Keep workflow guidance on a separate, wrapping line: long hints must
+        # never force the buttons/Run status outside smaller viewports.
+        workflow_hint = ttk.Label(self, text="Workflow: Preflight → Start → Record results/issues → Final Result → Finish → Repeat", style="SPPS.Muted.TLabel", wraplength=970)
+        workflow_hint.pack(anchor="w", padx=14, pady=(0, 3))
 
         # Legacy top-level labels retained only as code-search notes for old tests:
         # text="Records"  text="Risk & Evidence"  text="Recommended Conditions"  text="Data Health"
@@ -176,29 +187,97 @@ class ExperimentalDataWindow(tk.Toplevel):
         advanced_nb = ttk.Notebook(self.advanced_tab, style="SPPS.TNotebook"); advanced_nb.pack(fill="both", expand=True)
         self.advanced_notebook = advanced_nb
         self.records_tab = ttk.Frame(advanced_nb, padding=8, style="SPPS.Root.TFrame"); advanced_nb.add(self.records_tab, text="History")
-        self.decision_tab = ttk.Frame(advanced_nb, padding=10, style="SPPS.Root.TFrame"); advanced_nb.add(self.decision_tab, text="Risk & Evidence")
-        self.health_tab = ttk.Frame(advanced_nb, padding=10, style="SPPS.Root.TFrame"); advanced_nb.add(self.health_tab, text="Data Health")
-        self.analytics_tab = ttk.Frame(advanced_nb, padding=10, style="SPPS.Root.TFrame"); advanced_nb.add(self.analytics_tab, text="Analytics")
+        self.decision_tab = self._scrollable_tab(advanced_nb, "Risk & Evidence", padding=10)
+        self.health_tab = self._scrollable_tab(advanced_nb, "Data Health", padding=10)
+        self.analytics_tab = self._scrollable_tab(advanced_nb, "Analytics", padding=10)
 
         records_nb = ttk.Notebook(self.records_tab, style="SPPS.TNotebook"); records_nb.pack(fill="both", expand=True)
         self.records_notebook = records_nb
-        self.issue_tab = ttk.Frame(records_nb, padding=10, style="SPPS.Root.TFrame"); records_nb.add(self.issue_tab, text="Issues")
-        self.loading_tab = ttk.Frame(records_nb, padding=10, style="SPPS.Root.TFrame"); records_nb.add(self.loading_tab, text="Loading")
-        self.cleavage_tab = ttk.Frame(records_nb, padding=10, style="SPPS.Root.TFrame"); records_nb.add(self.cleavage_tab, text="Cleavage")
-        self.sequence_tab = ttk.Frame(records_nb, padding=10, style="SPPS.Root.TFrame"); records_nb.add(self.sequence_tab, text="Sequence STD")
-        self.usage_tab = ttk.Frame(records_nb, padding=10, style="SPPS.Root.TFrame"); records_nb.add(self.usage_tab, text="Cleavage Usage")
-        self.outcome_tab = ttk.Frame(records_nb, padding=10, style="SPPS.Root.TFrame"); records_nb.add(self.outcome_tab, text="Outcomes")
+        self.issue_tab = self._scrollable_tab(records_nb, "Issues", padding=10)
+        self.loading_tab = self._scrollable_tab(records_nb, "Loading", padding=10)
+        self.cleavage_tab = self._scrollable_tab(records_nb, "Cleavage", padding=10)
+        self.sequence_tab = self._scrollable_tab(records_nb, "Sequence STD", padding=10)
+        self.usage_tab = self._scrollable_tab(records_nb, "Cleavage Usage", padding=10)
+        self.outcome_tab = self._scrollable_tab(records_nb, "Outcomes", padding=10)
 
         recommend_nb = ttk.Notebook(self.recommend_tab, style="SPPS.TNotebook"); recommend_nb.pack(fill="both", expand=True)
         self.recommend_notebook = recommend_nb
-        self.loading_advisor_tab = ttk.Frame(recommend_nb, padding=10, style="SPPS.Root.TFrame"); recommend_nb.add(self.loading_advisor_tab, text="Loading")
-        self.cleavage_advisor_tab = ttk.Frame(recommend_nb, padding=10, style="SPPS.Root.TFrame"); recommend_nb.add(self.cleavage_advisor_tab, text="Cleavage")
-        self.condition_optimizer_tab = ttk.Frame(recommend_nb, padding=10, style="SPPS.Root.TFrame"); recommend_nb.add(self.condition_optimizer_tab, text="All Conditions")
-        self.compare_tab = ttk.Frame(recommend_nb, padding=10, style="SPPS.Root.TFrame"); recommend_nb.add(self.compare_tab, text="Compare A/B")
+        self.loading_advisor_tab = self._scrollable_tab(recommend_nb, "Loading", padding=10)
+        self.cleavage_advisor_tab = self._scrollable_tab(recommend_nb, "Cleavage", padding=10)
+        self.condition_optimizer_tab = self._scrollable_tab(recommend_nb, "All Conditions", padding=10)
+        self.compare_tab = self._scrollable_tab(recommend_nb, "Compare A/B", padding=10)
 
         self._build_loading_history(); self._build_cleavage_history(); self._build_sequence_history()
         self._build_cleavage_usage_history(); self._build_outcome_history(); self._build_issue_history(); self._build_decision_support()
         self._build_data_health(); self._build_analytics(); self._build_loading_advisor(); self._build_cleavage_advisor(); self._build_condition_optimizer(); self._build_ab_compare()
+
+    def _scrollable_tab(self, notebook: ttk.Notebook, title: str, *, padding: int = 10) -> ttk.Frame:
+        """Create a full-height scrolling tab without shrinking its actual widgets.
+
+        Only the embedded frame width follows the viewport.  Its HEIGHT is never
+        forced to the viewport height: resizing must not squash the lab panels.
+        """
+        shell = ttk.Frame(notebook, style="SPPS.Root.TFrame")
+        notebook.add(shell, text=title)
+        canvas = tk.Canvas(shell, borderwidth=0, highlightthickness=0,
+                           background=self.recommendation_colors["bg"])
+        scrollbar = ttk.Scrollbar(shell, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        content = ttk.Frame(canvas, padding=padding, style="SPPS.Root.TFrame")
+        item = canvas.create_window((0, 0), window=content, anchor="nw")
+        def resize_content(_event=None):
+            if canvas.winfo_exists():
+                canvas.configure(scrollregion=canvas.bbox("all"))
+        def resize_canvas(event):
+            canvas.itemconfigure(item, width=max(1, event.width))
+            resize_content()
+        content.bind("<Configure>", resize_content, add="+")
+        canvas.bind("<Configure>", resize_canvas, add="+")
+        if not hasattr(self, "_scrollable_canvases"):
+            self._scrollable_canvases = []
+        self._scrollable_canvases.append(canvas)
+        return content
+
+    def _bind_scrollable_children(self) -> None:
+        """Give page scrolling precedence over Treeview/Text class wheel bindings."""
+        def visit(widget):
+            widget.bind("<MouseWheel>", self._on_window_wheel, add="+")
+            widget.bind("<Button-4>", self._on_window_wheel, add="+")
+            widget.bind("<Button-5>", self._on_window_wheel, add="+")
+            for child in widget.winfo_children():
+                visit(child)
+        for canvas in self._scrollable_canvases:
+            visit(canvas)
+
+    def _on_window_wheel(self, event) -> str | None:
+        """Scroll the tab under the pointer by wheel notches (not pixels)."""
+        try:
+            pointer = self.winfo_containing(event.x_root, event.y_root)
+            if pointer is None:
+                return None
+            for canvas in getattr(self, "_scrollable_canvases", []):
+                current = pointer
+                while current is not None and current is not canvas:
+                    current = current.master
+                if current is not canvas:
+                    continue
+                first, last = canvas.yview()
+                if first <= 0.0 and last >= 1.0:
+                    return None
+                if getattr(event, "num", None) in (4, 5):
+                    steps = -1 if event.num == 4 else 1
+                else:
+                    delta = getattr(event, "delta", 0)
+                    if not delta:
+                        return None
+                    steps = -max(1, round(abs(delta) / 120)) if delta > 0 else max(1, round(abs(delta) / 120))
+                canvas.yview_scroll(steps, "units")
+                return "break"
+        except (tk.TclError, AttributeError):
+            return None
+        return None
 
     def _show_data_store(self) -> None:
         try:
@@ -283,7 +362,10 @@ class ExperimentalDataWindow(tk.Toplevel):
 
     def _tree(self, parent: Any, columns: list[str]) -> ttk.Treeview:
         wrap = ttk.Frame(parent); wrap.pack(fill="both", expand=True)
-        tree = ttk.Treeview(wrap, columns=columns, show="headings", selectmode="extended")
+        tree = ttk.Treeview(
+            wrap, columns=columns, show="headings", selectmode="extended",
+            style="SPPS.History.Treeview",
+        )
         y = ttk.Scrollbar(wrap, orient="vertical", command=tree.yview)
         x = ttk.Scrollbar(wrap, orient="horizontal", command=tree.xview)
         tree.configure(yscrollcommand=y.set, xscrollcommand=x.set)
@@ -760,6 +842,15 @@ class ExperimentalDataWindow(tk.Toplevel):
         ttk.Button(form, text="Recommend", command=self.run_loading_advisor, style="SPPS.Secondary.TButton").grid(row=0, column=len(fields) * 2, padx=(4, 0))
         ttk.Button(form, text="Apply & Generate", command=self.apply_loading_recommendation, style="SPPS.Primary.TButton").grid(row=0, column=len(fields) * 2 + 1, padx=(6, 0))
         self._last_loading_advice = None
+        self.load_summary = tk.Label(
+            self.loading_advisor_tab,
+            text="Click Recommend to view loading conditions and evidence status.",
+            justify="left", anchor="w", font=("Segoe UI", 12, "bold"),
+            bg="#EAF2FF", fg="#17365D", relief="solid", borderwidth=1,
+            padx=16, pady=12, wraplength=1050,
+        )
+        self.load_summary.pack(fill="x", pady=(10, 2))
+        self.load_summary.bind("<Configure>", lambda event: self.load_summary.configure(wraplength=max(320, event.width - 32)))
         self.load_result = tk.Text(self.loading_advisor_tab, height=17, wrap="word"); self.load_result.pack(fill="x", pady=(8, 8)); self._style_text(self.load_result)
         quick=ttk.LabelFrame(self.loading_advisor_tab, text="Measured Result", padding=8, style="SPPS.Card.TLabelframe"); quick.pack(fill="x", pady=(0,8))
         ttk.Label(quick, text="Measured Loading", style="SPPS.Muted.TLabel").pack(side="left")
@@ -820,6 +911,18 @@ class ExperimentalDataWindow(tk.Toplevel):
         ttk.Button(form, text="Analyze", command=self.run_cleavage_advisor, style="SPPS.Secondary.TButton").grid(row=0, column=len(fields) * 2, padx=(4,0))
         ttk.Button(form, text="Apply & Update", command=self.apply_cleavage_recommendation, style="SPPS.Primary.TButton").grid(row=0, column=len(fields) * 2 + 1, padx=(6, 0))
         form.columnconfigure(1, weight=1)
+
+        # Visually prominent, evidence-qualified result summary. This is display
+        # only; it never modifies the chemistry engine or applies conditions.
+        self.clv_summary = tk.Label(
+            self.cleavage_advisor_tab,
+            text="Click Analyze to review the recommended condition and its evidence.",
+            justify="left", anchor="w", font=("Segoe UI", 12, "bold"),
+            bg="#EAF2FF", fg="#17365D", relief="solid", borderwidth=1,
+            padx=16, pady=12, wraplength=1050,
+        )
+        self.clv_summary.pack(fill="x", pady=(10, 2))
+        self.clv_summary.bind("<Configure>", lambda e: self.clv_summary.configure(wraplength=max(320, e.width-32)))
 
         cards = ttk.Frame(self.cleavage_advisor_tab, style="SPPS.Root.TFrame"); cards.pack(fill="x", pady=(10,8))
         cards.columnconfigure(0, weight=1); cards.columnconfigure(1, weight=1); cards.columnconfigure(2, weight=1)
@@ -1775,9 +1878,36 @@ class ExperimentalDataWindow(tk.Toplevel):
                 lines += ["", "No bounded target-loading estimate is available yet.", "Add measured loading results for this resin + C-terminal AA to improve the recommendation."]
             if result.get('warnings'):
                 lines += ["", "Notes:"] + [f"• {w}" for w in result.get('warnings') or []]
+            eligible = bool(rec.get("apply_allowed"))
+            origin = kind_labels.get(kind, kind.title() if kind else "No actionable recommendation")
+            support = f"{trace.get('source', 'Unknown')} | confidence {trace.get('confidence', 'LOW')} | records {trace.get('evidence_count', 0)}"
+            if rec:
+                heading = "APPLY-ELIGIBLE LOADING CONDITION" if eligible else "REFERENCE ONLY — NOT APPROVED TO APPLY"
+                banner = (
+                    f"{heading}   |   {origin}\n"
+                    f"AA {_fmt(rec.get('aa_eq')) or '—'} eq     "
+                    f"DIEA {_fmt(rec.get('base_eq')) or '—'} eq     "
+                    f"Time {_fmt(rec.get('loading_time_h')) or '—'} h\n"
+                    f"Expected loading {_fmt(rec.get('predicted_loading_mmol_g')) or '—'} mmol/g   |   "
+                    f"Target {_fmt(self.load_target.get()) or '—'} mmol/g\n"
+                    f"Evidence: {support}"
+                )
+                if kind == 'CHEMISTRY DEFAULT':
+                    banner += "\nCHEMISTRY DEFAULT ONLY — not an experimental yield prediction."
+                if rec.get('provisional'):
+                    banner += "\nPROVISIONAL — Parsed history, not verified measurements."
+            else:
+                banner = f"NO BOUNDED LOADING RECOMMENDATION — add exact resin + AA history.\nEvidence: {support}"
+            self.load_summary.configure(
+                text=banner,
+                bg="#E6F4EA" if eligible else "#FFF0D9",
+                fg="#175B32" if eligible else "#704300",
+            )
             self.load_result.delete("1.0", "end"); self.load_result.insert("1.0", "\n".join(lines))
             self._fill(self.load_evidence, result.get("evidence", []))
         except Exception as exc:
+            self._last_loading_advice = None
+            self.load_summary.configure(text="LOADING ANALYSIS FAILED — no current recommendation.\nPlease check the input and try again.", bg="#FFF0D9", fg="#704300")
             messagebox.showerror("Loading Advisor", str(exc), parent=self)
 
     def run_cleavage_advisor(self) -> None:
@@ -1906,12 +2036,46 @@ class ExperimentalDataWindow(tk.Toplevel):
                     "Operator protocol when used: NH4I 2 eq, ≤0.2 M (default 0.2 M), 1 h, TFA/DW.",
                 ]
 
+            # A high-visibility condition banner, explicitly distinguishing
+            # apply-eligible evidence from a non-actionable reference.
+            composition = rec.get("composition_pct") or {}
+            mixture = " / ".join(f"{k} {_fmt(v, 2)}%" for k, v in composition.items())
+            eligible = bool(rec.get("apply_allowed"))
+            source = rec.get("condition_source") or "none"
+            source_names = {
+                "exact_lab_record": "EXACT LAB RECORD",
+                "recommended_exact_sequence_record": "HISTORICAL CONSENSUS",
+                "operator_approved_anchor": "OPERATOR-APPROVED ANCHOR",
+                "historical_match_incomplete": "INCOMPLETE HISTORY",
+                "operator_cys_rule": "OPERATOR CYS RULE",
+                "empirical_v5_fallback": "EMPIRICAL REFERENCE",
+                "chemistry_rule_reference": "CHEMISTRY REFERENCE",
+            }
+            label = source_names.get(source, "UNVERIFIED REFERENCE")
+            heading = "APPLY-ELIGIBLE CONDITION" if eligible else "REFERENCE ONLY — NOT APPROVED TO APPLY"
+            info = (
+                f"{heading}   |   {label}   |   Confidence: {trace.get('confidence') or result.get('confidence','LOW')}\n"
+                f"Cocktail: {mixture or rec.get('preset') or 'Not available'}\n"
+                f"Cleavage: {_fmt(rec.get('cleavage_eq')) or '—'} eq    "
+                f"Time: {_fmt(rec.get('cleavage_time_h')) or '—'} h    "
+                f"Evidence records: {trace.get('evidence_count',0)}"
+            )
+            if not rec:
+                info = "NO SAFE CONDITION AVAILABLE — insufficient evidence. Review the detailed cards below."
+            self.clv_summary.configure(
+                text=info,
+                bg="#E6F4EA" if eligible else "#FFF0D9",
+                fg="#175B32" if eligible else "#704300",
+            )
+
             self.clv_result.delete("1.0", "end"); self.clv_result.insert("1.0", "\n".join(condition_lines))
             self.clv_amount_result.delete("1.0", "end"); self.clv_amount_result.insert("1.0", "\n".join(amount_lines))
             self.clv_workup_result.delete("1.0", "end"); self.clv_workup_result.insert("1.0", "\n".join(workup_lines))
             self.clv_rescue_result.delete("1.0", "end"); self.clv_rescue_result.insert("1.0", "\n".join(rescue_lines))
             self._fill(self.clv_evidence, result.get("evidence", []))
         except Exception as exc:
+            self._last_cleavage_advice = None
+            self.clv_summary.configure(text="CLEAVAGE ANALYSIS FAILED — no current recommendation.\nPlease check the input and try again.", bg="#FFF0D9", fg="#704300")
             messagebox.showerror("Cleavage Advisor", str(exc), parent=self)
 
     def _append_result_status(self, widget: tk.Text, message: str) -> None:

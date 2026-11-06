@@ -2,6 +2,7 @@
 from __future__ import annotations
 from suite_gui.runtime_state import get_active_index, set_active_index, get_calculation_namespace
 
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox
@@ -14,7 +15,7 @@ from suite_gui.modules.release_ui import _normalize_resin
 from suite_gui.session_state import DEFAULT_STATE_FIELDS
 
 
-VERSION = "V7.0.0"
+VERSION = "V8.0.0"
 EXTRA_DEFAULT_FIELDS = (
     "solvent_volume_mode",
     "amide_ml_per_mmol",
@@ -150,7 +151,7 @@ def _same_path(left: Any, right: Any) -> bool:
         return False
 
 
-def _save_project_path(gui: Any, path: Path, show: bool) -> Path:
+def _save_project_path(gui: Any, path: Path, show: bool, *, expected_destination_sha: str | None = None, expected_absent: bool = False) -> Path:
     loaded_path = getattr(gui, "_loaded_project_path", None)
     expected = str(getattr(gui, "_loaded_project_fingerprint", "") or "")
     if path.exists() and loaded_path and _same_path(path, loaded_path) and expected:
@@ -172,7 +173,15 @@ def _save_project_path(gui: Any, path: Path, show: bool) -> Path:
     })
     state["project_revision"] = revision
     state["project_change_history"] = history
-    state_persistence.atomic_write_json_with_backup(path, state)
+    # Recheck under the same OS lock as the backup/write to close the race
+    # between a separate editor's update and our initial fingerprint check.
+    guard = expected if (loaded_path and _same_path(path, loaded_path) and expected) else expected_destination_sha
+    kwargs = {}
+    if guard is not None:
+        kwargs["expected_sha256"] = guard
+    if expected_absent:
+        kwargs["expected_absent"] = True
+    state_persistence.atomic_write_json_with_backup(path, state, **kwargs)
     # Publish in-memory metadata only after the atomic file write succeeds.
     gui._project_revision = revision
     gui._project_change_history = history
@@ -216,10 +225,24 @@ def save_project_as(gui: Any, path: str | Path | None = None, show: bool = True)
     previous_fingerprint = str(getattr(gui, "_loaded_project_fingerprint", "") or "")
     try:
         destination = Path(path)
+        destination_existed = destination.exists()
+        destination_sha = state_persistence.file_sha256(destination) if destination_existed else None
+        # A supplied destination bypasses the native save dialog. Never silently
+        # overwrite an existing project, including the currently loaded one.
+        if destination.exists():
+            if not messagebox.askyesno(
+                "Overwrite existing project?",
+                f"This file already exists:\n{destination}\n\nReplace it?",
+                default="no",
+            ):
+                return None
         destination.parent.mkdir(parents=True, exist_ok=True)
-        gui._loaded_project_path = None
-        gui._loaded_project_fingerprint = ""
-        saved = _save_project_path(gui, destination, show)
+        # Preserve the fingerprint for the currently open project. An
+        # overwrite confirmation does not waive external-edit protection.
+        if not (previous_path and _same_path(destination, previous_path)):
+            gui._loaded_project_path = None
+            gui._loaded_project_fingerprint = ""
+        saved = _save_project_path(gui, destination, show, expected_destination_sha=destination_sha, expected_absent=not destination_existed)
         return saved
     except Exception as exc:
         gui._loaded_project_path = previous_path
@@ -298,74 +321,147 @@ def _legacy_item(gui: Any, data: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _validate_loaded_state(data: Mapping[str, Any]) -> None:
+    """Reject structurally damaged files before updating any GUI variables."""
+    if not isinstance(data, Mapping) or not data:
+        raise ValueError("Empty or invalid project/session data; existing work was not changed.")
+    if "pm_items" in data:
+        items = data["pm_items"]
+        if not isinstance(items, list) or any(not isinstance(item, Mapping) for item in items):
+            raise ValueError("Invalid pm_items structure; refusing a destructive project import.")
+    elif not any(key in data for key in ("sequence", "seq", "project", "project_name", "peptide_name")):
+        raise ValueError("Unrecognized SPPS project format; existing work was not changed.")
+    for field in ("defaults", "custom_materials"):
+        if field in data and not isinstance(data[field], Mapping):
+            raise ValueError(f"Invalid {field} structure in saved project.")
+    if "project_change_history" in data and not isinstance(data["project_change_history"], list):
+        raise ValueError("Invalid project history structure.")
+    for field in ("selected_pm_index", "active_index", "project_revision"):
+        if field in data:
+            try:
+                int(data[field] or 0)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Invalid {field} in saved project.") from exc
+
+
+def _prepare_state(gui: Any, data: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], bool, int]:
+    """Validate and construct model data before changing any live GUI state."""
+    _validate_loaded_state(data)
+    defaults = _migrate_volume_defaults(data.get("defaults", {}))
+    custom = deepcopy(dict(data.get("custom_materials", {})))
+    items = state_persistence.normalize_items(data.get("pm_items", []))
+    # An explicitly present (even empty) pm_items collection is a modern
+    # project. Never fabricate a legacy item when the user saved zero items.
+    legacy_flat = "pm_items" not in data
+    if legacy_flat:
+        items = [_legacy_item(gui, data)]
+    for item in items:
+        item["resin"] = _normalize_resin(item.get("resin", ""))
+        synthesis_execution.ensure_execution(item)
+        ml_dataset.ensure_review(item)
+        data_system.ensure_hierarchy(item)
+        data_system.sync_active_run(item)
+    index = int(data.get("selected_pm_index", data.get("active_index", 0)) or 0)
+    index = max(0, min(index, len(items) - 1))
+    # Test conversion before touching widgets.
+    int(data.get("project_revision", 0) or 0)
+    if "batch_rows" in data and (not isinstance(data["batch_rows"], list) or
+                                  any(not isinstance(row, Mapping) for row in data["batch_rows"])):
+        raise ValueError("Invalid batch_rows structure in saved project.")
+    if any(not isinstance(row, Mapping) for row in data.get("project_change_history", [])):
+        raise ValueError("Invalid project history row in saved project.")
+    return defaults, custom, items, legacy_flat, index
+
+
 def _restore_state(gui: Any, data: Mapping[str, Any]) -> bool:
+    defaults, custom, items, legacy_flat, index = _prepare_state(gui, data)
+    # Snapshot mutable model and Tk variables so a widget failure can roll back.
+    old_model = {
+        name: deepcopy(getattr(gui, name)) for name in (
+            "pm_items", "custom_materials", "_project_id", "_project_revision",
+            "_project_change_history",
+        ) if hasattr(gui, name)
+    }
+    old_values = {}
+    for name in defaults:
+        var = getattr(gui, name, None)
+        if var is not None and hasattr(var, "get") and hasattr(var, "set"):
+            old_values[name] = var.get()
+    old_index = get_active_index(gui, 0)
+    old_batch_rows = _tree_rows(getattr(gui, "batch_tree", None))
+    required = (
+        "pm_selected_plan_tree", "pm_selected_material_tree",
+        "pm_selected_total_tree", "progress_tree", "pm_cleavage_tree",
+    )
     gui._restoring_state = True
     try:
-        defaults = _migrate_volume_defaults(data.get("defaults", {}))
-        if isinstance(defaults, Mapping):
-            for name, value in defaults.items():
-                variable = getattr(gui, name, None)
-                try:
-                    if variable is not None and hasattr(variable, "set"):
-                        variable.set(value)
-                except Exception:
-                    pass
-
-        custom = data.get("custom_materials", {})
-        if isinstance(custom, Mapping):
-            gui.custom_materials = dict(custom)
-
-        raw_items = data.get("pm_items", [])
-        items = state_persistence.normalize_items(
-            raw_items if isinstance(raw_items, list) else [],
-        )
-        legacy_flat = not items
-        if legacy_flat:
-            items = [_legacy_item(gui, data)]
-        for item in items:
-            item["resin"] = _normalize_resin(item.get("resin", ""))
-            synthesis_execution.ensure_execution(item)
-            ml_dataset.ensure_review(item)
-            data_system.ensure_hierarchy(item)
-            data_system.sync_active_run(item)
+        for name, value in defaults.items():
+            variable = getattr(gui, name, None)
+            if variable is not None and hasattr(variable, "set"):
+                variable.set(value)
+        gui.custom_materials = custom
         gui.pm_items = items
         gui._project_id = str(data.get("project_id", "")) or uuid4().hex
         gui._project_revision = int(data.get("project_revision", 0) or 0)
-        gui._project_change_history = [
-            dict(row) for row in data.get("project_change_history", [])
-            if isinstance(row, Mapping)
-        ]
-
-        index = int(
-            data.get("selected_pm_index", data.get("active_index", 0)) or 0,
-        )
-        index = max(0, min(index, len(items) - 1))
+        gui._project_change_history = [dict(row) for row in data.get("project_change_history", [])]
         project_manager_workflow._rebuild_listbox(gui, [index], index)
-        required = (
-            "pm_selected_plan_tree",
-            "pm_selected_material_tree",
-            "pm_selected_total_tree",
-            "progress_tree",
-            "pm_cleavage_tree",
-        )
         if all(hasattr(gui, name) for name in required):
             project_manager_workflow._restore(
                 gui, plan_workflow, get_calculation_namespace(gui, {}), index,
             )
         else:
             set_active_index(gui, index)
-
         if legacy_flat and hasattr(gui, "generate_update_plan"):
-            try:
-                gui.generate_update_plan()
-            except Exception:
-                pass
-        # A saved Batch table wins because it can contain operator edits. Older
-        # project files have no batch_rows, so derive the table from pm_items.
+            gui.generate_update_plan()
         batch_workflow.restore_input_rows(gui, data.get("batch_rows", []))
         return True
+    except Exception:
+        for name, value in old_model.items():
+            setattr(gui, name, value)
+        for name, value in old_values.items():
+            try:
+                getattr(gui, name).set(value)
+            except Exception:
+                pass
+        try:
+            project_manager_workflow._rebuild_listbox(gui, [old_index], old_index)
+            if all(hasattr(gui, name) for name in required):
+                project_manager_workflow._restore(
+                    gui, plan_workflow, get_calculation_namespace(gui, {}), old_index,
+                )
+            else:
+                set_active_index(gui, old_index)
+        except Exception:
+            # A failing widget may prevent full visual rollback; model is restored.
+            pass
+        try:
+            if getattr(gui, "batch_tree", None) is not None:
+                batch_workflow.restore_input_rows(gui, old_batch_rows)
+        except Exception:
+            pass
+        raise
     finally:
         gui._restoring_state = False
+
+
+
+def _read_valid_project_with_recovery(gui: Any, source: Path) -> tuple[dict[str, Any], Path, bool]:
+    """Reject schema-damaged primary JSON and try an independently valid backup.
+
+    Preparation here is side-effect free for the live UI; full GUI commit still
+    happens only after a candidate has passed the project-model validation.
+    """
+    try:
+        data = state_persistence.read_json_object(source)
+        _prepare_state(gui, data)
+        return data, source, False
+    except (ValueError, TypeError, KeyError, OSError, UnicodeError) as primary_error:
+        backup = source.with_suffix(source.suffix + ".bak")
+        if not backup.exists():
+            raise primary_error
+        recovered = state_persistence.read_json_object(backup)
+        _prepare_state(gui, recovered)
+        return recovered, backup, True
 
 
 def load_project(gui: Any, path: str | Path | None = None) -> Path | None:
@@ -384,7 +480,7 @@ def load_project(gui: Any, path: str | Path | None = None) -> Path | None:
         path = selected
     source = Path(path)
     try:
-        data, loaded_source, recovered = state_persistence.read_json_with_recovery(source)
+        data, loaded_source, recovered = _read_valid_project_with_recovery(gui, source)
         _restore_state(gui, data)
         gui._loaded_project_path = source
         gui._loaded_project_fingerprint = (
@@ -410,7 +506,7 @@ def load_autosave_state(gui: Any) -> Path | None:
     if not path.exists():
         return None
     try:
-        data, loaded_source, recovered = state_persistence.read_json_with_recovery(path)
+        data, loaded_source, recovered = _read_valid_project_with_recovery(gui, path)
         _restore_state(gui, data)
         if recovered:
             try:

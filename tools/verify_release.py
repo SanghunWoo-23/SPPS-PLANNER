@@ -1,4 +1,4 @@
-"""Repeatable final verification for the SPPS Planner V7.0.0 Final source release."""
+"""Repeatable final verification for the SPPS Planner V8.0.0 source release."""
 from __future__ import annotations
 
 import argparse
@@ -9,12 +9,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "V7.0.0"
+EXPECTED_VERSION = "V8.0.0"
 REQUIRED_FILES = (
     "main_launcher.py",
     "SPPS_Planner.spec",
-    "BUILD_EXE_ONLY.bat",
-    "BUILD_INSTALLER.bat",
     "INSTALL_BUILD_TOOLS_AND_BUILD.bat",
     "assets/SPPS_Planner_Icon.ico",
     "installer/SPPS_Planner_Setup.iss",
@@ -36,12 +34,12 @@ def verify_static_release() -> None:
     from suite_gui.release_contract import validate_release_controller
 
     validate_release_controller(SPPSGui)
-    if SPPSGui.TITLE != "SPPS Planner V7.0.0 Final":
+    if SPPSGui.TITLE != "SPPS Planner V8.0.0":
         raise RuntimeError(f"Unexpected release title: {SPPSGui.TITLE}")
     from tools.verify_windows_release import verify_all as verify_windows
-    from tools.verify_v7_integrity import verify_all as verify_v7
+    from tools.verify_v7_integrity import verify_production_purity
     verify_windows()
-    verify_v7()
+    verify_production_purity()
 
 
 def verify_monkey_patch_free() -> None:

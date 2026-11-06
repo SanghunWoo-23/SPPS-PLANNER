@@ -1,4 +1,4 @@
-"""Static and optional binary checks for the Windows V7.0.0 Final release."""
+"""Static and optional binary checks for the Windows V8.0.0 Final release."""
 from __future__ import annotations
 
 import argparse
@@ -24,8 +24,8 @@ from spps_planner.database import (
     validate_compounds_dataframe,
 )
 
-VERSION = "V7.0.0"
-NUMBER = "7.0.0"
+VERSION = "V8.0.0"
+NUMBER = "8.0.0"
 FORBIDDEN_IMPORTS = {
     "suite_gui.legacy_controller", "suite_gui.release_composition",
     "suite_gui.modules.classic_workflow", "suite_gui.modules.workbench_workflow",
@@ -52,8 +52,8 @@ def verify_identity() -> None:
     _require(f"VersionInfoVersion={NUMBER}.0" in installer, "Installer file metadata mismatch")
     _require('#define MyAppPublisher "Sanghun Woo"' in installer, "Installer publisher mismatch")
     version_info = _read("installer/version_info.txt")
-    _require("filevers=(7, 0, 0, 0)" in version_info, "EXE file version mismatch")
-    _require("prodvers=(7, 0, 0, 0)" in version_info, "EXE product version mismatch")
+    _require("filevers=(8, 0, 0, 0)" in version_info, "EXE file version mismatch")
+    _require("prodvers=(8, 0, 0, 0)" in version_info, "EXE product version mismatch")
     _require("StringStruct(u'CompanyName', u'Sanghun Woo')" in version_info, "EXE company metadata mismatch")
     stale = []
     version_names = {"APP_VERSION", "VERSION", "VERSION_NUMBER", "VERSION_LABEL", "TITLE"}
@@ -97,15 +97,24 @@ def verify_spec() -> None:
 
 
 def verify_build_scripts() -> None:
-    exe = _read("BUILD_EXE_ONLY.bat")
-    installer = _read("BUILD_INSTALLER.bat")
-    automatic = _read("INSTALL_BUILD_TOOLS_AND_BUILD.bat")
-    for name, source in (("BUILD_EXE_ONLY.bat", exe), ("BUILD_INSTALLER.bat", installer)):
-        _require("--no-pause" in source, f"{name} has no unattended route")
-        _require("SPPS_Planner" in source, f"{name} has no output validation")
-    _require("Python.Python.3.12" in automatic, "Automatic Python installation is missing")
-    _require("JRSoftware.InnoSetup" in automatic, "Automatic Inno Setup installation is missing")
-    _require("verify_windows_release.py" in automatic, "Automatic build does not run release validation")
+    """The only BAT must retain tooling, build, self-test and installer checks."""
+    scripts = {path.name for path in ROOT.glob("*.bat")}
+    _require(scripts == {"INSTALL_BUILD_TOOLS_AND_BUILD.bat"},
+             f"Expected exactly one Windows build BAT, got: {sorted(scripts)}")
+    script = _read("INSTALL_BUILD_TOOLS_AND_BUILD.bat")
+    required = (
+        "--no-pause", "Python.Python.3.12", "JRSoftware.InnoSetup",
+        "-r requirements.txt -r requirements-dev.txt", "-m compileall",
+        "tools\\verify_windows_release.py", "runtime_selftest",
+        "-m PyInstaller", "--check-exe", "--self-test",
+        "tools\\verify_packaged_runtime.py", "ISCC",
+        "installer\\SPPS_Planner_Setup.iss", "--check-installer",
+        "SPPS_Planner_Setup_V8.0.0.exe",
+    )
+    missing = [token for token in required if token not in script]
+    _require(not missing, f"Missing mandatory build stage(s): {missing}")
+    _require("call BUILD_" not in script,
+             "Single BAT must not call a deleted build script")
 
 
 def verify_icons() -> None:
@@ -202,7 +211,7 @@ def verify_all(*, check_exe: bool = False, check_installer: bool = False) -> Non
     if check_exe:
         _verify_pe(ROOT / "dist" / "SPPS_Planner" / "SPPS_Planner.exe", "Portable EXE")
     if check_installer:
-        _verify_pe(ROOT / "installer" / "output" / "SPPS_Planner_Setup_V7.0.0.exe", "Installer")
+        _verify_pe(ROOT / "installer" / "output" / "SPPS_Planner_Setup_V8.0.0.exe", "Installer")
 
 
 def main() -> int:
@@ -211,7 +220,7 @@ def main() -> int:
     parser.add_argument("--check-installer", action="store_true")
     args = parser.parse_args()
     verify_all(check_exe=args.check_exe, check_installer=args.check_installer)
-    print("[OK] SPPS Planner V7.0.0 Final Windows release contract passed")
+    print("[OK] SPPS Planner V8.0.0 source Windows release contract passed")
     return 0
 
 

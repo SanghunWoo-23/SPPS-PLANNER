@@ -3,10 +3,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_v4_ml_entry_is_visible_in_primary_action_row():
-    text = (ROOT / 'suite_gui' / 'modules' / 'workspace_widgets.py').read_text(encoding='utf-8')
-    assert 'Experimental / ML (V4)' in text
-    assert 'command=gui.open_experimental_data' in text
+def test_experimental_history_remains_reachable_from_primary_recommendations_hub():
+    editor = (ROOT / 'suite_gui' / 'classic_base.py').read_text(encoding='utf-8')
+    panel = (ROOT / 'suite_gui' / 'modules' / 'experimental_data_panel.py').read_text(encoding='utf-8')
+    workflow = (ROOT / 'suite_gui' / 'experimental_workflow.py').read_text(encoding='utf-8')
+    assert "text='Recommendations & Lab History'" in editor
+    assert 'command=self.open_condition_optimizer' in editor
+    assert 'def open_condition_optimizer(' in workflow
+    assert 'window = open_window(gui)' in workflow
+    assert 'self.records_tab' in panel
+    assert 'text="Add Result"' in panel
 
 
 def test_v4_startup_explicitly_clears_previous_outputs_after_initialization():

@@ -1,4 +1,4 @@
-# SPPS Planner v7.0.0 Final 사용자 매뉴얼
+# SPPS Planner V8.0.0 사용자 매뉴얼
 
 ## 1. 프로그램의 역할
 
@@ -7,6 +7,23 @@ SPPS Planner는 펩타이드 서열과 resin·scale·loading·chemistry 조건�
 실행 이력, HPLC, 실제 결과 및 ML 검토를 하나의 Project에 연결하는
 Windows 데스크톱 프로그램이다. 실험 승인, SOP/SDS, 장비 적합성 및
 작업자의 최종 판단을 대신하지 않는다.
+
+
+## V8.0.0 — 선택형 Auto Plan 및 분석 결과
+
+Project Manager에서 **Auto Plan (Optional)**을 누르면 현재 Sequence, Scale,
+Resin, Loading, Copies 및 Coupling 설정의 미리보기가 열립니다. 확인 후
+**Generate Full Plan**을 누르면 기존 계산 엔진을 통해 Plan과 재료·체크리스트·Cleavage/Workup
+계획을 생성합니다. 창만 여는 것은 설정을 변경하지 않습니다.
+
+Project Manager 버튼 순서는 **Generate → Apply Change → Auto Plan (Optional) → Recommendations & Lab History → Sequence Risk Map → Save Session Now**입니다. Auto Plan은 Apply Change 바로 옆의 파란색 버튼이며 필수 단계가 아닙니다.
+
+**Recommendations & Lab History** 상단에서는 **Preflight → Start Experiment → Add Result / Add Issue → Final Result → Finish → Repeat Run** 순으로 이용합니다. 오른쪽의 **Refresh · Data Store · Backup DB**는 관리 기능입니다. `Add Issue`는 이슈가 발생한 경우에만 누르며, Start Experiment 이후 기록은 시작 시 고정된 Run 조건에 연결됩니다.
+
+Sequence Risk Map은 규칙 기반 경고이며 실험 실패 확률이 아닙니다. Loading/Cleavage
+Recommendation의 화학 기본값과 실제 실험 근거를 구분해서 검토해야 합니다.
+Cocktail과 Cleavage 시간을 서열만으로 검증 완료된 조건이라고 취급하지 마세요.
+
 
 ## 새 Peptide 추가 — 가장 쉬운 사용법
 
@@ -17,7 +34,7 @@ Windows 데스크톱 프로그램이다. 실험 승인, SOP/SDS, 장비 적합�
 3. Step 2에서 coupling reagent / activator, additive / catalyst, base, solvent를 선택합니다. 반복해서 쓰는 정확한 bottle 조합은 **My recipes**에 저장·불러오기·이름 변경·삭제할 수 있고, 최근 사용 recipe는 바로 다시 선택할 수 있습니다. **Find bottle**은 병 이름뿐 아니라 등록된 역할/분류/상태/메모도 함께 검색합니다.
 4. Step 3에서 Project/Peptide, Sequence, Scale/Copies, Resin/Loading, exact recipe를 확인한 뒤 **Add peptide**를 누릅니다. Edit에서는 무엇이 바뀌었는지와 재계산 필요 여부도 함께 표시됩니다.
 5. 기존 peptide는 선택 후 **Edit setup…**을 눌러 같은 exact-bottle 창에서 수정할 수 있으며 Batch Solution prep defaults는 바뀌지 않습니다.
-6. Project Manager의 기존 **Generate / Apply Change / Loading Advice / Cleavage Advice** 흐름을 그대로 사용합니다.
+6. Project Manager의 기존 **Generate / Apply Change / Recommendations & Lab History** 흐름을 그대로 사용합니다.
 
 `NMM`은 coupling **base**, `NMP`는 **solvent**입니다. Add 창에서 선택한 project-specific coupling recipe는 해당 peptide에 저장되며 Batch Manager의 Solution prep defaults를 바꾸지 않습니다.
 
@@ -149,7 +166,7 @@ mapping으로 변환한다.
 
 ## 12. Windows 설치와 문제 해결
 
-일반 사용자는 `SPPS_Planner_Setup_V7.0.0.exe`를 실행한다. 소스 빌드는
+설치형 EXE는 Windows 환경에서 직접 빌드하고 실행 검증해야 한다. 소스 실행은
 `WINDOWS_BUILD_KO.md`를 따른다. 실행 실패 시 사용자 data 폴더의
 `spps_planner_runtime_error.log`를 확인한다. 저장 충돌은 원본을 확인한 뒤
 Reload 또는 Save As로 해결한다. 손상 파일은 `.bak` 복구 결과를 확인하고

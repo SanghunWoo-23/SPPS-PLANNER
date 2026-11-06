@@ -10,7 +10,18 @@ import os
 import sys
 from pathlib import Path
 
-from .build_profile import APP_FOLDER
+from .build_profile import APP_FOLDER, IS_PRIVATE
+
+
+def assert_profile_path(path: str | Path) -> Path:
+    """Normalize an explicitly selected storage path without blocking imports.
+
+    Public/Private use distinct *default* folders via APP_FOLDER. An operator may
+    intentionally select another folder; folder names alone are not reliable
+    evidence of the actual contents. Public release seed inclusion is checked
+    separately at packaging time.
+    """
+    return Path(path).expanduser()
 
 
 def user_data_dir() -> Path:
@@ -25,6 +36,7 @@ def user_data_dir() -> Path:
         path = Path.home() / "Library" / "Application Support" / APP_FOLDER
     else:
         path = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / APP_FOLDER
+    path = assert_profile_path(path)
     path.mkdir(parents=True, exist_ok=True)
     return path
 

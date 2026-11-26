@@ -1,0 +1,46 @@
+name: Public Source Release Preflight
+
+on:
+  push:
+    branches: ["V9.0.0-development", "V9.0.0"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-source-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-safety:
+    name: Check public source & build downloadable ZIP
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout public source only
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Python runtime for release checks
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Public-data, version, license, and SHA-256 checks
+        run: python tools/github_release_preflight_v9.py --strict --report "$RUNNER_TEMP/github_source_preflight.json"
+      - name: Source TXT and Windows version contract audit
+        run: python tools/audit_release_text_v9.py
+      - name: Source tree, documentation and import layout audit
+        run: python tools/audit_repository_layout_v9.py
+      - name: Deterministic public source ZIP
+        run: python tools/build_github_source_release_v9.py --output "$RUNNER_TEMP/SPPS_Planner_V9.0.0_PUBLIC_SOURCE.zip"
+      - name: Source code / preflight report artifacts (not a GitHub Release)
+        uses: actions/upload-artifact@v6
+        with:
+          name: spps-v9-public-source
+          path: |
+            ${{ runner.temp }}/SPPS_Planner_V9.0.0_PUBLIC_SOURCE.zip
+            ${{ runner.temp }}/github_source_preflight.json
+          if-no-files-found: error
+          retention-days: 14

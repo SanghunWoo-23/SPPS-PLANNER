@@ -1114,9 +1114,14 @@ def generate_step_matrix(inp: PlanInput, compounds: pd.DataFrame | None = None, 
             chem = "Ac/capping"
         note = ""
         steps.append(_make_step(step_no, token, "Last / N-term cap", chem, depro, wash, rxn, post, dcmx, 1.0, 0.0, dmf, pip, dcm, note, inp, overrides, lookup, n+1, 0))
+    elif str(tokens[0]).strip().startswith("H-") and str(tokens[0]).strip().endswith("-OH"):
+        # V9: an explicitly alpha-Fmoc-FREE protected building block must NOT
+        # trigger piperidine for a nonexistent terminal Fmoc. Side-chain groups
+        # remain present and require separately approved selective/global steps.
+        pass
     else:
-        # Free N-terminus product: final Fmoc removal and final washes must still
-        # be counted.  No reagent row is generated because coupling_repeat=0.
+        # Ordinary Fmoc SPPS: the final N-alpha Fmoc removal and washes are
+        # required; this is intentionally not used for H-AA(PG)-OH endings.
         depro = int(rules.get("last_depro", 2))
         wash = 0
         rxn = 0

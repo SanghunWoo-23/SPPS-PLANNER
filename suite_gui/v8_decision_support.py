@@ -11,7 +11,7 @@ from typing import Any, Mapping
 
 from suite_gui.sequence_risk_map_v8 import build_sequence_risk_map
 
-SCHEMA = "8.0.0-beta.1"
+SCHEMA = "9.0.0-beta.1"
 SOURCE_CLASSES = ("Experimental", "Rule-based", "User preset", "No evidence")
 RULE_REVIEW = {
     "SEQ-ASPARTIMIDE": ("Deprotection / protecting-group review", "Review deprotection exposure and Asp protection under the approved SOP; investigate by LC-MS before adopting any change."),

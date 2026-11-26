@@ -18,7 +18,7 @@ import pandas as pd
 from suite_gui.gui_primitives import EditableTree, StaticValue as _StaticValue, bind_combobox_first_letter_jump, const_var as const_var, open_path
 from suite_gui import catalogs as _catalogs
 from suite_gui.session_state import SessionStateMixin
-APP_VERSION = 'V8.0.0'
+APP_VERSION = 'V9.0.0'
 APP = ROOT / 'apps' / 'spps_planner_app'
 if str(APP) not in sys.path:
     sys.path.insert(0, str(APP))
@@ -76,7 +76,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         style.configure('TNotebook.Tab', padding=(24, 10), font=('Segoe UI', 11, 'bold'))
         main = ttk.Frame(self, padding=10)
         main.pack(fill='both', expand=True)
-        self.app_title_label = ttk.Label(main, text='SPPS Planner V8.0.0', font=('Segoe UI', 18, 'bold'))
+        self.app_title_label = ttk.Label(main, text='SPPS Planner V9.0.0', font=('Segoe UI', 18, 'bold'))
         self.app_title_label.pack(anchor='w')
         self.project_name = tk.StringVar(value='')
         self.seq = tk.StringVar(value='')
@@ -840,7 +840,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         if not hasattr(self, 'use_default_aa_repeat'):
             self.use_default_aa_repeat = tk.BooleanVar(value=True)
         tabs = {}
-        for name in ['Unit defaults', 'Reagents', 'Solvents / Wash', 'Branch / Tools', 'Output']:
+        for name in ['Unit defaults', 'Reagents', 'Solvents / Wash', 'Branch / Tools', 'Cyclic', 'Output']:
             fr = ttk.Frame(nb, padding=6)
             nb.add(fr, text=name)
             tabs[name] = fr
@@ -887,6 +887,34 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         row(branch_tab, 1, 4, 'Branch arm seq', ttk.Entry(branch_tab, textvariable=self.branch_arm, width=24))
         row(branch_tab, 2, 0, 'Protecting group', ttk.Combobox(branch_tab, textvariable=self.branch_pg, values=['Mtt', 'ivDde', 'Dde', 'Alloc', 'Manual'], state='normal', width=18))
         row(branch_tab, 2, 4, 'Deprotection', ttk.Combobox(branch_tab, textvariable=self.branch_depro_condition, values=['Mtt: dilute TFA/TIS/DCM', 'ivDde/Dde: hydrazine/DMF', 'Alloc: Pd(PPh3)4/phenylsilane/DCM', 'Manual'], state='normal', width=34))
+        # Cyclic chemistry is owned by Auto Plan; these fields only select its
+        # initial review context. No unapproved reaction parameters are invented.
+        cyclic_tab = tabs['Cyclic']
+        self.pm_cyclic_product = tk.StringVar(value='head_to_tail_protected')
+        self.pm_cyclic_groups = tk.StringVar(value='catalog')
+        self.pm_disulfide_site_a = tk.StringVar(value='')
+        self.pm_disulfide_site_b = tk.StringVar(value='')
+        self.pm_cyclic_status = tk.StringVar(value='No cyclic product reviewed for the selected peptide.')
+        row(cyclic_tab, 0, 0, 'Target product', ttk.Combobox(
+            cyclic_tab, textvariable=self.pm_cyclic_product, state='readonly', width=30,
+            values=['head_to_tail_protected', 'head_to_tail_deprotected', 'disulfide']))
+        row(cyclic_tab, 1, 0, 'Side-chain protection', ttk.Combobox(
+            cyclic_tab, textvariable=self.pm_cyclic_groups, state='readonly', width=30,
+            values=['catalog', 'explicit', 'none']))
+        self.pm_site_a_box = ttk.Combobox(cyclic_tab, textvariable=self.pm_disulfide_site_a, values=(), state='readonly', width=16)
+        self.pm_site_b_box = ttk.Combobox(cyclic_tab, textvariable=self.pm_disulfide_site_b, values=(), state='readonly', width=16)
+        row(cyclic_tab, 2, 0, 'Site A', self.pm_site_a_box)
+        row(cyclic_tab, 3, 0, 'Site B', self.pm_site_b_box)
+        ttk.Button(cyclic_tab, text='Save cyclic selection / validate', command=self.pm_save_cyclic_selection).grid(row=4,column=0,columnspan=2,sticky='w',pady=5)
+        ttk.Label(cyclic_tab, textvariable=self.pm_cyclic_status,
+                  wraplength=680, justify='left').grid(row=5, column=0, columnspan=8,
+                  sticky='w', padx=2, pady=(8, 5))
+        ttk.Button(cyclic_tab, text='Review cyclic settings in Auto Plan',
+                   command=self.pm_review_cyclic).grid(row=6, column=0, columnspan=3,
+                                                       sticky='w', padx=2, pady=4)
+        ttk.Label(cyclic_tab, text='Save cyclic selection updates the selected peptide and regenerates Plan/Materials/Checklist. '
+                  'Site labels include position and amino acid; Disulfide requires two Cys residues.',
+                  wraplength=680).grid(row=7, column=0, columnspan=8, sticky='w', padx=2, pady=4)
         output_tab = tabs['Output']
         output_tab.columnconfigure(1, weight=1)
         ttk.Label(output_tab, text='Output folder').grid(row=0, column=0, sticky='w', padx=2, pady=2)
@@ -1031,6 +1059,8 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         finally:
             self._pm_loading_editor = False
         self.pm_update_summary()
+        if hasattr(self, "pm_cyclic_status"):
+            self.pm_refresh_cyclic_settings()
 
     def pm_live_sync_selected(self):
         if getattr(self, '_pm_loading_editor', False):
@@ -1063,7 +1093,15 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         self.loading.set(float(self._to_float(item.get('loading'), 0.8)))
         if hasattr(self, 'lot_no'):
             self.lot_no.set(str(item.get('lot', '')))
-        pass
+        # Restore the selected item's topology before generating rows; never
+        # inherit a different peptide's branch configuration.
+        form = str(item.get('synthesis_form', 'linear')).lower()
+        if 'synthesis_form' in item:
+            self.branch_mode.set(form == 'branched')
+        if form == 'branched':
+            for attr, key in (('branch_point','branch_point'),('branch_arm','branch_arm'),
+                              ('branch_pg','branch_pg'),('branch_depro_condition','branch_depro_condition')):
+                getattr(self, attr).set(str(item.get(key, '')))
 
     def pm_tree_to_df(self, tree):
         cols = list(tree['columns'])
@@ -1074,8 +1112,199 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
             rows.append(dict(zip(cols, vals)))
         return pd.DataFrame(rows, columns=cols)
 
+    @staticmethod
+    def _current_cyclization_draft(item):
+        # Shared validator for the Setup status and legacy export pathways.
+        # A stored JSON method is never proof that current scale/copies and
+        # protections still match the operator-reviewed inputs.
+        options = item.get('v9_mass_options') or {}
+        raw = options.get('reaction_review')
+        if not isinstance(raw, dict):
+            return None, 'not approved'
+        from spps_planner.reaction_planner_v9 import validate_stored_reaction_review
+        try:
+            current = validate_stored_reaction_review(
+                raw, sequence=str(item.get('sequence','')),
+                resin=str(item.get('resin','')),
+                scale_mmol=item.get('scale'), copies=item.get('copies',1),
+                side_chain_mode=options.get('side_chain_mode','catalog'))
+        except (ValueError, TypeError, KeyError):
+            return None, 're-review required'
+        return current, 'operator draft (not approved)'
+
+    def pm_refresh_cyclic_settings(self):
+        """Reflect saved project-specific cyclic review; not unsaved tab choices."""
+        idx = self.pm_current_index() if hasattr(self, 'pm_list') else None
+        items = getattr(self, 'pm_items', [])
+        opts = (items[idx].get('v9_mass_options') or {}) if idx is not None and 0 <= idx < len(items) else {}
+        if not isinstance(opts, dict):
+            opts = {}
+        path = str(opts.get('product_path') or '')
+        if path.startswith('head_to_tail') or path == 'disulfide':
+            self.pm_cyclic_product.set(path)
+            self.pm_cyclic_groups.set(str(opts.get('side_chain_mode') or 'catalog'))
+            from suite_gui.modules.add_peptide_dialog import _sequence_site_labels
+            labels = _sequence_site_labels(str(items[idx].get('sequence','')))
+            for field in ('pm_site_a_box','pm_site_b_box'):
+                box=getattr(self,field,None)
+                if box is not None:
+                    box.configure(values=['',*labels])
+            sites = opts.get('disulfide_sites') or ['', '']
+            for site,var in ((sites[0],self.pm_disulfide_site_a),(sites[1],self.pm_disulfide_site_b)):
+                try:
+                    number=int(site)
+                    var.set(labels[number-1] if 0<number<=len(labels) else '')
+                except (ValueError,TypeError):
+                    var.set('')
+            _method, method_status = self._current_cyclization_draft(items[idx])
+            self.pm_cyclic_status.set('Saved cyclic review: ' + path +
+                ' · reaction method ' + method_status +
+                ((' · Cys ' + '-'.join(map(str, opts.get('disulfide_sites') or [])) +
+                  ' · theoretical MW ' + str((opts.get('disulfide_structure_review') or {}).get('product_graph_mw','unavailable')))
+                 if path == 'disulfide' else ''))
+        else:
+            self.pm_cyclic_product.set('head_to_tail_protected')
+            self.pm_cyclic_groups.set('catalog')
+            for field in ('pm_site_a_box','pm_site_b_box'):
+                box=getattr(self,field,None)
+                if box is not None:box.configure(values=[])
+            self.pm_disulfide_site_a.set('')
+            self.pm_disulfide_site_b.set('')
+            self.pm_cyclic_status.set('No cyclic product reviewed for the selected peptide.')
+
+    def pm_save_disulfide(self):
+        """Validate and store explicitly selected Cys sites for the active peptide."""
+        from tkinter import messagebox
+        idx = self.pm_current_index()
+        if idx is None or idx < 0 or idx >= len(self.pm_items):
+            messagebox.showerror('Disulfide', 'Select a peptide first.')
+            return False
+        item = self.pm_items[idx]
+        if str(item.get('synthesis_form', '')).lower() not in ('cyclic',):
+            messagebox.showerror('Disulfide', 'Select Cyclic in Add/Edit for this peptide first.')
+            return False
+        if self.pm_cyclic_product.get() != 'disulfide':
+            messagebox.showerror('Disulfide', 'Select Disulfide as the target product.')
+            return False
+        from suite_gui.auto_plan_evolution_v9 import review_disulfide_product
+        from suite_gui.modules.add_peptide_dialog import _site_position
+        try:
+            sites=[_site_position(var.get(),str(item.get('sequence',''))) for var in (
+                self.pm_disulfide_site_a,self.pm_disulfide_site_b)]
+        except ValueError as exc:
+            messagebox.showerror('Disulfide',str(exc))
+            return False
+        candidate = {'product_path': 'disulfide', 'side_chain_mode': 'explicit',
+                     'disulfide_sites': sites}
+        checked = review_disulfide_product(str(item.get('sequence','')), str(item.get('resin','')), candidate)
+        if checked.get('status') != 'CROSSCHECK_PASS':
+            messagebox.showerror('Disulfide', str(checked.get('reason') or checked.get('status')))
+            return False
+        from copy import deepcopy
+        from suite_gui.modules import plan_workflow
+        from suite_gui import calculation_context
+        previous = deepcopy(item)
+        try:
+            candidate['disulfide_sites'] = checked['disulfide_sites']
+            candidate['disulfide_structure_review'] = checked
+            candidate['reaction_review'] = None
+            item['v9_mass_options'] = candidate
+            for field in ('selected_plan_rows', 'selected_material_rows', 'selected_total_rows',
+                          'selected_checklist_rows', 'selected_cleavage_rows'):
+                item.pop(field, None)
+            item['status'] = 'Ready'
+            plan_workflow._restore_item(self, idx, calculation_context.namespace())
+            if plan_workflow.generate(self, calculation_context.namespace()) is not True:
+                raise ValueError('Disulfide Plan generation failed.')
+            self.pm_cyclic_status.set('Disulfide graph verified (theoretical): ' + str(checked['product_graph_mw']) + ' g/mol. Reaction not approved.')
+            self.pm_refresh_list(keep_index=idx, reload_editor=False)
+            self.save_autosave_state()
+            return True
+        except Exception as exc:
+            self.pm_items[idx] = previous
+            plan_workflow._restore_item(self, idx, calculation_context.namespace())
+            self.pm_refresh_cyclic_settings()
+            messagebox.showerror('Disulfide', str(exc))
+            return False
+
+    def pm_save_cyclic_selection(self):
+        """Apply Setup Cyclic fields to the active peptide's canonical Plan."""
+        from tkinter import messagebox
+        if self.pm_cyclic_product.get() == 'disulfide':
+            return self.pm_save_disulfide()
+        idx=self.pm_current_index()
+        if idx is None or not (0<=idx<len(self.pm_items)):
+            messagebox.showerror('Cyclic','Select a peptide first.')
+            return False
+        item=self.pm_items[idx]
+        if item.get('synthesis_form')!='cyclic':
+            messagebox.showerror('Cyclic','Select Cyclic in Add/Edit first.')
+            return False
+        from copy import deepcopy
+        old=deepcopy(item)
+        previous=item.get('v9_mass_options') or {}
+        product=self.pm_cyclic_product.get()
+        groups=self.pm_cyclic_groups.get()
+        if product not in ('head_to_tail_protected','head_to_tail_deprotected') or groups not in ('catalog','explicit','none'):
+            messagebox.showerror('Cyclic','Invalid cyclization choice.')
+            return False
+        opts={'product_path':product,'side_chain_mode':groups,
+              'reaction_review':None,
+              'coupling_system_id':previous.get('coupling_system_id','HBTU_NMM'),
+              'coupling_system_label':previous.get('coupling_system_label','HBTU / NMM')}
+        item['v9_mass_options']=opts
+        for field in ('selected_plan_rows','selected_material_rows','selected_total_rows',
+                      'selected_checklist_rows','selected_cleavage_rows'):
+            item.pop(field,None)
+        item['status']='Ready'
+        try:
+            from suite_gui.modules import plan_workflow
+            from suite_gui import calculation_context
+            plan_workflow._restore_item(self,idx,calculation_context.namespace())
+            if plan_workflow.generate(self,calculation_context.namespace()) is not True:
+                raise ValueError('Plan regeneration failed.')
+            self.pm_refresh_cyclic_settings()
+            self.save_autosave_state()
+        except Exception as exc:
+            self.pm_items[idx]=old
+            messagebox.showerror('Cyclic',str(exc))
+            return False
+        return True
+
+    def pm_review_cyclic(self):
+        """Use the established Auto Plan review/validation/generation pathway."""
+        from suite_gui.auto_plan_option_v9 import open_auto_plan
+        if self.pm_cyclic_product.get() == 'disulfide':
+            from tkinter import messagebox
+            messagebox.showinfo('Disulfide review', 'Cys positions and molecular review are configured per peptide in Add/Edit. Oxidation conditions require operator review.')
+            return None
+        return open_auto_plan(self, preferred_product_path=self.pm_cyclic_product.get(),
+                              preferred_side_chain_mode=self.pm_cyclic_groups.get())
+
+    def cyclic_review_rows(self):
+        """Export only operator-selected settings, never fabricated reaction values."""
+        rows = []
+        for item in getattr(self, 'pm_items', []):
+            options = item.get('v9_mass_options') or {}
+            if not isinstance(options, dict) or not (str(options.get('product_path', '')).startswith('head_to_tail') or options.get('product_path') == 'disulfide'):
+                continue
+            method, method_status = self._current_cyclization_draft(item)
+            rows.append({'project': item.get('project', ''), 'peptide': item.get('peptide', ''),
+                         'sequence': item.get('sequence', ''),
+                         'product_path': options['product_path'],
+                         'side_chain_mode': options.get('side_chain_mode', ''),
+                         'disulfide_sites': '-'.join(map(str, options.get('disulfide_sites') or [])),
+                         'theoretical_product_mw_g_mol': (options.get('disulfide_structure_review') or {}).get('product_graph_mw') if options.get('product_path') == 'disulfide' else '',
+                         'structural_check': (options.get('disulfide_structure_review') or {}).get('status', '') if options.get('product_path') == 'disulfide' else '',
+                         'product_formula': (options.get('disulfide_structure_review') or {}).get('product_formula','') if options.get('product_path') == 'disulfide' else '',
+                         'product_exact_mass': (options.get('disulfide_structure_review') or {}).get('product_exact_mass','') if options.get('product_path') == 'disulfide' else '',
+                         'theoretical_ions_json': json.dumps((options.get('disulfide_structure_review') or {}).get('theoretical_ms_ions', {}), ensure_ascii=False, sort_keys=True) if options.get('product_path') == 'disulfide' else '',
+                         'reaction_review_status': method_status,
+                         'reaction_review_json': json.dumps(method, ensure_ascii=False, sort_keys=True) if method is not None else ''})
+        return rows
+
     def open_auto_plan_option(self):
-        from suite_gui.auto_plan_option_v8 import open_auto_plan
+        from suite_gui.auto_plan_option_v9 import open_auto_plan
         return open_auto_plan(self)
 
     def pm_generate_selected(self):
@@ -1812,7 +2041,10 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         bench_df = self.bench_checklist_layout_df(plan, materials)
         progress_df = self.progress_df()
         next_df = self.next_step_df()
+        cyclic_rows = self.cyclic_review_rows()
         self.save_project_state(outdir / 'project_state.json')
+        if cyclic_rows:
+            pd.DataFrame(cyclic_rows).to_csv(outdir / 'cyclic_review.csv', index=False, encoding='utf-8-sig')
         plan.to_csv(outdir / 'editable_spps_plan.csv', index=False, encoding='utf-8-sig')
         materials.to_csv(outdir / 'material_usage_from_editable_plan.csv', index=False, encoding='utf-8-sig')
         ops.to_csv(outdir / 'operation_form_from_editable_plan.csv', index=False, encoding='utf-8-sig')
@@ -1839,6 +2071,8 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
             bench_df.to_excel(writer, index=False, sheet_name='10_BENCH_CHECKLIST')
             progress_df.to_excel(writer, index=False, sheet_name='11_CHECKLIST_PROGRESS')
             next_df.to_excel(writer, index=False, sheet_name='12_NEXT_STEP')
+            if cyclic_rows:
+                pd.DataFrame(cyclic_rows).to_excel(writer, index=False, sheet_name='13_CYCLIC_REVIEW')
             try:
                 pd.DataFrame([plan_summary(self._input())]).to_excel(writer, index=False, sheet_name='05_SUMMARY')
             except Exception:
@@ -3089,8 +3323,11 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         cells, and previous rows are cleared before writing.
         """
         try:
-            for item in tree.get_children():
-                tree.delete(item)
+            # Tcl round-trips per deleted row cause visible delays on long plans.
+            # Limit each call to 512 IDs so the Tcl command stays bounded.
+            children = tree.get_children()
+            for offset in range(0, len(children), 512):
+                tree.delete(*children[offset:offset + 512])
             existing = list(tree['columns'])
             if list(existing) != list(columns):
                 tree.configure(columns=list(columns))
@@ -3106,9 +3343,19 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
                         blank['note'] = 'Click Generate / Update Plan; verify sequence, scale, resin, and coupling settings.'
                     tree.insert('', 'end', values=[blank.get(c, '') for c in columns])
                 return
-            for _, row in df.iterrows():
-                vals = [self._sanitize_display_value(row.get(c, '')) for c in columns]
-                tree.insert('', 'end', values=vals)
+            # Positional tuples avoid building a pandas Series for every row.
+            # Duplicate DataFrame headers keep the legacy behavior instead.
+            if df.columns.is_unique:
+                positions = {col: index for index, col in enumerate(df.columns)}
+                column_indices = [positions.get(col) for col in columns]
+                for row in df.itertuples(index=False, name=None):
+                    vals = [self._sanitize_display_value(row[index] if index is not None else '')
+                            for index in column_indices]
+                    tree.insert('', 'end', values=vals)
+            else:
+                for _, row in df.iterrows():
+                    vals = [self._sanitize_display_value(row.get(c, '')) for c in columns]
+                    tree.insert('', 'end', values=vals)
         except Exception as e:
             try:
                 for item in tree.get_children():
@@ -3421,7 +3668,7 @@ class ClassicBaseCore(SessionStateMixin, tk.Tk):
         return pd.DataFrame([{'progress': f'{total}/{total}', 'percent': 100 if total else 0, 'next_line': '', 'next_operation': 'Complete', 'next_unit': '', 'next_step_after_that': '', 'note': 'All checklist rows are checked.'}])
 
     def save_project_state(self, path: Path):
-        data = {'project_name': self.project_name.get(), 'lot_no': self.lot_no.get(), 'sequence': self.seq.get(), 'resin': self.resin.get(), 'scale_mmol': self.scale.get(), 'loading_mmol_g': self.loading.get(), 'outdir': self.outdir.get(), 'plan_rows': self.tree_rows(), 'row_meta': self._row_meta_by_no, 'progress_rows': self.progress_df().to_dict('records'), 'saved_at': datetime.now().isoformat(timespec='seconds')}
+        data = {'project_name': self.project_name.get(), 'lot_no': self.lot_no.get(), 'sequence': self.seq.get(), 'resin': self.resin.get(), 'scale_mmol': self.scale.get(), 'loading_mmol_g': self.loading.get(), 'outdir': self.outdir.get(), 'plan_rows': self.tree_rows(), 'row_meta': self._row_meta_by_no, 'progress_rows': self.progress_df().to_dict('records'), 'cyclic_review': self.cyclic_review_rows(), 'saved_at': datetime.now().isoformat(timespec='seconds')}
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
 
     def load_project(self):

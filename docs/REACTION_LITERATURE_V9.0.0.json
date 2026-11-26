@@ -1,0 +1,93 @@
+{
+  "version": "V9.0.0",
+  "curated_on": "2026-11-24",
+  "usage": "reaction class evidence only; NOT experimentally validated recipe and no numeric recommendations",
+  "references": [
+    {
+      "id": "YAN_2015_EDC_NHS_MECHANISM",
+      "title": "EDC/NHS activation mechanism of polymethacrylic acid: anhydride versus NHS-ester",
+      "authors": "Yan et al.",
+      "year": 2015,
+      "doi": "10.1039/C5RA13844B",
+      "url": "https://pubs.rsc.org/en/content/articlehtml/2015/ra/c5ra13844b",
+      "scope": "Mechanistic study on polymer carboxyl groups and side pathways; NOT experimental validation of peptide head-to-tail cyclization."
+    },
+    {
+      "id": "BARLOS_1991_CTC",
+      "title": "2-Chlorotrityl chloride resin. Studies on anchoring of Fmoc-amino acids and peptide cleavage",
+      "authors": "Barlos et al.",
+      "year": 1991,
+      "pmid": "1917309",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/1917309/",
+      "scope": "Specific 2-CTC loading and mild cleavage of protected fragments; not a guarantee for every protecting group."
+    },
+    {
+      "id": "MCMURRAY_1994_CYCLIZATION",
+      "title": "Influence of solid support, solvent and coupling reagent on the head-to-tail cyclization of resin-bound peptides",
+      "authors": "McMurray et al.",
+      "year": 1994,
+      "pmid": "7696839",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/7696839/",
+      "scope": "On-resin comparison; documents oligomerization and racemization concerns, not direct proof for solution protocols."
+    },
+    {
+      "id": "MALESEVIC_2004_DILUTION",
+      "title": "An improved method for the solution cyclization of peptides under pseudo-high dilution conditions",
+      "authors": "Malesevic et al.",
+      "year": 2004,
+      "pmid": "15288942",
+      "doi": "10.1016/j.jbiotec.2004.03.015",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/15288942/",
+      "scope": "Solution cyclization and intermolecular side products; concentration alone does not predict yield."
+    },
+    {
+      "id": "CONNORS_2022_PROTECTED_CYCLIZATION",
+      "title": "Head-to-tail cyclization of side chain-protected linear peptides to recapitulate genetically-encoded cyclized peptides",
+      "authors": "Bouayad-Gervais et al.",
+      "year": 2022,
+      "pmid": "35864841",
+      "doi": "10.1002/pep2.24254",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/35864841/",
+      "scope": "Evidence for side-chain-protected linear precursor strategy, not for arbitrary reagent ratios or sequences."
+    },
+    {
+      "id": "CHENEVAL_2014_CYCLIC_DISULFIDE",
+      "title": "Fmoc-based synthesis of disulfide-rich cyclic peptides",
+      "authors": "Cheneval et al.",
+      "year": 2014,
+      "pmid": "24918986",
+      "doi": "10.1021/jo500699m",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/24918986/",
+      "scope": "2-CTC, protected peptide solution cyclization, then side-chain deprotection and disulfide oxidation on specific targets."
+    },
+    {
+      "id": "ERNY_2020_DIC_OXYMA_HCN",
+      "title": "Minimizing HCN in DIC/Oxyma-Mediated Amide Bond-Forming Reactions",
+      "authors": "Erny et al.",
+      "year": 2020,
+      "doi": "10.1021/acs.oprd.0c00227",
+      "url": "https://doi.org/10.1021/acs.oprd.0c00227",
+      "scope": "Reported HCN in DIC/Oxyma reactions in DMF; mitigation studies do not establish generic safe use."
+    },
+    {
+      "id": "MANNE_2021_CARBODIIMIDES",
+      "title": "Amide Formation: Choosing the Safer Carbodiimide in Combination with OxymaPure to Avoid HCN Release",
+      "authors": "Manne et al.",
+      "year": 2021,
+      "pmid": "34424718",
+      "doi": "10.1021/acs.orglett.1c02466",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11487715/",
+      "scope": "Comparative reagent study; DIC/Oxyma has HCN side-reaction, individual alternatives require their own assessment."
+    },
+    {
+      "id": "KONG_2025_ASPARTIMIDE",
+      "title": "Aspartimide Formation and Its Prevention in Fmoc Chemistry Solid Phase Peptide Synthesis",
+      "authors": "Kong, van den Braak and Neumann",
+      "year": 2025,
+      "pmid": "40857621",
+      "doi": "10.1002/cbic.202500490",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/40857621/",
+      "scope": "Review of Asp-related base-mediated side reactions; no calibrated failure probability for a specific sequence."
+    }
+  ]
+}

@@ -50,6 +50,10 @@ def main() -> None:
     if "--self-test" in sys.argv:
         from suite_gui.runtime_selftest import write_report
         raise SystemExit(write_report())
+    if "--gui-smoke" in sys.argv:
+        _enable_windows_dpi_awareness()
+        from suite_gui.runtime_gui_smoke_v9 import run_gui_smoke
+        raise SystemExit(run_gui_smoke())
     _enable_windows_dpi_awareness()
     try:
         from suite_gui.spps_tk_gui import main as spps_main
@@ -74,4 +78,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Required for spawned isolated ML training processes in frozen Windows EXEs.
+    import multiprocessing
+    multiprocessing.freeze_support()
     main()

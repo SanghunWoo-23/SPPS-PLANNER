@@ -112,6 +112,53 @@ def data_store_status(gui: Any = None) -> dict[str, Any]:
         "last_backup": recovery.get("last_backup", ""),
     }
 
+def ai_reviewed_outcome_rows(gui: Any = None) -> list[dict[str, Any]]:
+    """Read verified local AI imports for display, without altering lab SQLite.
+
+    These records are *not* SQLite lab outcomes and must never be treated as
+    verified recommendations or given writable database record identifiers.
+    """
+    from suite_gui.ai_excel_core_v9 import load_reviewed_dataset
+    from spps_planner.user_paths import user_data_dir
+
+    data_dir = Path(getattr(gui, "ai_excel_data_dir", None) or user_data_dir() / "ai_excel_v9")
+    if not (data_dir / "ai_excel_reviewed_v9.json").exists():
+        return []
+    records, _metadata = load_reviewed_dataset(data_dir)
+    displayed = []
+    targets = (
+        ("actual_yield_percent", "Yield"),
+        ("actual_purity_percent", "Purity"),
+        ("coupling_conversion_percent", "Coupling conversion"),
+        ("cyclization_yield_percent", "Cyclization yield"),
+        ("crude_yield_percent", "Crude yield"),
+        ("purification_recovery_percent", "Purification recovery"),
+        ("cleavage_recovery_percent", "Cleavage recovery"),
+    )
+    for row in records.to_dict(orient="records"):
+        observed = [f"{label}: {row[key]}%" for key, label in targets
+                    if key in row and row[key] is not None and str(row[key]).strip() not in ("", "nan")]
+        displayed.append({
+            "record_state": "AI import (read-only)",
+            "status": "Reviewed import; not lab DB",
+            "stage": row.get("reaction_step") or "",
+            "product": row.get("product_path") or "",
+            "sequence": row.get("sequence") or "",
+            "result": "; ".join(observed),
+            "yield_percent": row.get("actual_yield_percent"),
+            "purity_percent": row.get("actual_purity_percent"),
+            "observation": "AI-reviewed workbook; not a verified SQLite outcome",
+            "run_id": row.get("run_id") or "",
+            "record_id": "",  # never pass imported rows to DB update methods
+        })
+    return displayed
+
+
+def export_verified_lab_qc(gui: Any, destination: str | Path) -> dict[str, Any]:
+    """Stage verified SQLite outcomes for *manual* AI import, not auto-train."""
+    return experimental_data.export_verified_outcomes_csv(destination, _ready_db(gui))
+
+
 def backup_data_store(gui: Any = None) -> Path:
     """Create an explicit operator-requested backup of the active SQLite store."""
     path = _ready_db(gui)
@@ -805,6 +852,25 @@ def add_outcome_record(gui: Any, values: dict[str, Any], *, status: str = "verif
     if not isinstance(saved, dict) or not str(saved.get("record_id") or "").strip():
         raise RuntimeError("Outcome result was not confirmed by the experimental database.")
     return saved
+
+def add_final_measurements(gui: Any, cleavage: dict[str, Any], outcome: dict[str, Any],
+                           *, cleavage_status: str = "verified", outcome_status: str = "verified"):
+    """Commit final cleavage and measured yield/purity as one linked Run event."""
+    path = _ready_db(gui)
+    cleavage_context = _attach_run_context(gui, cleavage)
+    outcome_context = _attach_run_context(gui, outcome)
+    # Preserve exactly the same frozen plan and deviation snapshot in the pair.
+    for key in ("planner_snapshot_json", "actual_condition_json"):
+        outcome_context[key] = cleavage_context[key]
+    saved = experimental_data.add_final_measurements(
+        cleavage_context, outcome_context, path,
+        cleavage_status=cleavage_status, outcome_status=outcome_status,
+    )
+    for kind, record in saved.items():
+        if not str(record.get("record_id") or "").strip():
+            raise RuntimeError(f"The {kind} database write could not be confirmed.")
+    return saved
+
 
 def add_issue_record(gui: Any, values: dict[str, Any], *, status: str = "verified"):
     path = _ready_db(gui)

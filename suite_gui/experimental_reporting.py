@@ -7,6 +7,7 @@ record writes and schema migration.
 from __future__ import annotations
 
 from pathlib import Path
+from bisect import bisect_left
 from typing import Any
 import json
 
@@ -30,6 +31,28 @@ def quality_findings(db_path: str | Path | None = None) -> list[dict[str, Any]]:
         outcome_rows=data.list_records("outcome", db_path),
         issue_rows=data.list_records("issue", db_path),
     )
+
+
+def _loading_leave_one_out_error(groups: dict[tuple[str, str], list[float]]) -> tuple[float | None, int]:
+    """Exact legacy upper-median leave-one-out MAE in O(n log n), not O(n² log n).
+
+    Removing any one duplicate value leaves the same peer multiset. The sorted
+    position determines whether the peer median is index k or k+1; ties keep
+    the prior deterministic median choice and measured units unchanged.
+    """
+    absolute_error = 0.0
+    count = 0
+    for values in groups.values():
+        if len(values) < 2:
+            continue
+        ordered = sorted(values)
+        median_index = (len(ordered) - 1) // 2
+        for observed in values:
+            removed_at = bisect_left(ordered, observed)
+            peer_median = ordered[median_index + (removed_at <= median_index)]
+            absolute_error += abs(observed - peer_median)
+            count += 1
+    return (absolute_error / count if count else None, count)
 
 
 def data_health(db_path: str | Path | None = None) -> dict[str, Any]:
@@ -92,15 +115,7 @@ def data_health(db_path: str | Path | None = None) -> dict[str, Any]:
         groups: dict[tuple[str, str], list[float]] = {}
         for row in loading_rows:
             groups.setdefault((row["resin_key"], row["amino_acid_key"]), []).append(float(row["loading_rate_mmol_g"]))
-        errors: list[float] = []
-        for values in groups.values():
-            if len(values) < 2:
-                continue
-            for index, observed in enumerate(values):
-                peers = values[:index] + values[index + 1:]
-                prediction = sorted(peers)[len(peers) // 2]
-                errors.append(abs(observed - prediction))
-        loading_mae = (sum(errors) / len(errors)) if errors else None
+        loading_mae, evaluated_loading = _loading_leave_one_out_error(groups)
 
         cgroups: dict[str, list[tuple[float, float]]] = {}
         for row in cleavage_rows:
@@ -137,8 +152,83 @@ def data_health(db_path: str | Path | None = None) -> dict[str, Any]:
             "issue": status_counts("synthesis_issue_records"),
         }
 
+    # Measurements are never inferred from plans. Count independent Runs and
+    # verified QC values separately; historical Parsed and AI imports remain outside
+    # the supervised-lab eligibility tally.
+    with data._connect(db_path) as con:
+        measured = con.execute("""
+            SELECT
+                COUNT(*) AS all_rows,
+                SUM(CASE WHEN status='verified' THEN 1 ELSE 0 END) AS verified_rows,
+                SUM(CASE WHEN status='verified' AND
+                    ((yield_percent BETWEEN 0 AND 100) OR (purity_percent BETWEEN 0 AND 100))
+                    THEN 1 ELSE 0 END) AS verified_measured_rows,
+                COUNT(DISTINCT CASE WHEN status='verified' AND
+                    ((yield_percent BETWEEN 0 AND 100) OR (purity_percent BETWEEN 0 AND 100))
+                    AND run_id<>'' THEN run_id END) AS independent_run_ids,
+                COUNT(DISTINCT CASE WHEN status='verified' AND
+                    ((yield_percent BETWEEN 0 AND 100) OR (purity_percent BETWEEN 0 AND 100))
+                    AND sequence_key<>'' THEN sequence_key END) AS distinct_sequences,
+                SUM(CASE WHEN status='verified' AND (yield_percent BETWEEN 0 AND 100)
+                    THEN 1 ELSE 0 END) AS verified_yield,
+                SUM(CASE WHEN status='verified' AND (purity_percent BETWEEN 0 AND 100)
+                    THEN 1 ELSE 0 END) AS verified_purity,
+                SUM(CASE WHEN run_id='' OR work_item_id='' THEN 1 ELSE 0 END) AS missing_run_context,
+                SUM(CASE WHEN planner_snapshot_json IS NULL OR
+                    trim(planner_snapshot_json) IN ('','{}','null') THEN 1 ELSE 0 END) AS missing_plan_snapshot,
+                SUM(CASE WHEN yield_percent<0 OR yield_percent>100 OR
+                    purity_percent<0 OR purity_percent>100 OR crude_g<0
+                    THEN 1 ELSE 0 END) AS invalid_historical_values,
+                SUM(CASE WHEN status='parsed' OR status='incomplete' THEN 1 ELSE 0 END) AS awaiting_review
+            FROM experimental_outcomes
+        """).fetchone()
+        repeated_measurement_groups = int(con.execute("""
+            SELECT COUNT(*) FROM (
+                SELECT run_id, lower(stage) AS stage, yield_percent, purity_percent
+                FROM experimental_outcomes
+                WHERE run_id<>'' AND status='verified' AND
+                    (yield_percent IS NOT NULL OR purity_percent IS NOT NULL)
+                GROUP BY run_id, lower(stage), yield_percent, purity_percent
+                HAVING COUNT(*)>1
+            )
+        """).fetchone()[0])
+        verified_loading_measures = int(con.execute("""
+            SELECT COUNT(*) FROM loading_records
+            WHERE status='verified' AND outlier_flag=0 AND
+                loading_rate_mmol_g IS NOT NULL AND loading_rate_mmol_g>=0
+        """).fetchone()[0])
+    def count(name: str) -> int:
+        return int(measured[name] or 0)
+    collection = {
+        "verified_outcomes": count("verified_rows"),
+        "verified_measured_outcomes": count("verified_measured_rows"),
+        "independent_run_ids": count("independent_run_ids"),
+        "distinct_sequences": count("distinct_sequences"),
+        "verified_yield_measurements": count("verified_yield"),
+        "verified_purity_measurements": count("verified_purity"),
+        "verified_loading_measurements": verified_loading_measures,
+        "missing_run_context": count("missing_run_context"),
+        "missing_plan_snapshot": count("missing_plan_snapshot"),
+        "historical_out_of_range": count("invalid_historical_values"),
+        "possible_duplicate_measurement_groups": repeated_measurement_groups,
+        "awaiting_review": count("awaiting_review"),
+        "ai_imports_are_separate": True,
+        "model_ready": None,  # No arbitrary threshold or untested claim.
+    }
+    collection["review_actions"] = [
+        action for required, action in (
+            (collection["awaiting_review"] > 0, "Review parsed/incomplete records before using them as training labels."),
+            (collection["missing_run_context"] > 0, "Link outcome records to their actual Work Item and independent Run."),
+            (collection["missing_plan_snapshot"] > 0, "Check missing frozen Plan/condition snapshots; never infer performed conditions."),
+            (collection["historical_out_of_range"] > 0, "Review historical percentages or negative masses before model training."),
+            (collection["possible_duplicate_measurement_groups"] > 0, "Review repeated Run/stage measurements; keep real replicates but prevent training leakage."),
+            (collection["verified_measured_outcomes"] == 0, "Record measured yield/purity with the final result; predictions are not measurements."),
+        ) if required
+    ]
+
     quality = quality_findings(db_path)
     return {
+        "data_collection_readiness": collection,
         "counts": {"loading": loading_total, "cleavage": cleavage_total, "sequence": sequence_total, "cleavage_usage": usage_total, "outcome": outcome_total, "issue": issue_total},
         "cleavage_usage_unit_review_required": usage_unit_review,
         "cleavage_usage_normalized_records": usage_normalized,
@@ -149,7 +239,7 @@ def data_health(db_path: str | Path | None = None) -> dict[str, Any]:
         "repeated_loading_groups": repeated_loading_groups,
         "explicit_edt_records": explicit_edt,
         "loading_leave_one_out_mae_mmol_g": loading_mae,
-        "loading_leave_one_out_evaluated": len(errors),
+        "loading_leave_one_out_evaluated": evaluated_loading,
         "cleavage_eq_time_replay_agreement_pct": cleavage_agreement,
         "cleavage_eq_time_replay_evaluated": evaluated,
         "record_state_counts": lifecycle,

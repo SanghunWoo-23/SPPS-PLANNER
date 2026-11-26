@@ -1,0 +1,4 @@
+# Compatibility-only RDKit requirement for older setup scripts.
+# requirements.txt already includes RDKit for the default V9.0.0 install;
+# installing this file again is unnecessary.
+rdkit>=2024.03

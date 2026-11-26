@@ -90,6 +90,8 @@ def canonical(value: Any) -> str:
 
 
 def material_lookup(name: Any) -> tuple[float, float]:
+    if normalized(name) in {'boc2o', 'ditertbutyldicarbonate'}:
+        return 218.25, 0.0  # Boc2O solid, g/mol; no liquid density assumed
     original = str(name or "").strip()
     canonical_name = canonical(original)
     # Try the canonical display name, the original saved name, and a version

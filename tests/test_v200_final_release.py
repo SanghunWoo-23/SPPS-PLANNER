@@ -60,14 +60,16 @@ def test_cleavage_selected_preset_name_states_actual_components():
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="Tk GUI test requires DISPLAY")
-def test_gui_starts_with_one_blank_item_and_final_title():
+def test_gui_starts_with_one_blank_item_and_final_title(monkeypatch, tmp_path):
     from suite_gui.spps_tk_gui import SPPSGui
 
+    # A fresh-install test must never load another GUI test's saved session.
+    monkeypatch.setattr(SPPSGui, "_state_file_path", lambda self: tmp_path / "new_install_session.json", raising=False)
     app = SPPSGui()
     app.withdraw()
     app.update_idletasks()
     try:
-        assert app.title() == "SPPS Planner V8.0.0"
+        assert app.title() == "SPPS Planner V9.0.0"
         assert len(app.pm_items) == 1
         assert app.pm_list.size() == 1
         assert app.pm_sequence.get() == ""

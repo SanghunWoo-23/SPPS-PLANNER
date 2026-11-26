@@ -1,0 +1,35 @@
+name: Bug report
+description: Report a reproducible issue without sharing private experiments
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do **not** attach confidential lab spreadsheets, sequences, passwords, API keys, or private database exports.
+        Use a synthetic minimal reproduction where possible.
+  - type: input
+    id: version
+    attributes:
+      label: SPPS Planner version
+      placeholder: V9.0.0 development source / commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options: [Windows 11, Windows 10, Linux (development), Other]
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce (synthetic data only)
+      description: Provide the exact steps, expected result and observed result.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized error message
+      description: Remove any sensitive path names and lab records.

@@ -1,0 +1,108 @@
+SPPS Planner V9.0.0 — GitHub Public Development Source Candidate (2026-11-12)
+
+This is a source distribution and NOT an official Windows binary/Installer release.
+
+CURRENT HIGHLIGHTS
+- Project Manager, editable SPPS planner, materials/checklist/batch tracking.
+- Operator-reviewed Auto Plan with limited protected and cyclic/branched mass calculations.
+- Optional explicit RDKit atom-mapped monomer and topology validation; fail-closed on unknown structures.
+- AI/Excel multi-file/multi-sheet review, quality auditing, grouped ML checks and optional external evaluation.
+- Evidence-aware local document search and opt-in excerpt-only literature AI review.
+- GitHub public-source preflight, privacy checks and deterministic source packaging added.
+
+IMPORTANT
+- Public and Private are distinct; ONLY PUBLIC may be uploaded to GitHub.
+- The LICENSE is a custom noncommercial academic citation license, NOT OSI-approved open source.
+- No actual Windows-native installer acceptance, wet-lab reaction verification,
+  or independent measured ML accuracy is claimed.
+- Cys(StBu) MW correction to approximately +88.17 g/mol from V9.0.0 prior updates
+  requires rechecking older calculated outputs.
+- GitHub Release and version tag must be created only after actual CI verification.
+
+Full usage and limitations: README.md; README_KO.md; README_V9_DEVELOPMENT.md;
+docs/GITHUB_PUBLICATION_V9_KO.md.
+
+2026-11-12 SOURCE ORGANIZATION
+- Active documents indexed at docs/INDEX.md and docs/CURRENT_STATUS_KO.md.
+- Point-in-time reports retained under docs/history; no runtime module paths moved.
+- New source documentation and release-layout auditor.
+- No new scientific or Windows-native claims from this documentation-only cleanup.
+
+2026-11-16 FINAL SOURCE TEXT AUDIT
+- Windows BAT, VERSION, Inno Setup and version resources checked for consistent V9.0.0 identity.
+- RDKit is installed by default; the historical RDKit optional requirements file is compatibility-only.
+- One build BAT remains; no extra installer script or unofficial Windows success claim.
+- Release TXT, README, documentation links and Public/Private boundaries covered by source tests.
+
+2026-11-23 HEAD-TO-TAIL DATA-LINK REFINEMENT (SOURCE ONLY)
+- Operator-entered head-to-tail coupling reagent equivalents, mmol per copy and solution volume now propagate from a validated stored method review into the selected Plan, Materials, Total Materials and Excel/CSV exports.
+- Values remain explicitly UNAPPROVED DRAFTS. Reagent g/mL and bottle mass are NOT inferred from a method label; source form and concentration require separate operator verification.
+- Changing peptide copies invalidates the old stored cyclization method review; stale/tampered review fields do not supply quantities to the new Plan.
+- Exported Cyclic Review, Method Reviews, legacy cyclic exports and Setup status now distinguish valid unapproved drafts from stale records requiring re-review. Stale reagent quantities are excluded from active review tables while raw project state remains retained for audit.
+- This update adds regression coverage for valid reviews, stale reviews, Apply Change and Excel output.
+- No change to the official INSTALL_BUILD_TOOLS_AND_BUILD.bat or Windows Installer settings. Windows native rebuild and install of this revision are NOT verified here.
+
+
+2026-11-24 INTEGRATION, EDC·HCl/NHS AND ML TRUST REFINEMENT (SOURCE ONLY)
+- EDC·HCl/NHS is now a named operator-review coupling system for Head-to-tail and Branch; ADD recipe shortcut includes the two separately selected bottles. Existing EDC·HCl/HOBt is preserved.
+- The textual aliases EDC-HCl and EDC·HCl map to one review identity without overwriting supplier-specific bottle information. Missing reagent equivalents are never inferred.
+- EDC/NHS activation is NOT a validated peptide cyclization SOP: NHS ester hydrolysis, possible N-acylurea byproducts, epimerization and oligomers need review. The linked Yan et al., RSC Adv. 2015 mechanism is polymer-context evidence only, NOT a peptide cyclization benchmark.
+- New Loading model builds use grouped cross-validation by run_id / work_item_id / identical input conditions, not random row-based KFold. Models trained before this release are not retroactively relabeled or retrained. At least two independent groups are required.
+- Selected Cyclic Review exports independent protected-linear / protected-cyclic / deprotected-cyclic average neutral MW when available. Exact-mass-derived theoretical ESI m/z appears only after RDKit graph crosscheck passes. Never use average MW as exact m/z.
+- Disulfide MS output is recomputed from current sequence and Cys positions, not trusted from a stale stored structure snapshot. Unsupported chemistry returns WITHHELD rather than fabricated mass/ions.
+- Existing Plan, Materials, Checklist and Excel/CSV/JSON output routes remain in place. Existing official INSTALL_BUILD_TOOLS_AND_BUILD.bat is unchanged; no extra BAT/CMD, placeholder or monkey patch added.
+- This is SOURCE ONLY. No native Windows installer acceptance or wet-lab protocol verification has been performed on this revision.
+
+
+2026-11-24 CONSERVATIVE EXPORT PERFORMANCE REFINEMENT (SOURCE ONLY)
+- Existing Excel exporter now reuses immutable openpyxl style specifications, rather than allocating an Alignment/PatternFill/Font for every worksheet cell.
+- Excel/CSV exports read the active compounds catalog and process rules once per export request and reuse that same snapshot across calculation views.
+- CSV exporter reuses the same Materials result for the raw and operator-display totals instead of recalculating it twice.
+- Sample 40-residue export on the evaluation environment: Excel approximately 1.7-1.8 s to 1.18-1.20 s; CSV approximately 0.59-0.63 s to 0.47-0.48 s (two runs per variant; illustrative, not guaranteed).
+- For three test plans (linear, long, branched), 42 generated Excel/CSV files were compared against the preceding 2026-11-24 release. All CSV bytes, Excel sheet/cell values, style IDs, number formats and column widths matched.
+- No changes to peptide chemistry, data paths, ML/AI models, GUI layout, official build BAT, PyInstaller spec or Inno Setup settings. No new build scripts.
+- Targeted regression: Public 71 passed; Private 71 passed. The full GUI test suite was attempted but did not complete in the available environment; no full-suite pass claim is made. A reaction-editor test failed in a combined subset on BOTH original and optimized sources but passes independently on the original; it was excluded from the targeted passing subset, not marked resolved.
+- This is a source-only performance pass. Native Windows installer build, installed EXE timing, memory footprint and complete end-to-end workflow remain unverified for this revision.
+
+2026-11-24 GUI AND AI WORKBOOK PERFORMANCE REFINEMENT (SOURCE ONLY)
+- Reuse pre-normalized, read-only column alias sets during AI Excel/CSV header detection instead of recalculating each synonym on every match. Field precedence, first-unused-column selection, and explicit user review are unchanged.
+- When automatic sheet discovery falls back to manual mapping, reuse sampled worksheet header rows instead of reading the same 12-row preview again.
+- Optimize existing Treeview updates by batch-deleting old rows (up to 512 IDs per Tcl call) and rendering DataFrame rows positionally without per-row pandas Series allocations; maintain missing-column and numeric display behavior.
+- Representative Linux/Tk microbenchmarks: 400 column mappings took 2272.91 ms before vs 31.49 ms after; repeated 550-row table refresh averaged about 17.5 ms before vs 5.6 ms after. These are small isolated benchmarks, NOT measured whole-app startup improvements.
+- Full regressions with GUI virtual display and external test plugins disabled: PUBLIC 846 passed, 3 skipped; PRIVATE 842 passed, 1 skipped; no test failures. Three new tests cover mapping precedence, sheet fallback, and rendered row equivalence.
+- This release does not change chemistry calculations, AI model output, stored project formats, output modules, official BAT/installer settings, or the Public/Private data boundary. No monkey patch or new build scripts.
+- No native Windows EXE/Installer build/install or Windows speed/peak-memory measurement was performed. Source-only performance improvement; previously skipped tests remain skipped.
+
+2026-11-24 FINAL CONSERVATIVE AI/DATA PERFORMANCE PASS (SOURCE ONLY)
+- Avoid per-row pandas Series allocation for 6,000-row ML feature extraction and Run ID audit; retain original fields, missing-data rules, and duplicate/contradiction checks.
+- Similar-run screening retains only necessary candidate fields and uses exact edit distance with common-terminal fast paths; chemical token identity is preserved.
+- Stream local SHA-256 verification in bounded chunks for original Excel/CSV, reviewed dataset, local ML files, and the auto-import recheck. Source-changed-after-preview rejection remains enabled.
+- Representative synthetic-data Linux microbenchmarks: 6,000-row feature extraction about 1.085 s to 0.750 s; data audit 1.027 s to 0.727 s; similarity 0.867 s to 0.840 s; 8 MiB file-hash peak Python-tracked allocations about 8 MiB to 2 MiB. These are specific tasks, not overall startup or Windows memory claims.
+- No modifications to peptide chemistry, plan/materials/checklist/export engine, model training and inference semantics, saved project format, GUI layout, official BAT, spec, or Installer settings.
+- Added behavior-preserving regression tests for residue distinction, audit conflicts, features, product path filtering, exact edit distance and source integrity.
+- Windows-native EXE/Installer execution, installed start time and total process peak RSS are unverified. See the accompanying Korean handover and QA report.
+
+2026-11-25 MEMORY-BOUNDED SIMILAR-EXPERIMENT REVIEW AND LOADING ML PREPROCESS (SOURCE ONLY)
+- Similar-run candidate screening now streams eligible records into the existing bounded heap instead of retaining all 20,000 potential matches. The approximate screening limit, tie order, exact residue edit distance, evidence provenance, and output labels are unchanged.
+- Loading model grouped-validation keys use positional DataFrame iteration when columns are unique; existing run_id > work_item_id > identical input-condition grouping and measured-target exclusion are preserved. Non-unique columns retain legacy handling.
+- Representative Linux/Python microbenchmarks: 12,000-row similar-run review 0.862 s -> 0.533 s, peak additional Python allocations 8.012 MiB -> 0.834 MiB; 12,000-row loading-validation grouping 0.190 s -> 0.011 s. These are task-specific measurements, not whole-app Windows startup or RSS claims.
+- No chemical plan, mass balance, materials, export content, GUI layout, stored project schema, ML model structure, official build BAT, PyInstaller spec or Installer changes. No extra build scripts/monkey patches/placeholders.
+- Native Windows EXE/Installer build/install and whole-process memory/startup remain unverified in this Linux environment. See the accompanying Korean handover and QA report for source test results.
+
+2026-11-26 V9.0.0 DATA-COLLECTION STABILITY AND EXPLICIT REVIEW BRIDGE (SOURCE ONLY)
+- Version remains V9.0.0. No new major UI, installer, or build entry point.
+- Final result logging now saves paired cleavage-condition / observed outcome records in ONE SQLite transaction; a failed insert rolls both back.
+- Enforce finite/nonnegative measured QC values and measured-loading values. Purity >100% is rejected; yield >100% remains reviewable as incomplete and never silently enters Verified model truth.
+- Data Health reports measured/verified outcomes, distinct real Run IDs and sequences, missing context/snapshots, and potential repeated measurements without silently deleting replicates.
+- Operator-triggered Export Verified QC CSV stages actual verified yield/purity for existing AI & ML CSV review. Planned scale/resin are separate reference columns; performed conditions, product topology and coupling method remain BLANK for manual evidence review.
+- AI-reviewed imports remain separate from the verified SQLite lab DB; training stays explicit with held-out validation and existing promotion/rollback controls.
+- No chemistry calculator, materials/export contract, Windows build BAT, PyInstaller or Inno Setup changes; Public/Private separation retained.
+- Python/Linux and virtual-display testing only; Windows native build/install and real laboratory validation NOT TESTED.
+- Data Health loading leave-one-out upper-median accuracy check now sorts each repeated resin/AA group once instead of sorting each leave-one-out peer set. Duplicate measured values preserve exact prior scoring semantics.
+
+2026-11-26 V9.0.0 RELEASE-CLOSURE WINDOWS INSTRUCTIONS / CI NAME CONSISTENCY
+- No runtime GUI/chemistry/AI/ML behavior changed. Version remains V9.0.0.
+- Correct Windows CI Installer acceptance path to SPPS_Planner_PUBLIC_Setup_V9.0.0.exe, matching the existing build BAT and Inno Setup spec.
+- Correct the Windows build guide and remove reference to the already-deleted extra build CMD and implicit diagnostics log.
+- Add regression check to ensure four existing installer filenames/instructions agree.
+- Native Windows build/install remains NOT_TESTED in this environment.

@@ -2,18 +2,18 @@
 setlocal EnableExtensions
 cd /d "%~dp0" || exit /b 1
 
-rem SPPS Planner V8.0.0 - one entry point: tools, EXE, Installer, verification.
+rem SPPS Planner V9.0.0 - one entry point: tools, EXE, Installer, verification.
 rem Use --no-pause for unattended build. This builds an installer; it does not install SPPS Planner.
 set "NO_PAUSE=0"
 if /I "%~1"=="--no-pause" set "NO_PAUSE=1"
-set "APP_VERSION=V8.0.0"
-set "SETUP_EXE=installer\output\SPPS_Planner_Setup_V8.0.0.exe"
+set "APP_VERSION=V9.0.0"
+set "SETUP_EXE=installer\output\SPPS_Planner_PUBLIC_Setup_V9.0.0.exe"
 set "SPPS_PLANNER_SELFTEST_OUTPUT=%CD%\dist\SPPS_Planner\runtime_selftest.json"
 
 echo ============================================================
 echo SPPS Planner %APP_VERSION% - install build tools and build
- echo Python 3.11/3.12 x64 - EXE - Installer - verification
- echo ============================================================
+echo Python 3.11/3.12 x64 - EXE - Installer - verification
+echo ============================================================
 
 if not exist "main_launcher.py" goto :missing
 if not exist "SPPS_Planner.spec" goto :missing
@@ -60,8 +60,10 @@ echo [1/9] Compiling source...
 %PY_CMD% -m compileall -q main_launcher.py suite_gui peptiforg_core apps\spps_planner_app\spps_planner
 if errorlevel 1 goto :fail_compile
 
-echo [2/9] Checking V8.0.0 release contract...
+echo [2/9] Checking V9.0.0 release contract...
 %PY_CMD% tools\verify_windows_release.py
+if errorlevel 1 goto :fail_contract
+%PY_CMD% tools\audit_release_text_v9.py
 if errorlevel 1 goto :fail_contract
 
 echo [3/9] Running source functional self-test...
@@ -91,6 +93,18 @@ if errorlevel 1 goto :fail_selftest_report
 
 if exist "installer\output" rmdir /s /q "installer\output"
 if not exist "installer\output" mkdir "installer\output"
+echo [8/9] Staging Installer payload in a short temporary path...
+set "STAGE_INFO=%TEMP%\SPPSV9_PUBLIC_stage_info.txt"
+%PY_CMD% tools\stage_inno_payload.py "dist\SPPS_Planner" public > "%STAGE_INFO%"
+if errorlevel 1 (
+  type "%STAGE_INFO%"
+  goto :fail_installer
+)
+set "SPPS_INSTALLER_STAGE="
+for /f "usebackq tokens=1,* delims==" %%A in ("%STAGE_INFO%") do if "%%A"=="STAGE_DIR" set "SPPS_INSTALLER_STAGE=%%B"
+if not defined SPPS_INSTALLER_STAGE goto :fail_installer
+if not exist "%SPPS_INSTALLER_STAGE%\SPPS_Planner.exe" goto :fail_installer
+type "%STAGE_INFO%"
 echo [8/9] Building Installer with Inno Setup...
 "%ISCC%" "installer\SPPS_Planner_Setup.iss"
 if errorlevel 1 goto :fail_installer
@@ -161,7 +175,7 @@ goto :fail
 echo [ERROR] Source compilation failed.
 goto :fail
 :fail_contract
-echo [ERROR] V8 release contract check failed.
+echo [ERROR] V9 release contract check failed.
 goto :fail
 :fail_source_selftest
 echo [ERROR] Source functional self-test failed.
@@ -177,12 +191,15 @@ echo [ERROR] EXE release contract verification failed.
 goto :fail
 :fail_selftest
 echo [ERROR] Packaged EXE self-test failed.
+if exist "%SPPS_PLANNER_SELFTEST_OUTPUT%" type "%SPPS_PLANNER_SELFTEST_OUTPUT%"
+if not exist "%SPPS_PLANNER_SELFTEST_OUTPUT%" echo [ERROR] No report: the frozen process may have failed before Python self-test startup.
 goto :fail
 :selftest_missing
 echo [ERROR] Packaged EXE did not write a runtime self-test report.
 goto :fail
 :fail_selftest_report
 echo [ERROR] Packaged EXE self-test report validation failed.
+if exist "%SPPS_PLANNER_SELFTEST_OUTPUT%" type "%SPPS_PLANNER_SELFTEST_OUTPUT%"
 goto :fail
 :fail_installer
 echo [ERROR] Inno Setup compilation failed.

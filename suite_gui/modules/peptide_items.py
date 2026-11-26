@@ -54,7 +54,6 @@ def duplicate_selected(gui, ns: dict | None = None):
         if new_indices:
             state.refresh_list(gui, new_indices)
             state.load_item_to_editor(gui, new_indices[0])
-            state.refresh_list(gui, new_indices)
             try: gui.schedule_autosave()
             except Exception: pass
         return new_indices
@@ -102,6 +101,9 @@ def move_selected_to(gui, target: int):
         sels = state.selected_indices(gui)
         if not sels or target in sels or target < 0 or target >= len(items):
             return None
+        # Persist pending editor changes before reordering and loading another
+        # item. Otherwise a drag can silently discard unsaved field edits.
+        state.save_active(gui)
         moving = [items[i] for i in sels]
         selected_set = set(sels)
         remaining = [it for i, it in enumerate(items) if i not in selected_set]
@@ -111,7 +113,6 @@ def move_selected_to(gui, target: int):
         new_sel = list(range(insert_at, insert_at + len(moving)))
         state.refresh_list(gui, new_sel)
         state.load_item_to_editor(gui, new_sel[0])
-        state.refresh_list(gui, new_sel)
         try: gui.schedule_autosave()
         except Exception: pass
         return new_sel
@@ -122,10 +123,10 @@ def move_selected_to(gui, target: int):
 def list_button_press(gui, event):
     try:
         idx = gui.pm_list.nearest(event.y)
-        runtime_state.update_drag_state(gui,drag_start_index=idx)
-        runtime_state.update_drag_state(gui,drag_last_target=idx)
-        runtime_state.update_drag_state(gui,drag_start_y=event.y)
-        runtime_state.update_drag_state(gui,drag_started=False)
+        runtime_state.update_drag_state(
+            gui, drag_start_index=idx, drag_last_target=idx,
+            drag_start_y=event.y, drag_started=False,
+        )
     except Exception:
         pass
     return None
@@ -135,17 +136,19 @@ def list_motion(gui, event):
     try:
         lb = gui.pm_list
         sels = state.selected_indices(gui)
-        start = runtime_state.get_drag_state(gui).drag_start_index
+        drag = runtime_state.get_drag_state(gui)
+        start = drag.drag_start_index
         if start is None or start not in sels:
             return None
-        if not runtime_state.get_drag_state(gui).drag_started:
-            if abs(int(event.y) - int(runtime_state.get_drag_state(gui).drag_start_y if runtime_state.get_drag_state(gui).drag_start_y is not None else event.y)) < 6:
+        if not drag.drag_started:
+            start_y = event.y if drag.drag_start_y is None else drag.drag_start_y
+            if abs(int(event.y) - int(start_y)) < 6:
                 return None
-            runtime_state.update_drag_state(gui,drag_started=True)
+            runtime_state.update_drag_state(gui, drag_started=True)
         target = lb.nearest(event.y)
-        if target != runtime_state.get_drag_state(gui).drag_last_target:
+        if target != drag.drag_last_target:
             move_selected_to(gui, target)
-            runtime_state.update_drag_state(gui,drag_last_target=target)
+            runtime_state.update_drag_state(gui, drag_last_target=target)
         return "break"
     except Exception:
         return None

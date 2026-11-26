@@ -161,6 +161,64 @@ def _version_model_path(model_id:str)->Path:
     return active_path.with_name(f'{active_path.stem}_{safe}{active_path.suffix}')
 
 
+def _group_record_id(value: Any) -> str:
+    """Normalize optional identifiers safely, including pandas nullable scalars.
+
+    Empty IDs must not become distinct ``run:nan`` or raise for ``pd.NA``.
+    Preserve the historical handling of zero and blank IDs.
+    """
+    if value is None or value is pd.NA:
+        return ''
+    if isinstance(value, (str, int, float)):
+        if pd.isna(value):
+            return ''
+        return str(value or '').strip()
+    try:
+        if pd.isna(value):
+            return ''
+    except (TypeError, ValueError):
+        pass
+    return str(value).strip()
+
+
+def _loading_validation_groups(frame: pd.DataFrame, categorical: list[str], numeric: list[str]) -> pd.Series:
+    """Group verified loading records without constructing one Series per row.
+
+    Keep the existing priority (run ID, work-item ID, then input-condition
+    signature) and exact key serialization; never use a measured target as a
+    grouping feature. Non-unique columns retain the original Series fallback.
+    """
+    fields = categorical + numeric
+    if frame.columns.is_unique:
+        position = {name: idx for idx, name in enumerate(frame.columns)}
+        run_index = position.get('run_id')
+        work_index = position.get('work_item_id')
+        feature_indices = [position[name] for name in fields]
+        def group_values(values):
+            run = _group_record_id(values[run_index]) if run_index is not None else ''
+            if run:
+                return 'run:' + run
+            work = _group_record_id(values[work_index]) if work_index is not None else ''
+            if work:
+                return 'work:' + work
+            keys = [None if pd.isna(values[idx]) else str(values[idx]) for idx in feature_indices]
+            return 'conditions:' + json.dumps(keys, ensure_ascii=False, separators=(',', ':'))
+        values = (group_values(row) for row in frame.itertuples(index=False, name=None))
+    else:
+        # Historical fallback for malformed/non-unique input column names.
+        def group_record(row):
+            run = _group_record_id(row.get('run_id'))
+            if run:
+                return 'run:' + run
+            work = _group_record_id(row.get('work_item_id'))
+            if work:
+                return 'work:' + work
+            keys = [None if pd.isna(row.get(name)) else str(row.get(name)) for name in fields]
+            return 'conditions:' + json.dumps(keys, ensure_ascii=False, separators=(',', ':'))
+        values = (group_record(row) for _, row in frame.iterrows())
+    return pd.Series(list(values), index=frame.index)
+
+
 def rebuild_loading_model(db_path:str|Path|None=None)->dict[str,Any]:
     """Build a new candidate from Verified measured loading records only.
 
@@ -182,7 +240,7 @@ def rebuild_loading_model(db_path:str|Path|None=None)->dict[str,Any]:
         from sklearn.compose import ColumnTransformer
         from sklearn.ensemble import RandomForestRegressor
         from sklearn.impute import SimpleImputer
-        from sklearn.model_selection import KFold, cross_val_predict
+        from sklearn.model_selection import GroupKFold, cross_val_predict
         from sklearn.pipeline import Pipeline
         from sklearn.preprocessing import OneHotEncoder
         import joblib
@@ -199,8 +257,14 @@ def rebuild_loading_model(db_path:str|Path|None=None)->dict[str,Any]:
     def make_model():
         pre=ColumnTransformer([('cat',OneHotEncoder(handle_unknown='ignore'),categorical),('num',SimpleImputer(strategy='median'),numeric)])
         return Pipeline([('preprocess',pre),('model',RandomForestRegressor(n_estimators=320,max_depth=8,min_samples_leaf=2,random_state=50,n_jobs=1))])
-    folds=min(5,len(frame)); cv=KFold(n_splits=folds,shuffle=True,random_state=50)
-    pred=cross_val_predict(make_model(),X,y,cv=cv,n_jobs=1)
+    # Repeated aliquots stay in the same validation fold.
+    groups=_loading_validation_groups(frame,categorical,numeric)
+    group_count=int(groups.nunique())
+    if group_count<2:
+        return {'built':False,'reason':'At least 2 independent run/work-item/condition groups are required for leakage-safe validation.',
+                'training_count':int(len(frame)),'validation_group_count':group_count}
+    folds=min(5,group_count); cv=GroupKFold(n_splits=folds)
+    pred=cross_val_predict(make_model(),X,y,cv=cv,groups=groups,n_jobs=1)
     mae=float((abs(pred-y.to_numpy())).mean())
     model=make_model(); model.fit(X,y)
     registry_path,active_path=_paths()
@@ -237,6 +301,8 @@ def rebuild_loading_model(db_path:str|Path|None=None)->dict[str,Any]:
     info={
         'model_id':model_id,'built':True,'built_at':created,'training_count':int(len(frame)),
         'verified_only':True,'features':categorical+numeric,'target':'loading_rate_mmol_g','cv_folds':folds,
+        'cv_strategy':'GroupKFold','validation_group_count':group_count,
+        'validation_grouping':'run_id then work_item_id then identical input-condition signature',
         'cross_validated_mae_mmol_g':mae,'observed_min_mmol_g':float(y.min()),'observed_max_mmol_g':float(y.max()),
         'model_file':version_path.name,'active_alias_file':active_path.name,
         'promoted':bool(promote),'promotion_status':'PROMOTED' if promote else 'CANDIDATE',

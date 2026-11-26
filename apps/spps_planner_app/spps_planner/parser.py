@@ -173,6 +173,36 @@ def _split_attached_nterm(core_text: str) -> tuple[str, str]:
     return "", s
 
 
+# V9: unambiguous 3-letter AA(PG) spellings are normalized to 1-letter
+# tokens; bare all-caps FASTA is intentionally NOT reinterpreted as 3-letter AA.
+_AA3_TO_ONE_V9 = {'Ala':'A','Arg':'R','Asn':'N','Asp':'D','Cys':'C','Gln':'Q',
+                   'Glu':'E','Gly':'G','His':'H','Ile':'I','Leu':'L','Lys':'K',
+                   'Met':'M','Phe':'F','Pro':'P','Ser':'S','Thr':'T','Trp':'W',
+                   'Tyr':'Y','Val':'V'}
+
+
+def _normalize_three_letter_protected_aa_v9(core: str) -> str:
+    # E.g. Ser(tBu)-Val => S(tBu)-Val. The latter Val is deliberately not
+    # rewritten unless explicitly bracketed/protected, preserving FASTA rules.
+    pattern = r'(?<![A-Za-z])(?:(' + '|'.join(_AA3_TO_ONE_V9) + r')\(([^()]*)\))'
+    # [Fmoc-D-Arg(Pbf)-OH] is an EXACT vendor token; bracket contents are
+    # never normalized (otherwise Arg(Pbf) would silently become R(Pbf)).
+    parts=re.split(r'(\[[^]]*\])',str(core or ''))
+    for i in range(0,len(parts),2):
+        parts[i]=re.sub(pattern,lambda m:_AA3_TO_ONE_V9[m.group(1)]+'('+m.group(2)+')',parts[i])
+    return ''.join(parts)
+
+
+def _canonical_free_alpha_protected_v9(text: str) -> str:
+    # Recognize H-S(tBu)-OH and H-D-S(tBu)-OH synonyms of catalog H-Ser and
+    # H-D-Ser, without altering residue stereochemistry or protecting group.
+    m=re.fullmatch(r'H-(D-)?([ARNDCQEGHILKMFPSTWYV])\(([^()]*)\)-OH',text,re.I)
+    if not m:
+        return text
+    inv={v:k for k,v in _AA3_TO_ONE_V9.items()}
+    return 'H-'+('D-' if m.group(1) else '')+inv[m.group(2).upper()]+'('+m.group(3)+')-OH'
+
+
 KNOWN_CORE_TOKENS = {
     "AEEA", "AHX", "CHA", "AIB", "NLE", "ORN", "CIT", "HYP", "DAB", "NAL",
     "BALA", "B-ALA", "BETAALA", "GALA", "G-ALA", "GAMMAALA", "GABA", "PEG1", "PEG2", "PEG3", "PEG4", "PEG6", "PEG8", "PEG12", "PEG24",
@@ -186,7 +216,7 @@ TOKEN_CANONICAL = {
     "BALA": "bAla", "B-ALA": "bAla", "BETAALA": "bAla", "ΒALA": "bAla",
     "GALA": "gAla", "G-ALA": "gAla", "GAMMAALA": "gAla", "ΓALA": "gAla", "GABA": "gAla",
     "K(FMOC)": "K(Fmoc)",
-    "K(IVDDE)": "K(ivDde)", "K(DDE)": "K(ivDde)", "K(MTT)": "K(Mtt)",
+    "K(IVDDE)": "K(ivDde)", "K(DDE)": "K(Dde)", "K(MTT)": "K(Mtt)",
 }
 
 
@@ -224,6 +254,9 @@ def _tokenize_compact_segment(segment: str) -> list[str]:
     chunks such as GHTYKL are still split into amino-acid residues.
     """
     raw_segment = str(segment or "").strip()
+    if raw_segment in _AA3_TO_ONE_V9:
+        # Conventional capitalized 3-letter residue notation only, not FASTA.
+        return [_AA3_TO_ONE_V9[raw_segment]]
     if raw_segment.startswith("[") and raw_segment.endswith("]"):
         token = raw_segment[1:-1].strip()
         return [TOKEN_CANONICAL.get(token.upper(), token)] if token else []
@@ -293,6 +326,8 @@ def _tokenize_segment_with_branches(segment: str) -> tuple[list[str], list[dict]
     K(Mtt) stay as K(Mtt).
     """
     raw_segment = str(segment or "").strip()
+    if raw_segment in _AA3_TO_ONE_V9:
+        return [_AA3_TO_ONE_V9[raw_segment]], [], []
     if raw_segment.startswith("[") and raw_segment.endswith("]"):
         token = raw_segment[1:-1].strip()
         canonical = TOKEN_CANONICAL.get(token.upper(), token)
@@ -353,7 +388,7 @@ def tokenize_core_sequence_with_branches(core: str) -> tuple[list[str], list[dic
     # Do not pre-strip protecting groups here: whole-token branch handles such
     # as K(Mtt) / K(ivDde) must remain detectable. Segment tokenization itself
     # skips ordinary protecting groups such as E(OtBu), R(Pbf), Q(Trt).
-    s = _normalize_core_aliases(str(core or "")).replace(" ", "")
+    s = _normalize_three_letter_protected_aa_v9(_normalize_core_aliases(str(core or ""))).replace(" ", "")
     if not s:
         return [], [], []
     parts = _split_top_level(s)
@@ -394,6 +429,12 @@ def parse_sequence(seq: str) -> ParsedSequence:
     s = raw.replace(" ", "")
     if not s:
         return ParsedSequence(raw=raw, nterm="", core="", cterm_text="", core_tokens=[])
+
+    s=_canonical_free_alpha_protected_v9(s)
+    # Complete free-N-alpha protected amino-acid name is ONE reagent, not
+    # a peptide sequence. More complex sequences use [H-Ser(tBu)-OH] brackets.
+    if re.fullmatch(r"(?i)H-(?:D-)?(?:Ala|Arg|Asn|Asp|Cys|Gln|Glu|Gly|His|Ile|Leu|Lys|Met|Phe|Pro|Ser|Thr|Trp|Tyr|Val)\([^()]+\)-OH", s):
+        return ParsedSequence(raw=raw, nterm="", core=s, cterm_text="OH", core_tokens=[s])
 
     # Preserve hyphens inside bracketed exact reagent names such as
     # [Fmoc-NH-PEG4-CH2COOH].

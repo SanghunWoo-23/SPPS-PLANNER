@@ -61,7 +61,8 @@ def test_unknown_exact_bottle_name_is_preserved_as_custom_in_payload():
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="Tk GUI test requires DISPLAY")
-def test_add_dialog_allows_typing_exact_bottle_names_and_updates_live_summary():
+def test_add_dialog_allows_typing_exact_bottle_names_and_updates_live_summary(monkeypatch, tmp_path):
+    monkeypatch.setattr(SPPSGui, "_state_file_path", lambda self: tmp_path / "state.json", raising=False)
     app = SPPSGui()
     try:
         app.deiconify(); app.update()

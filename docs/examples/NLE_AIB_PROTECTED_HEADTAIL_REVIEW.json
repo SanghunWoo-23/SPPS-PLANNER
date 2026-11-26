@@ -1,0 +1,13 @@
+{
+  "monomers": [
+    {
+      "name": "Aib",
+      "smiles": "[NH2:1]C(C)(C)[C:2](=O)[OH:3]"
+    },
+    {
+      "name": "L-Nle",
+      "smiles": "[NH2:1][C@@H](CCCC)[C:2](=O)[OH:3]"
+    }
+  ],
+  "head_to_tail": true
+}

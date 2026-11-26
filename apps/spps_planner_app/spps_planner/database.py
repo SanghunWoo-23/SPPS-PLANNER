@@ -26,6 +26,43 @@ V3_FMOC_CATALOG_TOKENS = {
     "PEG12AMIDO", "PEG20AMIDO", "gAla", "GABA",
 }
 
+
+# V9 protected free-alpha-amino-acid catalog rows (keep user modifications).
+V9_FMOC_FREE_PROTECTED_TOKENS = {
+    'H-Arg(Pbf)-OH',
+    'H-Asn(Trt)-OH',
+    'H-Asp(OtBu)-OH',
+    'H-Cys(Trt)-OH',
+    'H-Gln(Trt)-OH',
+    'H-Glu(OtBu)-OH',
+    'H-His(Trt)-OH',
+    'H-Lys(Boc)-OH',
+    'H-Ser(tBu)-OH',
+    'H-Thr(tBu)-OH',
+    'H-Trp(Boc)-OH',
+    'H-Tyr(tBu)-OH',
+    'H-Lys(Fmoc)-OH',
+    'H-Lys(ivDde)-OH',
+    'H-Lys(Mtt)-OH',
+    'H-D-Cys(Trt)-OH',
+    'H-D-Asp(OtBu)-OH',
+    'H-D-Glu(OtBu)-OH',
+    'H-D-His(Trt)-OH',
+    'H-D-Lys(Boc)-OH',
+    'H-D-Asn(Trt)-OH',
+    'H-D-Gln(Trt)-OH',
+    'H-D-Arg(Pbf)-OH',
+    'H-D-Ser(tBu)-OH',
+    'H-D-Thr(tBu)-OH',
+    'H-D-Trp(Boc)-OH',
+    'H-D-Tyr(tBu)-OH',
+    'H-Cys(Acm)-OH',
+    'H-Cys(StBu)-OH',
+    'H-Cys(tBu)-OH',
+    'H-Lys(Dde)-OH',
+    "K(Dde)",
+}
+
 LEGACY_BUNDLED_SOURCE_MARKERS = {
     "formula-normalized proxy",
     "curated linker policy",
@@ -201,7 +238,7 @@ def _migrate_user_compounds_if_needed(user_path: Path, bundled_path: Path) -> bo
             for _, row in bundled_df.iterrows()
             if _clean_token_value(row.get("Token", ""))
         }
-        for token in V3_FMOC_CATALOG_TOKENS:
+        for token in V3_FMOC_CATALOG_TOKENS | V9_FMOC_FREE_PROTECTED_TOKENS:
             bundled_row = bundled_rows.get(token)
             if bundled_row is None:
                 continue

@@ -11,7 +11,7 @@ from typing import Any, Mapping
 from spps_planner.parser import parse_sequence
 from suite_gui.risk_engine import evaluate_rules
 
-RISK_MAP_VERSION = "8.0.0-alpha.1"
+RISK_MAP_VERSION = "9.0.0-alpha.1"
 SEVERITY_ORDER = {"INFO": 1, "WARNING": 2, "HIGH": 3, "CRITICAL": 4}
 SOURCE_CLASS = "Rule-based"
 

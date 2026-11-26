@@ -1,0 +1,12 @@
+{
+  "monomers": [
+    {
+      "name": "H-Lys(Boc)-OH, Fmoc-free",
+      "smiles": "[NH2:1][C@@H](CCCCNC(=O)OC(C)(C)C)[C:2](=O)[OH:3]"
+    },
+    {
+      "name": "Aib",
+      "smiles": "[NH2:1]C(C)(C)[C:2](=O)[OH:3]"
+    }
+  ]
+}

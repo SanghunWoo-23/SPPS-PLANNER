@@ -1,4 +1,4 @@
-"""Static and optional binary checks for the Windows V8.0.0 Final release."""
+"""Static and optional binary checks for the Windows V9.0.0 Final release."""
 from __future__ import annotations
 
 import argparse
@@ -24,8 +24,8 @@ from spps_planner.database import (
     validate_compounds_dataframe,
 )
 
-VERSION = "V8.0.0"
-NUMBER = "8.0.0"
+VERSION = "V9.0.0"
+NUMBER = "9.0.0"
 FORBIDDEN_IMPORTS = {
     "suite_gui.legacy_controller", "suite_gui.release_composition",
     "suite_gui.modules.classic_workflow", "suite_gui.modules.workbench_workflow",
@@ -52,8 +52,8 @@ def verify_identity() -> None:
     _require(f"VersionInfoVersion={NUMBER}.0" in installer, "Installer file metadata mismatch")
     _require('#define MyAppPublisher "Sanghun Woo"' in installer, "Installer publisher mismatch")
     version_info = _read("installer/version_info.txt")
-    _require("filevers=(8, 0, 0, 0)" in version_info, "EXE file version mismatch")
-    _require("prodvers=(8, 0, 0, 0)" in version_info, "EXE product version mismatch")
+    _require("filevers=(9, 0, 0, 0)" in version_info, "EXE file version mismatch")
+    _require("prodvers=(9, 0, 0, 0)" in version_info, "EXE product version mismatch")
     _require("StringStruct(u'CompanyName', u'Sanghun Woo')" in version_info, "EXE company metadata mismatch")
     stale = []
     version_names = {"APP_VERSION", "VERSION", "VERSION_NUMBER", "VERSION_LABEL", "TITLE"}
@@ -109,8 +109,10 @@ def verify_build_scripts() -> None:
         "-m PyInstaller", "--check-exe", "--self-test",
         "tools\\verify_packaged_runtime.py", "ISCC",
         "installer\\SPPS_Planner_Setup.iss", "--check-installer",
-        "SPPS_Planner_Setup_V8.0.0.exe",
+        "SPPS_Planner_PUBLIC_Setup_V9.0.0.exe",
     )
+    _require('OutputBaseFilename=SPPS_Planner_PUBLIC_Setup_V9.0.0' in _read("installer/SPPS_Planner_Setup.iss"), "Installer output name mismatch")
+    _require('set "SETUP_EXE=installer\\output\\SPPS_Planner_PUBLIC_Setup_V9.0.0.exe"' in script, "Build expected output name mismatch")
     missing = [token for token in required if token not in script]
     _require(not missing, f"Missing mandatory build stage(s): {missing}")
     _require("call BUILD_" not in script,
@@ -211,7 +213,7 @@ def verify_all(*, check_exe: bool = False, check_installer: bool = False) -> Non
     if check_exe:
         _verify_pe(ROOT / "dist" / "SPPS_Planner" / "SPPS_Planner.exe", "Portable EXE")
     if check_installer:
-        _verify_pe(ROOT / "installer" / "output" / "SPPS_Planner_Setup_V8.0.0.exe", "Installer")
+        _verify_pe(ROOT / "installer" / "output" / "SPPS_Planner_PUBLIC_Setup_V9.0.0.exe", "Installer")
 
 
 def main() -> int:
@@ -220,7 +222,7 @@ def main() -> int:
     parser.add_argument("--check-installer", action="store_true")
     args = parser.parse_args()
     verify_all(check_exe=args.check_exe, check_installer=args.check_installer)
-    print("[OK] SPPS Planner V8.0.0 source Windows release contract passed")
+    print("[OK] SPPS Planner V9.0.0 source Windows release contract passed")
     return 0
 
 

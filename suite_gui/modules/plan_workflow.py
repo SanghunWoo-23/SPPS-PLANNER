@@ -28,8 +28,8 @@ from suite_gui import state_persistence
 from suite_gui import position_rules
 from suite_gui.error_policy import log_nonfatal
 
-VERSION = "V8.0.0"
-TITLE = "SPPS Planner V8.0.0"
+VERSION = "V9.0.0"
+TITLE = "SPPS Planner V9.0.0"
 
 PLAN_COLUMNS = [
     "No", "Unit name", "MW", "Density(g/mL)", "Unit eq", "Unit mmol", "Unit amount",
@@ -305,7 +305,7 @@ def _build_plan_input(gui, ns: dict[str, Any]):
     )
 
 
-def _generated_plan_rows(gui, ns: dict[str, Any], inp) -> list[dict[str, Any]]:
+def _generated_plan_rows(gui, ns: dict[str, Any], inp, *, include_branch: bool = True) -> list[dict[str, Any]]:
     from spps_planner.engine import generate_step_reagent_plan, working_volume_mL
     frame = generate_step_reagent_plan(inp)
     rows: list[dict[str, Any]] = []
@@ -398,6 +398,187 @@ def _generated_plan_rows(gui, ns: dict[str, Any], inp) -> list[dict[str, Any]]:
             if str(row.get("Coupling solvent", "") or "").strip()
             else ""
         )
+    if include_branch:
+        index = _active_index(gui)
+        item = gui.pm_items[index] if index is not None else {}
+        if str(item.get('synthesis_form', 'linear')).lower() == 'branched':
+            arm = str(item.get('branch_arm_sequence') or item.get('branch_arm') or '').strip()
+            point = str(item.get('branch_point', '')).strip()
+            if not arm or not point:
+                raise ValueError('Branch configuration requires an arm sequence and a branch point.')
+            # Explicit K-position notation can be checked against the actual
+            # parent sequence. Refuse an invalid side-chain attachment point.
+            match = re.fullmatch(r'K([1-9][0-9]*)', point, re.IGNORECASE)
+            if match:
+                from spps_planner.parser import tokenize_core_sequence
+                residues = list(tokenize_core_sequence(inp.sequence))
+                position = int(match.group(1))
+                if position > len(residues) or str(residues[position - 1]).upper() != 'K':
+                    raise ValueError(f'Branch point {point} is not Lys at that position in the parent sequence.')
+            # The established coupling engine calculates arm stoichiometry.
+            # There is no invented selective-deprotection reagent dose.
+            boc = item.get('branch_boc_review') or {}
+            boc_reagents = {r.get('name'):r for r in boc.get('reagents',[]) if isinstance(r,dict)}
+            boc2o_eq = _num(boc_reagents.get('Boc2O',{}).get('equivalents'), 0.0)
+            diea_eq = _num(boc_reagents.get('DIEA',{}).get('equivalents'), 0.0)
+            if not boc2o_eq or not diea_eq:
+                raise ValueError('Branch N-terminal Boc2O/DIEA equivalents are required.')
+            boc_mw, boc_den = _lookup(gui,ns,'Boc2O')
+            diea_mw, diea_den = _lookup(gui,ns,'DIEA')
+            boc_mmol = float(inp.scale_mmol)*boc2o_eq
+            diea_mmol = float(inp.scale_mmol)*diea_eq
+            boc_row = {c:'' for c in PLAN_COLUMNS}
+            boc_row.update({'No':str(len(adjusted)+1),
+                'Unit name':'N-terminal Boc protection — REVIEW', 'Repeat':'1',
+                'Reagent 1':'Boc2O', 'R1 eq':_fmt(boc2o_eq),
+                'R1 MW':_fmt(boc_mw), 'R1 Density':_fmt(boc_den),
+                'R1 mmol':_fmt(boc_mmol), 'R1 amount':_amount('Boc2O',boc_mmol,boc_mw,boc_den),
+                'Base':'DIEA', 'Base eq':_fmt(diea_eq),
+                'Base MW':_fmt(diea_mw), 'Base Density':_fmt(diea_den),
+                'Base mmol':_fmt(diea_mmol), 'Base amount':_amount('DIEA',diea_mmol,diea_mw,diea_den),
+                'Note':'Before branch-handle deprotection; N-terminus Boc-protected. Operator-selected eq; reaction time/solvent and completion require review.'})
+            adjusted.append(boc_row)
+            review = {c: '' for c in PLAN_COLUMNS}
+            review.update({'No': str(len(adjusted) + 1),
+                 'Unit name': f"Branch PG removal ({item.get('branch_pg','')} @ {point})",
+                 'Repeat': '1', 'Note': 'OPERATOR REVIEW REQUIRED: ' +
+                    str(item.get('branch_depro_condition', '')) +
+                    '; no unvalidated deprotection amount calculated.'})
+            coupling = item.get('branch_coupling_review') or {}
+            review['Note'] += (' | Branch coupling: '+str(coupling.get('system_label') or 'NOT SELECTED')+
+                               '; equivalents/time require operator review.')
+            arm_inp = replace(inp, sequence=arm, apply_resin_loading=False)
+            arm_rows = _generated_plan_rows(gui, ns, arm_inp, include_branch=False)
+            for offset, step in enumerate(arm_rows, start=len(adjusted) + 2):
+                step['No'] = str(offset)
+                step['Note'] = 'BRANCH ARM @ ' + point + ': ' + str(step.get('Note', ''))
+                # Parent-chain coupling ratios must not be silently borrowed by
+                # a different branch coupling system. Overlay the branch-specific
+                # operator-entered reagent identities and ratios.
+                if step.get('Reagent 1'):
+                    reagents=coupling.get('reagents') or []
+                    for key_set in (('Reagent 1','R1 eq','R1 MW','R1 Density','R1 mmol','R1 amount'),
+                                    ('Reagent 2 / catalyst','R2 eq','R2 MW','R2 Density','R2 mmol','R2 amount'),
+                                    ('Base','Base eq','Base MW','Base Density','Base mmol','Base amount')):
+                        for key in key_set: step[key]=''
+                    for reagent in reagents:
+                        role=reagent.get('role')
+                        fields=(('Reagent 1','R1 eq','R1 MW','R1 Density','R1 mmol','R1 amount')
+                                if role=='coupling_reagent' else
+                                ('Base','Base eq','Base MW','Base Density','Base mmol','Base amount')
+                                if role=='base' else
+                                ('Reagent 2 / catalyst','R2 eq','R2 MW','R2 Density','R2 mmol','R2 amount'))
+                        name=reagent.get('name','')
+                        step[fields[0]]=name
+                        eq=reagent.get('equivalents')
+                        if eq is not None:
+                            mmol=float(inp.scale_mmol)*float(eq)*float(step.get('Repeat') or 1)
+                            mw,den=_lookup(gui,ns,name)
+                            step[fields[1]]=_fmt(eq);step[fields[2]]=_fmt(mw)
+                            step[fields[3]]=_fmt(den);step[fields[4]]=_fmt(mmol)
+                            step[fields[5]]=_amount(name,mmol,mw,den)
+                    step['Coupling solvent']=str(coupling.get('solvent') or '')
+                    step['Solvent mL']=''  # no assumed dilution or stock volume
+                    step['Note']+=(' | BRANCH COUPLING: '+str(coupling.get('system_label',''))+
+                        '; exact solvent volume not inferred.')
+            adjusted.extend([review, *arm_rows])
+            global_review=item.get('global_cleavage_review') or {}
+            global_row={c:'' for c in PLAN_COLUMNS}
+            global_row.update({'No':str(len(adjusted)+1),'Unit name':'Global cleavage / deprotection — REVIEW',
+                'Repeat':'1','Note':str(global_review.get('system_label') or 'NOT CONFIGURED')+
+                '; N-terminal Boc and side-chain groups removed; no mild selective cleavage. '+
+                ('Volume '+_fmt(global_review.get('total_volume_ml'))+' mL.' if global_review.get('total_volume_ml') else 'Enter exact cocktail volume or TFA equivalents.')})
+            adjusted.append(global_row)
+        elif str(item.get('synthesis_form', 'linear')).lower() == 'cyclic':
+            options = item.get('v9_mass_options') or {}
+            if str(options.get('product_path','')).startswith('head_to_tail'):
+                cleavage = item.get('selective_cleavage_review') or {}
+                pre_review={c:'' for c in PLAN_COLUMNS}
+                pre_review.update({'No':str(len(adjusted)+1),
+                    'Unit name':'Selective cleavage — REVIEW','Repeat':'1',
+                    'Note':str(cleavage.get('system_label') or 'NOT SELECTED')+
+                           '; '+str(cleavage.get('status') or 'NOT REVIEWED')+
+                           '; retention/compatibility and workup require validation.'})
+                adjusted.append(pre_review)
+                review = {c: '' for c in PLAN_COLUMNS}
+                review.update({'No': str(len(adjusted)+1),
+                    'Unit name':'Head-to-tail cyclization — REVIEW', 'Repeat':'1',
+                    'Note':'Coupling system: '+str(options.get('coupling_system_label') or 'NOT SELECTED')+
+                           '; unapproved operator draft; no unentered quantities inferred.'})
+                saved_method = options.get('reaction_review')
+                if saved_method is not None:
+                    # A method review is bound to the exact peptide, scale,
+                    # copies and protection mode. Never reuse stale or edited
+                    # derived numbers after changes to these inputs.
+                    from spps_planner.reaction_planner_v9 import validate_stored_reaction_review
+                    try:
+                        method = validate_stored_reaction_review(
+                            saved_method, sequence=str(item.get('sequence','')),
+                            resin=str(item.get('resin','')),
+                            scale_mmol=inp.scale_mmol, copies=item.get('copies',1),
+                            side_chain_mode=options.get('side_chain_mode','catalog'))
+                    except (ValueError, TypeError, KeyError) as exc:
+                        review['Note'] += '; RE-REVIEW REQUIRED: ' + str(exc)
+                    else:
+                        review['Note'] += ('; operator-entered values per copy; '
+                                           'total copies ' + str(method['copies']) +
+                                           '; status ' + method['method_status'])
+                        for reagent in method['reagents']:
+                            role = reagent.get('role')
+                            fields = (('Base','Base eq','Base mmol') if role=='base' else
+                                      ('Reagent 2 / catalyst','R2 eq','R2 mmol') if role=='additive' else
+                                      ('Reagent 1','R1 eq','R1 mmol'))
+                            review[fields[0]] = reagent['name']
+                            if reagent['equivalents'] is not None:
+                                review[fields[1]] = _fmt(reagent['equivalents'])
+                                review[fields[2]] = _fmt(reagent['mmol_per_copy'])
+                        review['Coupling solvent'] = method['solvent']
+                        if method['volume_per_copy_ml'] is not None and method['solvent']:
+                            review['Solvent mL'] = _fmt(method['volume_per_copy_ml'])
+                        if method['reaction_time_h'] is not None:
+                            review['Note'] += '; time ' + _fmt(method['reaction_time_h']) + ' h'
+                        # MW/density/g/mL for individual reagents are intentionally
+                        # blank: a reviewed system does not verify bottle form.
+                adjusted.append(review)
+                final={c:'' for c in PLAN_COLUMNS}
+                global_review=item.get('global_cleavage_review') or {}
+                final.update({'No':str(len(adjusted)+1),
+                    'Unit name':'Final global cleavage / deprotection — REVIEW', 'Repeat':'1',
+                    'Note':str(global_review.get('system_label') or 'NOT CONFIGURED')+
+                       '; after protected macrocyclization; remove side-chain groups. '+
+                       ('Volume '+_fmt(global_review.get('total_volume_ml'))+' mL.' if global_review.get('total_volume_ml') else 'Amount not entered; review required.')})
+                adjusted.append(final)
+            if options.get('product_path') == 'disulfide':
+                from suite_gui.auto_plan_evolution_v9 import review_disulfide_product
+                verified = review_disulfide_product(str(item.get('sequence', '')),
+                                                    str(item.get('resin', '')), options)
+                if verified.get('status') != 'CROSSCHECK_PASS':
+                    raise ValueError('Disulfide product requires validated, unprotected Cys sites: ' +
+                                     str(verified.get('reason') or verified.get('status')))
+                item['v9_mass_options']['disulfide_structure_review'] = verified
+                positions = verified['disulfide_sites']
+                global_review=item.get('global_cleavage_review') or {}
+                full={c:'' for c in PLAN_COLUMNS}
+                full.update({'No':str(len(adjusted)+1),
+                    'Unit name':'Global cleavage / thiol deprotection — REVIEW','Repeat':'1',
+                    'Note':str(global_review.get('system_label') or 'NOT CONFIGURED')+
+                    '; protectant-specific Cys thiol release MUST be reviewed; no selective resin cleavage. '+
+                    ('Volume '+_fmt(global_review.get('total_volume_ml'))+' mL.' if global_review.get('total_volume_ml') else 'Amount not entered.')})
+                adjusted.append(full)
+                from suite_gui.modules.add_peptide_dialog import _sequence_site_labels
+                site_labels=_sequence_site_labels(str(item.get('sequence','')))
+                review = {c: '' for c in PLAN_COLUMNS}
+                review.update({
+                    'No': str(len(adjusted) + 1),
+                    'Unit name': 'Disulfide Cys-Cys cyclization — REVIEW',
+                    'Repeat': '1',
+                    'Note': ('Site A / B: ' + ', '.join(site_labels[i-1] for i in positions if i<=len(site_labels)) +
+                             '; theoretical neutral product MW ' +
+                             str(verified['product_graph_mw']) + ' g/mol; '
+                             'thiol deprotection/oxidation conditions and yield NOT APPROVED; '
+                             'verify by HPLC/MS. No reagent amount inferred.'),
+                })
+                adjusted.append(review)
     return adjusted
 
 
@@ -553,6 +734,10 @@ def _recalc_plan(gui, ns: dict[str, Any], inp) -> None:
     for position, iid in enumerate(list(tree.get_children())):
         row = _row_dict(tree, iid)
         dirty = set(dirty_map.get(iid, set()))
+        if _is_review_plan_row(row.get('Unit name','')):
+            # Review rows are not generic AA coupling rows. Never silently add
+            # DIC/HOBt or a generic wash to these stages on Apply Change.
+            continue
         if _is_direct_2ctc_loading_row(inp, row, position):
             _write_row(tree, iid, _recalc_direct_loading_row(gui, ns, inp, row, dirty))
             continue
@@ -705,6 +890,11 @@ def _material_row(gui, ns, step, material, cls, mmol=0.0, amount="", phase="", n
     }
 
 
+def _is_review_plan_row(unit: str) -> bool:
+    text=str(unit or '').strip().lower()
+    return text.startswith('branch pg removal') or ' — review' in text or text.endswith(' - review')
+
+
 def _visible_protocol(gui, ns: dict[str, Any], inp) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     from spps_planner.engine import working_volume_mL, resin_profile
     tree = gui.pm_selected_plan_tree
@@ -712,6 +902,39 @@ def _visible_protocol(gui, ns: dict[str, Any], inp) -> tuple[list[dict[str, Any]
     materials: list[dict[str, Any]] = []
     checklist: list[dict[str, Any]] = []
     line = 1
+    # V9 mass overlay: calculated from the selected precursor and protection
+    # state, not from resin weight. If a chemical is unknown, show a warning
+    # instead of fabricating a molecular weight.
+    from suite_gui.checklist_mass_v9 import make_mass_tracker, add_process_stages
+    current_item_index = _active_index(gui)
+    current_item = gui.pm_items[current_item_index] if current_item_index is not None else {}
+    mw_options = dict(current_item.get('v9_mass_options') or {})
+    mw_error = ''
+    mass_profile = None
+    mw_func = None
+    try:
+        mass_profile, mw_func = make_mass_tracker(inp.sequence, inp.resin, mw_options)
+    except Exception as exc:
+        mw_error = str(exc)
+    linked_count = 0
+    fmoc_bound = False
+    terminal_cap = ''
+    preloaded_note = ''
+    # When 2-CTC direct loading is explicitly disabled, its engine omits the
+    # C-terminal residue from the visible coupling Plan.  Count that already
+    # attached residue for mass accounting ONLY if exactly one residue is
+    # missing and the operator selected the preloaded route.
+    if mass_profile and resin_profile(inp.resin)=='CTC_DIRECT' and not bool(getattr(inp,'apply_resin_loading',False)):
+        ordinary_rows=[r for r in plan_rows if str(r.get('Unit name','')).strip().lower() not in ('fmoc removal','','none')
+                         and not _is_ac2o(r.get('Unit name',''))
+                         and not _is_review_plan_row(r.get('Unit name',''))]
+        if len(mass_profile['residues'])-len(ordinary_rows)==1:
+            linked_count=1
+            preloaded_note='MW assumes one C-terminal residue already attached to resin; verify starter/loading and free α-amine before coupling.'
+        elif len(mass_profile['residues'])!=len(ordinary_rows):
+            mw_error='Visible Plan does not match residue count; intermediate MW requires review.'
+            mass_profile=None
+            mw_func=None
     working_ml = _num(working_volume_mL(inp), 0.0)
     scale = _num(inp.scale_mmol, 0.0)
     loading = _num(inp.resin_loading_mmol_g, 0.0)
@@ -723,8 +946,28 @@ def _visible_protocol(gui, ns: dict[str, Any], inp) -> tuple[list[dict[str, Any]
     })
 
     def operation(step, op, unit, note=""):
-        nonlocal line
-        checklist.append({"line": line, "done": "", "checked_at": "", "operation": op, "unit": unit, "next_step": "", "note": note})
+        nonlocal line, linked_count, fmoc_bound, terminal_cap, current_row_inserted
+        text = str(op or '').lower()
+        if 'deprotection' in text:
+            fmoc_bound = False
+        if text.startswith('coupling') or text=='coupling / reaction':
+            # Successful coupling is only a THEORETICAL chain-mass assumption.
+            # A repeated coupling still inserts one residue, not two.
+            if current_row_countable and not current_row_inserted:
+                linked_count = min(linked_count+1,len(mass_profile['residues'])) if mass_profile else linked_count
+                if mass_profile:
+                    fmoc_bound = current_row_fmoc
+                current_row_inserted = True
+            elif current_row_cap:
+                terminal_cap = current_row_cap
+                fmoc_bound = False
+        weight = mw_func(linked_count,has_fmoc=fmoc_bound,cap=terminal_cap) if mw_func else None
+        checklist.append({"line": line, "done": "", "checked_at": "", "operation": op, "unit": unit,
+                          "peptide_mw":f"{weight:.3f}" if weight is not None else "",
+                          "mw_form": ("resin-bound equivalent +Fmoc" if fmoc_bound else
+                                      "resin-bound peptide equivalent") if weight is not None else "unavailable",
+                          "next_step": "", "note":note + (" | " + preloaded_note if preloaded_note and line==1 else "")
+                          + (" | MW unavailable: " + mw_error if mw_error and line==1 else "")})
         line += 1
 
     def add_solvent(step, name, total_ml, cls, phase, note, count=1):
@@ -739,14 +982,69 @@ def _visible_protocol(gui, ns: dict[str, Any], inp) -> tuple[list[dict[str, Any]
     match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*%", depro_text)
     base_fraction = _num(match.group(1), 20.0) / 100.0 if match else 0.2
     depro_base = str(getattr(inp, "deprotection_base", "Piperidine") or "Piperidine")
-    final_index = len(plan_rows) - 1
+    final_index = max((i for i,row in enumerate(plan_rows)
+                       if not _is_review_plan_row(row.get('Unit name',''))), default=-1)
 
     for idx, row in enumerate(plan_rows):
+        current_row_inserted = False
+        current_unit = str(row.get('Unit name', '')).strip()
+        current_row_cap = 'Ac' if _is_ac2o(current_unit) else ('Boc' if current_unit in ('Boc','Boc2O') else '')
+        current_row_fmoc = _has_nterm_temporary_protection(current_unit)
+        # The final 'Fmoc removal' is an operation, not a residue insertion.
+        current_row_countable = (not current_row_cap and
+             current_unit.lower() not in ('fmoc removal','none','') and
+             (idx < len(mass_profile['residues']) if mass_profile else False))
         step = row.get("No") or str(idx + 1)
         unit = row.get("Unit name", "")
         is_first = idx == 0
         is_last = idx == final_index
         repeat = max(1, int(round(_num(row.get("Repeat"), 1))))
+        if _is_review_plan_row(current_unit):
+            # Quantified operator-draft Boc protection is an explicit material
+            # plan. Other review stages carry no inferred reagent consumption.
+            if current_unit.startswith('N-terminal Boc protection'):
+                for material,cls,mmol_key in (
+                    ('Boc2O','N-terminal protection reagent','R1 mmol'),
+                    ('DIEA','N-terminal protection base','Base mmol')):
+                    quantity=_num(row.get(mmol_key),0.0)
+                    if quantity>0:
+                        rec=_material_row(gui,ns,step,material,cls,quantity,
+                            phase='N-terminal Boc protection',note='Draft operator equivalents; verify reaction completion.',source='Visible Selected Plan')
+                        if rec: materials.append(rec)
+            if current_unit.startswith('Head-to-tail cyclization'):
+                # Display the exact mmol that the operator supplied in the
+                # reviewed method. This is a DRAFT accounting entry, not a
+                # validated SOP or an inferred bottle mass/density.
+                for name_key, mmol_key, cls in (
+                    ('Reagent 1','R1 mmol','Operator-draft cyclization reagent'),
+                    ('Reagent 2 / catalyst','R2 mmol','Operator-draft cyclization additive'),
+                    ('Base','Base mmol','Operator-draft cyclization base'),
+                ):
+                    name = str(row.get(name_key,'') or '').strip()
+                    mmol = _num(row.get(mmol_key),0.0)
+                    if name and mmol > 0:
+                        materials.append({
+                            'step':'cyclization', 'material':name, 'class':cls,
+                            'MW':'','density_g_per_mL':'',
+                            'planned_mmol':_fmt(mmol), 'planned_g':'','planned_mL':'',
+                            'use_count':1,'repeat':1,'phase':'Head-to-tail cyclization',
+                            'note':'Operator-entered mmol per copy; verify bottle specifications and approval.',
+                            'source':'Validated stored reaction review / Selected Plan',
+                        })
+                solvent = str(row.get('Coupling solvent','') or '').strip()
+                solvent_ml = _num(row.get('Solvent mL'),0.0)
+                if solvent and solvent_ml > 0:
+                    materials.append({
+                        'step':'cyclization','material':solvent,
+                        'class':'Operator-draft cyclization solvent',
+                        'MW':'','density_g_per_mL':'',
+                        'planned_mmol':'','planned_g':'','planned_mL':_fmt(solvent_ml),
+                        'use_count':1,'repeat':1,'phase':'Head-to-tail cyclization',
+                        'note':'Operator-entered total solution volume per copy; mixture ratios not inferred.',
+                        'source':'Validated stored reaction review / Selected Plan',
+                    })
+            operation(step,'Operator review (not a reaction)',unit,str(row.get('Note','')))
+            continue
 
         if is_first and profile == "CTC_DIRECT" and bool(getattr(inp, "apply_resin_loading", False)):
             add_solvent(step, "MC/DCM", working_ml, "Swell solvent", "Swell", "2-CTC DCM swell x1")
@@ -860,6 +1158,14 @@ def _visible_protocol(gui, ns: dict[str, Any], inp) -> tuple[list[dict[str, Any]
             )
             operation(step, "Post-coupling DMF wash x2", unit)
 
+    if mass_profile is not None and mw_options:
+        add_process_stages(checklist, mass_profile, mw_options)
+    # User-selected RDKit graph is an independent analytical review, never a
+    # calculated SPPS reagent step. Re-validate saved molecular graph at use.
+    if current_item.get('v9_graph_review'):
+        from suite_gui.checklist_mass_v9 import append_crosslink_structure_review
+        append_crosslink_structure_review(checklist, getattr(inp,'sequence',''),
+                                          getattr(inp,'resin',''),current_item['v9_graph_review'])
     for i in range(len(checklist) - 1):
         checklist[i]["next_step"] = checklist[i + 1]["operation"]
     return materials, checklist
@@ -948,11 +1254,31 @@ def _write_linked(
     except Exception:
         selected_label = ""
     paint_all = notebook is None
-    paint_cleavage = paint_all or selected_label == "Cleavage Cocktail"
+    paint_cleavage = paint_all or paint_all_linked or selected_label == "Cleavage Cocktail"
+    index = _active_index(gui)
+    active_item = gui.pm_items[index] if index is not None else {}
+    form = str(active_item.get('synthesis_form','linear')).lower()
     cleavage = (
-        _refresh_cleavage(gui, ns, inp, paint=paint_cleavage)
+        _refresh_cleavage(gui, ns, inp, paint=paint_cleavage,
+                          global_review=active_item.get('global_cleavage_review') if form in ('branched','cyclic') else None,
+                          require_global=form in ('branched','cyclic'))
         if include_cleavage else pd.DataFrame()
     )
+    # First mild resin cleavage for the protected head-to-tail precursor; this
+    # is separate from final/global TFA cleavage and must not use the old
+    # Cleavage Cocktail settings.
+    if form=='cyclic' and str((active_item.get('v9_mass_options') or {}).get('product_path','')).startswith('head_to_tail'):
+        selective=active_item.get('selective_cleavage_review') or {}
+        for name,amount in (('TFA',selective.get('tfa_volume_ml')),
+                            ('DCM',selective.get('dcm_volume_ml'))):
+            if amount is not None and float(amount)>0:
+                materials.append({'step':'selective-cleavage','material':name,
+                    'class':'Selective resin cleavage reagent' if name=='TFA' else 'Selective cleavage solvent',
+                    'MW':'','density_g_per_mL':'', 'planned_mmol':'','planned_g':'',
+                    'planned_mL':_fmt(amount),'use_count':1,'repeat':1,
+                    'phase':'Selective cleavage before head-to-tail cyclization',
+                    'note':str(selective.get('system_label') or '')+'; operator draft, verify side-chain protection',
+                    'source':'Per-peptide selective cleavage review'})
     if include_cleavage and cleavage is not None and not cleavage.empty:
         for record in cleavage.fillna("").to_dict("records"):
             component = str(record.get("component", "") or "").strip()
@@ -1064,23 +1390,48 @@ def _write_linked(
             rendered.pop("selected_cleavage_rows", None)
 
 
-def _refresh_cleavage(gui, ns: dict[str, Any], inp=None, *, paint: bool = True):
-    """Generate cleavage only from an explicit operator entry/preset."""
-    components = str(_var(gui, "cleavage_components_text", "") or "").strip()
-    preset = str(_var(gui, "cleavage_preset", "") or "").strip()
-    try:
-        inp = inp or _build_plan_input(gui, ns)
-        from spps_planner.engine import generate_cleavage_cocktail
-        frame = generate_cleavage_cocktail(inp)
-        if paint:
-            workspace_widgets._write_rows(
-                gui.pm_cleavage_tree, frame.fillna("").to_dict("records"),
-            )
-        return frame
-    except Exception:
-        if paint:
-            workspace_widgets._clear_tree(getattr(gui, "pm_cleavage_tree", None))
-        return pd.DataFrame()
+def _refresh_cleavage(gui, ns: dict[str, Any], inp=None, *, paint: bool = True,
+                      global_review=None, require_global: bool = False):
+    """Use the peptide's own global cleavage review for Branch/Cyclic.
+
+    Legacy linear cleavage remains unchanged. A missing operator dosage never
+    falls back to the old (possibly AcOH/TFE/DCM) global default.
+    """
+    if require_global:
+        review = global_review if isinstance(global_review,dict) else {}
+        volumes = [('TFA',review.get('tfa_volume_ml'),95.0,1.49),
+                   ('TIS',review.get('tis_volume_ml'),2.5,0.773),
+                   ('Water',review.get('water_volume_ml'),2.5,1.0)]
+        rows = []
+        if any(v is not None for _,v,_,_ in volumes):
+            for name,volume,percent,density in volumes:
+                if volume is None:
+                    continue
+                rows.append({'component':name,'role':'cleavage reagent' if name=='TFA' else 'scavenger',
+                    'recommended_eq':review.get('tfa_equivalents') if name=='TFA' else '',
+                    'percent':percent,'percent_basis':'v/v','volume_mL':round(float(volume),6),
+                    'density_g_mL':density,'approx_g':round(float(volume)*density,6),
+                    'physical_state':'liquid','selected_preset':review.get('system_label',''),
+                    'auto_recommended_preset':'','include':'DRAFT',
+                    'note':'Operator-supplied amount; reaction/thiol protecting-group compatibility NOT APPROVED.'})
+            rows.append({'component':'Total cocktail','role':'total','recommended_eq':'',
+                'percent':100,'percent_basis':'v/v',
+                'volume_mL':review.get('total_volume_ml'),'density_g_mL':'','approx_g':'',
+                'physical_state':'mixture','selected_preset':review.get('system_label',''),
+                'auto_recommended_preset':'','include':'DRAFT',
+                'note':'Global cleavage draft, not automatic validation of reaction.'})
+        frame=pd.DataFrame(rows)
+    else:
+        try:
+            inp = inp or _build_plan_input(gui, ns)
+            from spps_planner.engine import generate_cleavage_cocktail
+            frame = generate_cleavage_cocktail(inp)
+        except Exception:
+            frame = pd.DataFrame()
+    if paint:
+        workspace_widgets._write_rows(gui.pm_cleavage_tree,
+            frame.fillna('').to_dict('records') if not frame.empty else [])
+    return frame
 
 
 def _snapshot(gui) -> None:
@@ -1327,7 +1678,9 @@ def apply_change(gui, ns: dict[str, Any]):
     try:
         _commit_editor(gui)
         if not list(gui.pm_selected_plan_tree.get_children()):
-            raise ValueError("Selected Plan is empty. Use Generate first.")
+            # Edit/Save invalidates old cached results. Create the new plan
+            # instead of treating that valid state as an operator error.
+            return generate(gui, ns)
         _mark_visible_plan_edits(gui)
         inp = _build_plan_input(gui, ns)
         _recalc_plan(gui, ns, inp)
@@ -1764,9 +2117,16 @@ def export_outputs(gui, ns):
             out = Path("outputs/project_manager_exports")
         out.mkdir(parents=True, exist_ok=True)
 
-        from spps_planner.export import export_csvs, export_excel
-        export_csvs(inp, out / "core_engine_outputs")
-        export_excel(inp, out / "spps_plan_core_engine.xlsx")
+        # The core synthesis engine produces a *linear* reference plan.  Never
+        # publish its linear-only file as a branch/cyclic synthesis output:
+        # the Project Manager's selected Plan is the authoritative result.
+        selected_index = _active_index(gui)
+        selected_item = gui.pm_items[selected_index] if selected_index is not None else {}
+        nonlinear = str(selected_item.get('synthesis_form', 'linear')).lower() in ('branched', 'cyclic')
+        if not nonlinear:
+            from spps_planner.export import export_csvs, export_excel
+            export_csvs(inp, out / "core_engine_outputs")
+            export_excel(inp, out / "spps_plan_core_engine.xlsx")
 
         visible_plan = pd.DataFrame(workspace_widgets._tree_rows(getattr(gui, "pm_selected_plan_tree", None)))
         visible_materials = pd.DataFrame(workspace_widgets._tree_rows(getattr(gui, "pm_selected_material_tree", None)))
@@ -1777,13 +2137,38 @@ def export_outputs(gui, ns):
         try:
             from spps_planner.engine import cleavage_cocktail_presets, validate_plan, plan_summary
             presets = cleavage_cocktail_presets()
-            validation = validate_plan(inp)
-            summary = pd.DataFrame([plan_summary(inp)])
+            if nonlinear:
+                validation = pd.DataFrame([{'scope': 'Linear core engine',
+                    'status': 'NOT APPLICABLE: selected synthesis topology differs from linear reference'}])
+                summary = pd.DataFrame([{'scope': 'Selected Plan',
+                    'status': 'Use 01_SELECTED_PLAN_VISIBLE and 03_SELECTED_TOTAL_MATERIALS'}])
+            else:
+                validation = validate_plan(inp)
+                summary = pd.DataFrame([plan_summary(inp)])
         except Exception:
             presets = validation = summary = pd.DataFrame()
 
+        def exportable_method(peptide):
+            options = peptide.get('v9_mass_options') or {}
+            raw = options.get('reaction_review')
+            if not isinstance(raw, dict):
+                return None, 'NOT APPROVED'
+            from spps_planner.reaction_planner_v9 import validate_stored_reaction_review
+            try:
+                reviewed = validate_stored_reaction_review(
+                    raw, sequence=str(peptide.get('sequence','')),
+                    resin=str(peptide.get('resin','')),
+                    scale_mmol=peptide.get('scale'), copies=peptide.get('copies',1),
+                    side_chain_mode=options.get('side_chain_mode','catalog'))
+            except (ValueError, TypeError, KeyError):
+                # Preserve the raw record in project state for traceability,
+                # but do not publish stale numbers as an active chemical method.
+                return None, 'RE-REVIEW REQUIRED'
+            return reviewed, 'OPERATOR DRAFT - NOT APPROVED'
+
         index = _active_index(gui)
         item = dict(gui.pm_items[index]) if index is not None and 0 <= index < len(gui.pm_items) else workspace_widgets._editor_payload(gui)
+        active_method, active_method_status = exportable_method(item)
         editor_summary = pd.DataFrame([{
             "app_version": VERSION,
             "project": item.get("project", ""), "peptide": item.get("peptide", ""),
@@ -1791,6 +2176,25 @@ def export_outputs(gui, ns):
             "resin": item.get("resin", ""), "loading": item.get("loading", ""),
             "lot": item.get("lot", item.get("lot_no", "")), "chemistry": item.get("chemistry", ""),
             "copies": item.get("copies", ""), "apply_loading_calc": item.get("apply_loading_calc", False),
+            "synthesis_form": item.get("synthesis_form", "linear"),
+            "branch_point": item.get("branch_point", "") if item.get("synthesis_form") == "branched" else "",
+            "branch_arm": (item.get("branch_arm_sequence") or item.get("branch_arm") or "") if item.get("synthesis_form") == "branched" else "",
+            "branch_pg": item.get("branch_pg", "") if item.get("synthesis_form") == "branched" else "",
+            "cyclic_product_path": (item.get("v9_mass_options") or {}).get("product_path", ""),
+            "cyclic_side_chain_mode": (item.get("v9_mass_options") or {}).get("side_chain_mode", ""),
+            "disulfide_sites": "-".join(map(str, (item.get("v9_mass_options") or {}).get("disulfide_sites") or [])),
+            "disulfide_theoretical_mw_g_mol": ((item.get("v9_mass_options") or {}).get("disulfide_structure_review") or {}).get("product_graph_mw", ""),
+            "cyclic_review_status": active_method_status if item.get("synthesis_form") == "cyclic" else "",
+            "selective_cleavage_system": (item.get('selective_cleavage_review') or {}).get('system_label',''),
+            "selective_cleavage_status": (item.get('selective_cleavage_review') or {}).get('status',''),
+            "branch_coupling_system": (item.get('branch_coupling_review') or {}).get('system_label',''),
+            "branch_nterm_protection": (item.get('branch_boc_review') or {}).get('system_label',''),
+            "global_cleavage_system": (item.get('global_cleavage_review') or {}).get('system_label',''),
+            "global_cleavage_volume_ml": (item.get('global_cleavage_review') or {}).get('total_volume_ml',''),
+            "global_tfa_equivalents": (item.get('global_cleavage_review') or {}).get('tfa_equivalents',''),
+            "cyclic_coupling_system": (item.get('v9_mass_options') or {}).get('coupling_system_label',''),
+            "core_engine_scope": ("Not exported for non-linear synthesis; visible selected Plan is authoritative"
+                                  if nonlinear else "Linear core engine matches the selected linear synthesis form"),
             "loading_aa_eq": item.get("loading_aa_eq", ""), "loading_diea_eq": item.get("loading_diea_eq", ""), "loading_time_h": item.get("loading_time_h", ""),
             "cleavage_time_h": item.get("cleavage_time_h", ""), "cleavage_preset": item.get("cleavage_preset", ""),
             "cleavage_components_text": item.get("cleavage_components_text", ""),
@@ -1798,7 +2202,97 @@ def export_outputs(gui, ns):
             "nh4i_eq": item.get("nh4i_eq", "2"), "nh4i_concentration_m": item.get("nh4i_concentration_m", "0.2"), "nh4i_time_h": item.get("nh4i_time_h", "1"),
         }])
 
-        xlsx = out / "project_manager_selected_outputs_v8.0.0.xlsx"
+        cyclic_rows = []
+        for peptide in getattr(gui, 'pm_items', []) or []:
+            options = peptide.get('v9_mass_options') or {}
+            if str(peptide.get('synthesis_form', '')).lower() != 'cyclic' and not (str(options.get('product_path', '')).startswith('head_to_tail') or options.get('product_path') == 'disulfide'):
+                continue
+            method, method_status = exportable_method(peptide)
+            # The mass rules provide *average neutral* stage masses, whereas
+            # theoretical m/z needs an independently verified exact graph.
+            # Never manufacture m/z from the rounded average molecular weight.
+            from spps_planner.mass_balance_v9 import calculate_mass_states
+            from spps_planner.extended_structure_v9 import graph_crosscheck
+            product_path = str(options.get('product_path') or '')
+            source_sequence = str(peptide.get('sequence') or '')
+            source_resin = str(peptide.get('resin') or '')
+            stage_masses = {}
+            structural = {'status': 'WITHHELD_UNSUPPORTED_REACTION'}
+            if product_path.startswith('head_to_tail'):
+                stage_mode = str(options.get('side_chain_mode') or 'catalog')
+                try:
+                    masses = calculate_mass_states(source_sequence, source_resin, side_chain_mode=stage_mode)
+                    if masses.get('head_to_tail_allowed'):
+                        stage_masses = {
+                            'linear_protected_neutral_mw_g_mol': masses.get('linear_protected_mw'),
+                            'cyclic_protected_neutral_mw_g_mol': masses.get('head_to_tail_protected_mw'),
+                            'cyclic_deprotected_neutral_mw_g_mol': masses.get('head_to_tail_deprotected_mw'),
+                        }
+                except (ValueError, TypeError, KeyError):
+                    pass
+                if stage_masses:
+                    # The final deprotected graph needs no retained side-chain
+                    # protections; a protected product uses its selected policy.
+                    final_mode = 'none' if product_path == 'head_to_tail_deprotected' else stage_mode
+                    structural = graph_crosscheck(source_sequence, source_resin,
+                                                   topology='head_to_tail', side_chain_mode=final_mode)
+            elif product_path == 'disulfide':
+                # An old stored structural review may no longer match edited
+                # sequence/sites. Recompute before showing mass or MS values.
+                from suite_gui.auto_plan_evolution_v9 import review_disulfide_product
+                structural = review_disulfide_product(source_sequence, source_resin, options)
+            if structural.get('status') != 'CROSSCHECK_PASS':
+                structural = {'status': structural.get('status', 'WITHHELD'),
+                              'reason': structural.get('reason','Exact structure not verified')}
+            cyclic_rows.append({
+                'project': peptide.get('project', ''), 'peptide': peptide.get('peptide', ''),
+                'sequence': peptide.get('sequence', ''), 'product_path': options.get('product_path', ''),
+                'side_chain_mode': options.get('side_chain_mode', ''),
+                'coupling_system': options.get('coupling_system_label',''),
+                'selective_cleavage_system': (peptide.get('selective_cleavage_review') or {}).get('system_label',''),
+                'disulfide_sites': '-'.join(map(str, options.get('disulfide_sites') or [])),
+                'structural_check': structural.get('status','WITHHELD'),
+                'structure_warning': structural.get('reason',''),
+                'linear_protected_neutral_mw_g_mol': stage_masses.get('linear_protected_neutral_mw_g_mol',''),
+                'cyclic_protected_neutral_mw_g_mol': stage_masses.get('cyclic_protected_neutral_mw_g_mol',''),
+                'cyclic_deprotected_neutral_mw_g_mol': stage_masses.get('cyclic_deprotected_neutral_mw_g_mol',''),
+                'theoretical_product_mw_g_mol': structural.get('product_graph_mw',''),
+                'product_formula': structural.get('product_formula',''),
+                'product_exact_mass': structural.get('product_exact_mass',''),
+                'theoretical_ions_json': json.dumps(structural.get('theoretical_ms_ions', {}), ensure_ascii=False, sort_keys=True),
+                'process_review': 'Oxidation/deprotection conditions unapproved; verify thiols and HPLC/MS' if options.get('product_path') == 'disulfide' else '',
+                'review_status': method_status,
+                'reaction_review_json': json.dumps(method, ensure_ascii=False, sort_keys=True) if method is not None else '',
+            })
+        # A separate review table keeps unapproved chemistry visible in exports
+        # without inventing exact bottle quantities or treating drafts as SOPs.
+        method_rows=[]
+        for peptide in getattr(gui, 'pm_items', []) or []:
+            saved_method, saved_status = exportable_method(peptide)
+            cyclization_stage = (saved_method if saved_method is not None else (
+                {'system_label':(peptide.get('v9_mass_options') or {}).get('coupling_system_label',''),
+                 'status':saved_status,
+                 'warning':'A stale method must be reviewed again before its quantities may be used.'
+                 if saved_status == 'RE-REVIEW REQUIRED' else
+                 'No reagent equivalents, solvent, concentration or reaction time confirmed.'}
+                if str((peptide.get('v9_mass_options') or {}).get('product_path','')).startswith('head_to_tail')
+                else None))
+            for stage, record in (
+                ('selective_cleavage', peptide.get('selective_cleavage_review')),
+                ('branch_coupling', peptide.get('branch_coupling_review')),
+                ('branch_nterm_boc', peptide.get('branch_boc_review')),
+                ('global_cleavage', peptide.get('global_cleavage_review')),
+                ('cyclization', cyclization_stage),
+            ):
+                if isinstance(record, dict):
+                    method_rows.append({'project':peptide.get('project',''),
+                        'peptide':peptide.get('peptide',''), 'stage':stage,
+                        'system':record.get('system_label',''),
+                        'status':record.get('status',record.get('method_status','')),
+                        'details_json':json.dumps(record,ensure_ascii=False,sort_keys=True)})
+        method_frame=pd.DataFrame(method_rows,columns=['project','peptide','stage','system','status','details_json'])
+        cyclic_frame = pd.DataFrame(cyclic_rows)
+        xlsx = out / "project_manager_selected_outputs_v9.0.0.xlsx"
         with pd.ExcelWriter(xlsx, engine="openpyxl") as writer:
             editor_summary.to_excel(writer, index=False, sheet_name="00_EDITOR_SUMMARY")
             visible_plan.to_excel(writer, index=False, sheet_name="01_SELECTED_PLAN_VISIBLE")
@@ -1809,6 +2303,9 @@ def export_outputs(gui, ns):
             presets.to_excel(writer, index=False, sheet_name="06_CLEAVAGE_PRESETS")
             validation.to_excel(writer, index=False, sheet_name="07_VALIDATION")
             summary.to_excel(writer, index=False, sheet_name="08_SUMMARY")
+            if cyclic_rows:
+                cyclic_frame.to_excel(writer, index=False, sheet_name="09_CYCLIC_REVIEW")
+            method_frame.to_excel(writer,index=False,sheet_name="10_METHOD_REVIEWS")
 
         for filename, frame in (
             ("01_SELECTED_PLAN_VISIBLE.csv", visible_plan),
@@ -1819,12 +2316,16 @@ def export_outputs(gui, ns):
         ):
             frame.to_csv(out / filename, index=False, encoding="utf-8-sig")
 
+        if cyclic_rows:
+            cyclic_frame.to_csv(out / "09_CYCLIC_REVIEW.csv", index=False, encoding="utf-8-sig")
+        method_frame.to_csv(out / "10_METHOD_REVIEWS.csv", index=False, encoding="utf-8-sig")
+
         state = {
             "app_version": VERSION, "saved_at": datetime.now().isoformat(timespec="seconds"),
             "active_index": index, "pm_items": list(getattr(gui, "pm_items", []) or []),
             "visible_selected_plan_source": "current edited TreeView; Apply Change-linked V6.0.0 tables; no regeneration during export",
         }
-        (out / "project_manager_state_v8.0.0.json").write_text(
+        (out / "project_manager_state_v9.0.0.json").write_text(
             json.dumps(state, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
         )
         gui.last_outdir = out

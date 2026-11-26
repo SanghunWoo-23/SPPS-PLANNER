@@ -1,0 +1,27 @@
+SPPS Planner V9.0.0 — Auto AI/ML Workbook Import Update (2026-11-18)
+
+FEATURES
+- One-click import of complete Excel XLSX/XLSM, CSV and TSV data files.
+- Finds supported worksheets, recognizes measured target headers and units automatically.
+- Aggregates recognized worksheets with integrity checks; GUIDE and non-data tabs are skipped.
+- Quality audit blocks invalid sequences, duplicate run IDs and duplicate records.
+- Shows a single human confirmation before any local dataset write or model training.
+- Saves reviewed actual measurements to profile-specific runtime data, not source tree.
+- Automatically detects eligible targets and trains compatible local models in isolated, cancellable processes.
+- Insufficient data/unknown product topology does NOT train; observations can still be saved.
+- Preserves original manual mapping, individual review and model selection behind Advanced.
+- Existing V9 GUI, calculator, Project Manager and Installer build rules not modified.
+
+CAUTION
+- A recognized column heading is not proof that the underlying values are measured.
+- Training is exploratory and cannot validate synthesis chemistry or guarantee predictive accuracy.
+- Supported input extensions in Auto mode: .xlsx, .xlsm, .csv, .tsv, .txt; ZIP and arbitrary PDFs are NOT parsed.
+- Existing profile data are kept; re-imported duplicate records are refused during append.
+- Users must verify that `Product path` explicitly indicates `linear_deprotected` before unattended linear ML.
+- Public and Private use separate local profiles; only Private contains previous personal lab data.
+
+TESTS
+- 50 passed, 4 skipped in targeted Public regression run.
+- Windows release source audit passed for Public and Private.
+- Tk window smoke test passed using a virtual Linux display.
+- Windows native EXE and Installer compilation/installation NOT verified here.

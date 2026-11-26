@@ -1,0 +1,17 @@
+{
+  "monomers": [
+    {
+      "smiles": "[NH2:1][C@@H](C[SH:10])[C:2](=O)[OH:3]"
+    },
+    {
+      "smiles": "[NH2:1][C@@H](C[SH:10])[C:2](=O)[OH:3]"
+    }
+  ],
+  "steps": [
+    {
+      "type": "disulfide",
+      "a": "1:10",
+      "b": "2:10"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "monomers": [
+    {
+      "smiles": "[NH2:1][C@@H](C[N:10]=[N+:11]=[N-:12])[C:2](=O)[OH:3]"
+    },
+    {
+      "smiles": "[NH2:1][C@@H](C[C:14]#[CH:13])[C:2](=O)[OH:3]"
+    }
+  ],
+  "steps": [
+    {
+      "type": "cuaac_1_4",
+      "azide_alpha": "1:10",
+      "azide_central": "1:11",
+      "azide_terminal": "1:12",
+      "alkyne_terminal": "2:13",
+      "alkyne_inner": "2:14"
+    }
+  ]
+}

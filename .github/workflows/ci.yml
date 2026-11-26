@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   windows:
     name: Windows / Python ${{ matrix.version }}
@@ -119,6 +122,10 @@ jobs:
         shell: pwsh
         run: '& $env:SPPS_PYTHON -m pip install -r requirements.txt -r requirements-dev.txt'
 
+      - name: Source TXT, version and Windows build contract audit
+        shell: pwsh
+        run: '& $env:SPPS_PYTHON tools/audit_release_text_v9.py'
+
       - name: Verify Tk before tests
         shell: pwsh
         run: |
@@ -128,6 +135,61 @@ jobs:
       - name: Run pytest
         shell: pwsh
         run: '& $env:SPPS_PYTHON -m pytest -q'
+
+      - name: Windows V9 source acceptance (self-test and real Tk startup)
+        shell: pwsh
+        run: '& $env:SPPS_PYTHON tools/windows_acceptance_v9.py'
+
+      - name: Advanced V9 molecular chemistry contract
+        shell: pwsh
+        run: '& $env:SPPS_PYTHON tools/validate_v9_chemistry_matrix.py'
+      - name: V9 explicit atom-mapped chemistry acceptance
+        shell: pwsh
+        run: '& $env:SPPS_PYTHON tools/validate_atomic_topology_v9.py'
+
+      - name: Build packaged Windows EXE and execute self-test
+        shell: pwsh
+        run: |
+          & $env:SPPS_PYTHON -m PyInstaller --noconfirm SPPS_Planner.spec
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PyInstaller build failed.' }
+          $app = Join-Path $PWD 'dist\SPPS_Planner\SPPS_Planner.exe'
+          if (-not (Test-Path $app)) { throw 'Packaged EXE missing.' }
+          & $app --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged EXE self-test failed.' }
+
+      - name: Install Inno Setup on isolated Windows CI (Python 3.12 only)
+        if: matrix.tag == '312'
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup install failed.' }
+
+      - name: Build and verify silent Installer on ephemeral CI
+        if: matrix.tag == '312'
+        shell: pwsh
+        run: |
+          $candidates = @(
+            'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+            'C:\Program Files\Inno Setup 6\ISCC.exe',
+            'C:\Program Files (x86)\Inno Setup 7\ISCC.exe',
+            'C:\Program Files\Inno Setup 7\ISCC.exe'
+          )
+          $inno = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $inno) { throw 'ISCC.exe not found.' }
+          & $inno 'installer\SPPS_Planner_Setup.iss'
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
+          $setup = 'installer\output\SPPS_Planner_PUBLIC_Setup_V9.0.0.exe'
+          if (-not (Test-Path $setup)) { throw 'Installer output missing.' }
+          & $env:SPPS_PYTHON tools\windows_installer_acceptance_v9.py --installer $setup --ci-sandbox --report 'WINDOWS_INSTALLER_ACCEPTANCE_V9.json'
+          if ($LASTEXITCODE -ne 0) { throw 'Installer acceptance failed.' }
+
+      - name: Archive Windows installer acceptance evidence
+        if: always() && matrix.tag == '312'
+        uses: actions/upload-artifact@v6
+        with:
+          name: spps-v9-installer-acceptance-${{ matrix.tag }}
+          path: WINDOWS_INSTALLER_ACCEPTANCE_V9.json
+          if-no-files-found: warn
 
       - name: Verify V6 integrity
         shell: pwsh
@@ -165,8 +227,16 @@ jobs:
       - name: Install runtime and test dependencies
         run: python -m pip install -r requirements.txt -r requirements-dev.txt
 
+      - name: Source TXT, version and Windows build contract audit
+        run: python tools/audit_release_text_v9.py
+
       - name: Verify Tk under Xvfb
         run: xvfb-run -a python -c "import tkinter as tk; r=tk.Tk(); r.withdraw(); print('Tk OK:', r.tk.call('info','patchlevel')); r.destroy()"
 
       - name: Run pytest with virtual display
         run: xvfb-run -a python -m pytest -q
+
+      - name: Advanced V9 molecular chemistry contract
+        run: python tools/validate_v9_chemistry_matrix.py
+      - name: V9 explicit atom-mapped chemistry acceptance
+        run: python tools/validate_atomic_topology_v9.py

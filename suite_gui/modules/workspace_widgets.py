@@ -23,8 +23,8 @@ from suite_gui.runtime_state import (
     get_active_index, set_active_index, is_switching, set_switching, get_calculation_namespace,
 )
 
-VERSION = "V8.0.0"
-TITLE = "SPPS Planner V8.0.0"
+VERSION = "V9.0.0"
+TITLE = "SPPS Planner V9.0.0"
 # Public UI contract retained from the validated V4 workflow; actions now bind by explicit refs.
 PRIMARY_ML_ENTRY_CONTRACT = "Experimental / ML (V4)"
 
@@ -46,10 +46,10 @@ PLAN_WIDTHS = {
     "Coupling solvent": 165, "Solvent mL": 100, "Repeat": 70, "Note": 340,
 }
 
-CHECK_COLUMNS = ["line", "done", "checked_at", "operation", "unit", "next_step", "note"]
+CHECK_COLUMNS = ["line", "done", "checked_at", "operation", "unit", "peptide_mw", "mw_form", "next_step", "note"]
 CHECK_WIDTHS = {
     "line": 65, "done": 70, "checked_at": 145, "operation": 260,
-    "unit": 180, "next_step": 250, "note": 520,
+    "unit": 180, "peptide_mw": 115, "mw_form": 175, "next_step": 250, "note": 520,
 }
 
 MATERIAL_COLUMNS = [
@@ -674,6 +674,9 @@ def apply_change(gui, ns):
         return None
     runtime_state.set_applying(gui,True)
     try:
+        if not list(getattr(gui,'pm_selected_plan_tree').get_children()):
+            from suite_gui.modules import plan_workflow
+            return plan_workflow.generate(gui, ns)
         _refresh_linked_from_visible_plan(gui, ns)
         index = _active_index(gui)
         if index is not None:

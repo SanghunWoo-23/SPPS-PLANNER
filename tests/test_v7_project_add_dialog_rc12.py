@@ -85,7 +85,8 @@ def test_replace_project_item_preserves_custom_eq_when_recipe_is_unchanged():
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="Tk GUI test requires DISPLAY")
-def test_edit_setup_reuses_add_dialog_updates_same_row_and_clears_stale_results():
+def test_edit_setup_reuses_add_dialog_updates_same_row_and_clears_stale_results(monkeypatch, tmp_path):
+    monkeypatch.setattr(SPPSGui, "_state_file_path", lambda self: tmp_path / "state.json", raising=False)
     app = SPPSGui()
     try:
         app.deiconify(); app.update()
@@ -113,8 +114,11 @@ def test_edit_setup_reuses_add_dialog_updates_same_row_and_clears_stale_results(
         saved = app.pm_items[0]
         assert saved["work_item_id"] == "keep-me"
         assert saved["default_catalyst"] == "HOBt (anhydrous)"
-        assert saved["status"] == "Ready"
-        assert "selected_plan_rows" not in saved
+        # V9 operator requirement: Save changes regenerates the current Plan,
+        # so Apply Change never sees an empty state after editing.
+        assert saved["status"] == "Calculated"
+        assert saved.get("selected_plan_rows")
+        assert app.pm_apply_change() is True
     finally:
         try:
             app.destroy()

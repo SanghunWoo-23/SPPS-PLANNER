@@ -73,8 +73,7 @@ def export_outputs(gui, ns: dict | None = None):
             tables["validation"].to_excel(w, index=False, sheet_name="08_VALIDATION")
             tables["summary"].to_excel(w, index=False, sheet_name="09_SUMMARY")
         for name, df in [("01_SELECTED_PLAN_VISIBLE", visible_plan), ("02_SELECTED_MATERIALS_VISIBLE", visible_mats)] + list(tables.items()):
-            try: df.to_csv(out / f"{name}.csv", index=False, encoding="utf-8-sig")
-            except Exception: pass
+            df.to_csv(out / f"{name}.csv", index=False, encoding="utf-8-sig")
         state.save_state_json(gui, out, f"project_manager_state_v{VERSION_NUMBER}.json")
         try: gui.last_outdir = out
         except Exception: pass

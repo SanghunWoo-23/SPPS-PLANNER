@@ -59,7 +59,7 @@ def test_setup_ui_and_custom_db_are_preserved(monkeypatch, tmp_path):
         for widget in _walk(gui):
             if isinstance(widget, ttk.Notebook):
                 tab_sets.append([str(widget.tab(tab, "text")) for tab in widget.tabs()])
-        assert ["Loading", "Unit defaults", "Reagents", "Solvents / Wash", "Branch / Tools", "Output", "Custom DB"] in tab_sets
+        assert ["Loading", "Unit defaults", "Reagents", "Solvents / Wash", "Branch / Tools", "Cyclic", "Output", "Custom DB"] in tab_sets
 
         frame_texts = [
             str(widget.cget("text"))

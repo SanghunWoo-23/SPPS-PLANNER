@@ -204,3 +204,38 @@ def test_stage_six_controller_aliases_reach_direct_services(monkeypatch):
     gui.record_synthesis_result(actual_yield_percent=80)
     gui.export_outputs()
     assert [call[0] for call in calls] == ["custom", "ml", "export"]
+
+
+def test_project_export_reports_missing_csv_instead_of_false_success(monkeypatch, tmp_path):
+    """A failed visible CSV must not yield an apparent successful export."""
+    from types import SimpleNamespace
+    from suite_gui.modules import export_panel
+    import spps_planner.export as engine_export
+    from tkinter import messagebox
+
+    gui = SimpleNamespace(pm_selected_plan_tree=None, pm_selected_material_tree=None)
+    monkeypatch.setattr(export_panel.state, "save_active", lambda gui: None)
+    monkeypatch.setattr(export_panel.state, "ensure_app_path", lambda: tmp_path)
+    monkeypatch.setattr(export_panel.state, "core_tables", lambda gui: (None, {"sequence": "ACD"}, {
+        name: pd.DataFrame({"value": [1]}) for name in (
+            "selected_plan_core", "selected_materials_core", "operations_core",
+            "cleavage_cocktail", "cleavage_presets", "validation", "summary",
+        )
+    }))
+    monkeypatch.setattr(export_panel.state, "project_outdir", lambda gui: tmp_path)
+    monkeypatch.setattr(export_panel.state, "tree_to_df", lambda tree: pd.DataFrame({"value": [1]}))
+    monkeypatch.setattr(export_panel.state, "display_columns", lambda df, columns: df)
+    monkeypatch.setattr(engine_export, "export_csvs", lambda inp, out: None)
+    monkeypatch.setattr(engine_export, "export_excel", lambda inp, out: None)
+    errors = []
+    monkeypatch.setattr(messagebox, "showerror", lambda title, msg: errors.append((title, msg)))
+    original = pd.DataFrame.to_csv
+
+    def fail_one_export(df, path, *args, **kwargs):
+        if str(path).endswith("01_SELECTED_PLAN_VISIBLE.csv"):
+            raise OSError("write failure for selected plan")
+        return original(df, path, *args, **kwargs)
+
+    monkeypatch.setattr(pd.DataFrame, "to_csv", fail_one_export)
+    assert export_panel.export_outputs(gui) is None
+    assert errors and "write failure for selected plan" in errors[0][1]

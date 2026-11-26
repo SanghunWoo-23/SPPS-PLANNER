@@ -1,0 +1,16 @@
+name: Feature request
+description: Suggest a user-reviewed chemistry or workflow feature
+labels: [enhancement]
+body:
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use case
+      description: Describe the desired behavior; please use nonconfidential example data.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation criteria and references
+      description: Provide independent references and failure conditions if scientific results are involved.

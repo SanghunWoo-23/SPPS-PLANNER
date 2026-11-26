@@ -1,4 +1,4 @@
-# SPPS Planner V8.0.0 — Windows 빌드 안내
+# SPPS Planner V9.0.0 — Windows 빌드 안내
 
 배포 ZIP은 **소스 패키지**이며 EXE 또는 Installer 완성품을 포함하지 않습니다. Windows 10/11 x64에서 전체 ZIP을 압축 해제한 후 루트의 **`INSTALL_BUILD_TOOLS_AND_BUILD.bat`**을 실행하세요.
 
@@ -22,7 +22,7 @@ INSTALL_BUILD_TOOLS_AND_BUILD.bat --no-pause
 4. Python 문법 검사, `tools/verify_windows_release.py` 정적 검사, 소스 self-test.
 5. PyInstaller로 `dist\SPPS_Planner\SPPS_Planner.exe` 빌드 및 구조 검사.
 6. 생성된 EXE의 `--self-test`와 self-test 보고서 검증.
-7. Inno Setup을 통해 `installer\output\SPPS_Planner_Setup_V8.0.0.exe` 생성.
+7. Inno Setup을 통해 `installer\output\SPPS_Planner_PUBLIC_Setup_V9.0.0.exe` 생성.
 8. EXE/Installer 파일 검사.
 
 `winget`이 없거나 설치 후 실행 파일 검색에 실패하면 오류를 출력하고 종료합니다. 필요한 프로그램을 수동으로 설치하고 다시 실행해야 할 수 있습니다. 인터넷, 해당 도구 설치 권한 및 보안 정책에 영향을 받습니다.

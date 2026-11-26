@@ -153,3 +153,40 @@ def test_v5_worse_loading_model_is_kept_as_candidate_until_explicit_promotion(tm
     promoted=model_registry_v5.promote_latest_loading_candidate()
     assert promoted['activated'] is True and promoted['model_id']==second['model_id']
     assert model_registry_v5.loading_model_info()['active_model_id']==second['model_id']
+
+
+def test_loading_model_cv_groups_repeated_records_without_leakage(tmp_path, monkeypatch):
+    from suite_gui import experimental_data, model_registry_v5
+    monkeypatch.setattr(model_registry_v5,'_paths',
+                        lambda:(tmp_path/'registry.json',tmp_path/'loading_model.joblib'))
+    db=tmp_path/'experiments.sqlite'
+    for i in range(12):
+        experimental_data.add_record('loading', {
+            'resin_type':'2-CTC' if i%2 else 'Rink Amide AM',
+            'amino_acid_raw':['A','V','R'][i%3],
+            'aa_eq':2+(i%2),'base':'DIEA','base_eq':4,
+            'loading_time_h':1+(i%4),
+            'run_id':f'RUN_{i//2:02d}',
+            'loading_rate_mmol_g':.3+.01*i,
+        },db,status='verified')
+    result=model_registry_v5.rebuild_loading_model(db)
+    assert result['built'] is True
+    assert result['cv_strategy']=='GroupKFold'
+    assert result['validation_group_count']==6
+    assert result['cv_folds']==5
+
+def test_loading_model_rejects_one_independent_group(tmp_path, monkeypatch):
+    from suite_gui import experimental_data, model_registry_v5
+    monkeypatch.setattr(model_registry_v5,'_paths',
+                        lambda:(tmp_path/'registry.json',tmp_path/'loading_model.joblib'))
+    db=tmp_path/'experiments.sqlite'
+    for i in range(12):
+        experimental_data.add_record('loading', {
+            'resin_type':'2-CTC','amino_acid_raw':'A',
+            'aa_eq':2,'base':'DIEA','base_eq':4,'run_id':'REPEATED_RUN',
+            'loading_time_h':2,'loading_rate_mmol_g':.3+.01*i,
+        },db,status='verified')
+    result=model_registry_v5.rebuild_loading_model(db)
+    assert result['built'] is False
+    assert result['validation_group_count']==1
+    assert not (tmp_path/'loading_model.joblib').exists()

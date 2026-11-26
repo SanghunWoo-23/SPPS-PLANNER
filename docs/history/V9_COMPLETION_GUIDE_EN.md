@@ -1,0 +1,11 @@
+# SPPS Planner V9.0.0 — Bounded Molecular Verification & Independent Evaluation
+
+The existing workflow, legacy SPPS calculator and Windows-first Tkinter UI are retained. All extended functions are **review-only**, not experimentally validated chemistry or an autonomous SOP generator.
+
+- **Auto Plan → Independent molecular graph / Cross-link...**: RDKit-neutral structure and formula checks for natural L/D residues, selected side-chain protections, simple Lys epsilon-amide branches, explicit two-Cys disulfides, Lys-to-Asp/Glu lactams and head-to-tail closure. Explicit 1-based link sites are required for side-chain rings. Unsupported chemistry is withheld rather than approximated.
+- **Cys(StBu) chemistry correction**: the average side-chain substitution increment is ~88.17 g/mol, rather than 90.16 g/mol. Previously saved results containing Cys(StBu) should be recalculated. Based on the verified disulfide connectivity and the published formula of Fmoc-Cys(StBu)-OH (C22H25NO4S2, MW ~431.58): https://shop.bachem.com/product/4007445/.
+- **Independent ML evaluation**: `python tools/external_ml_validation_v9.py --train-dir TRAIN --model-dir MODELS --external independent_runs.xlsx --target cyclization_yield_percent --out evaluation.json`. The command never trains and refuses any overlapping normalized training/external sequence group. It emits aggregate metrics, not sequences or raw experiments. Real independent measurements are required.
+- **Optional live bibliography**: the Auto Plan Crossref button requests explicit user confirmation before sending the manually typed generic search keywords. Only titles, DOIs and publication years are returned, never inferred recipes. Local-only bibliographic search is still available.
+- **Windows CI**: optional RDKit dependency and a source-level native Tk acceptance script are configured but actual runner results, EXE deployment, Installer upgrades/removal and laboratory accuracy are unverified in this release.
+
+Unmodelled chemistry, including noncanonical residues, regioambiguous protecting groups, complex branches, click/thioether closures and exhaustive reaction optimization, is explicitly unsupported. Do not claim completion for those cases.

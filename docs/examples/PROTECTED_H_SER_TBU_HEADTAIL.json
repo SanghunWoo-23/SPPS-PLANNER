@@ -1,0 +1,13 @@
+{
+  "monomers": [
+    {
+      "name": "H-Ser(tBu)-OH, Fmoc-free",
+      "smiles": "[NH2:1][C@@H](COC(C)(C)C)[C:2](=O)[OH:3]"
+    },
+    {
+      "name": "H-Ser(tBu)-OH, Fmoc-free",
+      "smiles": "[NH2:1][C@@H](COC(C)(C)C)[C:2](=O)[OH:3]"
+    }
+  ],
+  "head_to_tail": true
+}

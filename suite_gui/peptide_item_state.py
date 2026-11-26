@@ -16,6 +16,10 @@ EDITOR_FIELDS = (
     ("pm_lot", "lot", ""),
     ("pm_chemistry", "chemistry", "DIC/HOBt"),
     ("pm_copies", "copies", "1"),
+    ("branch_point", "branch_point", "K5"),
+    ("branch_arm_sequence", "branch_arm_sequence", "RGD"),
+    ("branch_pg", "branch_pg", "Mtt"),
+    ("branch_depro_condition", "branch_depro_condition", ""),
     ("coupling_eq", "coupling_eq", "5"),
     ("default_reagent", "default_reagent", "DIC"),
     ("default_reagent_eq", "default_reagent_eq", "5"),
@@ -87,7 +91,11 @@ def snapshot(gui, adapter, active_index):
         rendered = getattr(gui, "_pm_rendered_output_index", {})
         if rendered and rendered.get(item_key) != index:
             continue
-        item[item_key] = adapter._tree_rows(getattr(gui, tree_name, None))
+        rows = adapter._tree_rows(getattr(gui, tree_name, None))
+        if not rows and str(item.get("status", "")) == "Ready":
+            item.pop(item_key, None)
+        else:
+            item[item_key] = rows
     try:
         adapter._refresh_list_label(gui, index)
     except Exception:

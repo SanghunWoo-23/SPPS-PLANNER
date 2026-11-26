@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_all
 
 project = Path(SPECPATH)
 datas = [
@@ -11,6 +12,10 @@ datas = [
     (str(project / "VERSION"), "."),
     (str(project / "VERSION.txt"), "."),
 ]
+# Ensure native RDKit chemistry modules and local PDF reader are packaged.
+rdkit_datas, rdkit_binaries, rdkit_hiddenimports = collect_all('rdkit')
+pypdf_datas, pypdf_binaries, pypdf_hiddenimports = collect_all('pypdf')
+datas.extend(rdkit_datas + pypdf_datas)
 hiddenimports = [
     "suite_gui.spps_tk_gui",
     "suite_gui.release",
@@ -30,12 +35,20 @@ hiddenimports = [
     "suite_gui.modules.experimental_data_panel",
     "suite_gui.ml_dataset",
     "suite_gui.ml_workflow",
+    "suite_gui.auto_plan_option_v9",
+    "suite_gui.ai_excel_core_v9",
+    "suite_gui.ai_excel_dialog_v9",
+    "suite_gui.ai_background_v9",
     "suite_gui.persistence_workflow",
     "suite_gui.project_workflow",
     "suite_gui.risk_assessment",
     "suite_gui.risk_engine",
     "suite_gui.risk_workflow",
     "suite_gui.runtime_selftest",
+    "suite_gui.local_paper_panel_v9",
+    "spps_planner.atomic_topology_v9",
+    "spps_planner.monomer_catalog_v9",
+    "spps_planner.local_fulltext_v9",
     "suite_gui.synthesis_workflow",
     "suite_gui.ui_build",
     "suite_gui.release_contract",
@@ -50,11 +63,12 @@ hiddenimports = [
     "tkinter.filedialog",
     "tkinter.messagebox",
 ]
+hiddenimports.extend(rdkit_hiddenimports + pypdf_hiddenimports)
 
 a = Analysis(
     [str(project / "main_launcher.py")],
     pathex=[str(project), str(project / "apps" / "spps_planner_app")],
-    binaries=[],
+    binaries=rdkit_binaries + pypdf_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

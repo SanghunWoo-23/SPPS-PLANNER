@@ -52,3 +52,22 @@ experimental_v4.sqlite
 private_data/
 private_experiments/
 user_experiments/
+
+# Sensitive config, credentials and model artifacts
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pkl
+*.pickle
+*.joblib
+*.db
+
+# Local experiment data and Python distribution caches
+**/experimental_seed/*.xlsx
+**/experimental_seed/*.csv
+*.egg-info/
+.tox/
+runtime_selftest.json
+WINDOWS_INSTALLER_ACCEPTANCE_V9.json

@@ -41,7 +41,8 @@ def test_project_add_then_loading_advisor_receives_cterm_identity():
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="Tk GUI test requires DISPLAY")
-def test_first_project_add_reuses_only_blank_startup_placeholder():
+def test_first_project_add_reuses_only_blank_startup_placeholder(monkeypatch, tmp_path):
+    monkeypatch.setattr(SPPSGui, "_state_file_path", lambda self: tmp_path / "state.json", raising=False)
     app = SPPSGui()
     try:
         app.update_idletasks()

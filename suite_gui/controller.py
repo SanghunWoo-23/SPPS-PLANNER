@@ -35,7 +35,7 @@ from suite_gui.modules.release_ui import ACTIVE_RESINS
 class SPPSGui(ClassicControllerBase):
     """Canonical SPPS Planner V6 controller with a static method surface."""
 
-    TITLE = "SPPS Planner V8.0.0"
+    TITLE = "SPPS Planner V9.0.0"
     RESIN_VALUES = list(ACTIVE_RESINS)
 
     def _build(self) -> Any:
@@ -329,6 +329,8 @@ class SPPSGui(ClassicControllerBase):
 
 def main() -> None:
     app = SPPSGui()
+    from suite_gui.first_run_recovery import offer_first_add
+    offer_first_add(app)
     app.mainloop()
 
 

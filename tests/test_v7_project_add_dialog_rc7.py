@@ -43,7 +43,8 @@ def _confirm_dialog(app, *, sequence, preset, reagent, additive, base, solvent="
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="Tk GUI test requires DISPLAY")
-def test_add_recipe_does_not_change_batch_solution_defaults():
+def test_add_recipe_does_not_change_batch_solution_defaults(monkeypatch, tmp_path):
+    monkeypatch.setattr(SPPSGui, "_state_file_path", lambda self: tmp_path / "state.json", raising=False)
     app = SPPSGui()
     try:
         app.deiconify(); app.update()
@@ -61,7 +62,8 @@ def test_add_recipe_does_not_change_batch_solution_defaults():
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="Tk GUI test requires DISPLAY")
-def test_recipe_is_restored_when_switching_project_items():
+def test_recipe_is_restored_when_switching_project_items(monkeypatch, tmp_path):
+    monkeypatch.setattr(SPPSGui, "_state_file_path", lambda self: tmp_path / "state.json", raising=False)
     app = SPPSGui()
     try:
         app.deiconify(); app.update()

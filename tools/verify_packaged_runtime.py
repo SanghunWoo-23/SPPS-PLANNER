@@ -11,6 +11,8 @@ def main() -> int:
     data = json.loads(path.read_text(encoding="utf-8"))
     root = Path(__file__).resolve().parents[1]
     expected = (root / "VERSION.txt").read_text(encoding="utf-8").strip()
+    if data.get("error_type"):
+        raise RuntimeError("Packaged self-test exception: " + str(data["error_type"]) + ": " + str(data.get("error")) + "\n" + str(data.get("traceback", "")))
     if data.get("app_version") != expected or not data.get("ok"):
         raise RuntimeError(f"Packaged runtime self-test failed: expected={expected!r}, report={data}")
     failed = [key for key, value in data.get("checks", {}).items() if not value]

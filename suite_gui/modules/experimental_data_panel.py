@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 import tkinter as tk
@@ -49,6 +50,9 @@ class ExperimentalDataWindow(tk.Toplevel):
         except Exception as exc:
             self._transient_error = exc
         self._pending_after_ids: set[str] = set()
+        # Lifecycle invariant: scroll collection exists even if a test/plugin
+        # replaces _build() or a future view has no scrollable tabs.
+        self._scrollable_canvases: list[tk.Canvas] = []
         self._build()
         self._bind_scrollable_children()
         self.bind("<MouseWheel>", self._on_window_wheel, add="+")
@@ -179,10 +183,14 @@ class ExperimentalDataWindow(tk.Toplevel):
         nb = ttk.Notebook(self, style="SPPS.TNotebook"); nb.pack(fill="both", expand=True, padx=14, pady=(3, 12))
         self.notebook = nb
         self.recommend_tab = ttk.Frame(nb, padding=8, style="SPPS.Root.TFrame"); nb.add(self.recommend_tab, text="Recommendations")
+        self.ai_import_status = tk.StringVar(value="Reviewed Excel data: checking local profile...")
+        ttk.Label(self.recommend_tab, textvariable=self.ai_import_status, style="SPPS.Muted.TLabel").pack(anchor="w", pady=(0, 5))
         self.advanced_tab = ttk.Frame(nb, padding=8, style="SPPS.Root.TFrame"); nb.add(self.advanced_tab, text="Advanced")
 
         advbar = ttk.Frame(self.advanced_tab, style="SPPS.Root.TFrame"); advbar.pack(fill="x", pady=(0,6))
         ttk.Button(advbar, text="Import Lab Data", command=self.import_file, style="SPPS.Secondary.TButton").pack(side="left")
+        ttk.Button(advbar, text="Import Excel to AI & ML", command=self.import_ai_ml_data,
+                   style="SPPS.Secondary.TButton").pack(side="left", padx=(6, 0))
         ttk.Label(advbar, text="History, evidence audit and model/data checks", style="SPPS.Muted.TLabel").pack(side="left", padx=(10,0))
         advanced_nb = ttk.Notebook(self.advanced_tab, style="SPPS.TNotebook"); advanced_nb.pack(fill="both", expand=True)
         self.advanced_notebook = advanced_nb
@@ -235,8 +243,6 @@ class ExperimentalDataWindow(tk.Toplevel):
             resize_content()
         content.bind("<Configure>", resize_content, add="+")
         canvas.bind("<Configure>", resize_canvas, add="+")
-        if not hasattr(self, "_scrollable_canvases"):
-            self._scrollable_canvases = []
         self._scrollable_canvases.append(canvas)
         return content
 
@@ -296,6 +302,7 @@ class ExperimentalDataWindow(tk.Toplevel):
                 f"Outcomes: {counts.get('outcome',0)}",
                 f"Issues: {counts.get('issue',0)}",
                 f"Recommendation traces: {counts.get('recommendation_trace',0)}",
+                f"AI-reviewed Excel outcomes (separate, read-only): {len(experimental_workflow.ai_reviewed_outcome_rows(self.gui))}",
             ]
             legacy = list(info.get("legacy_candidates_found") or [])
             if legacy:
@@ -429,7 +436,7 @@ class ExperimentalDataWindow(tk.Toplevel):
 
     def _build_outcome_history(self) -> None:
         bar=ttk.Frame(self.outcome_tab); bar.pack(fill="x", pady=(0,6))
-        ttk.Label(bar,text="Outcome-aware records connect actual conditions to yield/purity/failure observations.").pack(side="left")
+        ttk.Label(bar,text="SQLite lab outcomes + reviewed Excel AI imports (read-only, not verified DB records).").pack(side="left")
         ttk.Button(bar,text="Mark Verified",command=lambda:self._mark("outcome","verified")).pack(side="right",padx=2)
         ttk.Button(bar,text="Mark Excluded",command=lambda:self._mark("outcome","excluded")).pack(side="right",padx=2)
         ttk.Button(bar,text="Failed + Informative",command=lambda:self._mark_state("outcome","failed_informative")).pack(side="right",padx=2)
@@ -587,8 +594,8 @@ class ExperimentalDataWindow(tk.Toplevel):
         tree={"outcome":getattr(self,"outcome_tree",None),"issue":getattr(self,"issue_tree",None)}.get(kind)
         if tree is None: return
         ids=[tree.set(iid,"record_id") for iid in tree.selection()]
-        if not ids:
-            messagebox.showinfo("Record State","Select one or more records first.",parent=self); return
+        if not ids or any(not str(record_id).strip() for record_id in ids):
+            messagebox.showinfo("Record State","AI-imported rows are read-only. Select only SQLite lab records.",parent=self); return
         count=experimental_data.set_record_state(kind,ids,state,experimental_workflow.db_path(self.gui))
         self.status.configure(text=f"Updated {count} {kind} lifecycle record(s) → {state}")
         self.refresh_all()
@@ -622,6 +629,10 @@ class ExperimentalDataWindow(tk.Toplevel):
         ttk.Button(top, text="Rebuild Loading Model", command=self._rebuild_loading_model).pack(side="right", padx=(0,6))
         ttk.Button(top, text="Promote Latest Candidate", command=self._promote_loading_candidate).pack(side="right", padx=(0,6))
         ttk.Button(top, text="Rollback Loading Model", command=self._rollback_loading_model).pack(side="right", padx=(0,6))
+        export_row = ttk.Frame(self.health_tab)
+        export_row.pack(fill="x", pady=(0, 6))
+        ttk.Button(export_row, text="Export Verified QC CSV", command=self._export_verified_lab_qc).pack(side="left")
+        ttk.Label(export_row, text="Manual AI review required; this does not train or verify a model.").pack(side="left", padx=(10,0))
         self.health_text = tk.Text(self.health_tab, height=28, wrap="word")
         self.health_text.pack(fill="both", expand=True); self._style_text(self.health_text)
 
@@ -757,6 +768,28 @@ class ExperimentalDataWindow(tk.Toplevel):
         except Exception as exc:
             messagebox.showerror("Loading Model",str(exc),parent=self)
 
+    def _export_verified_lab_qc(self) -> None:
+        """Operator-reviewed export for AI import; never writes directly to AI truth."""
+        target = filedialog.asksaveasfilename(
+            parent=self, title="Export verified measured results for AI review",
+            defaultextension=".csv", filetypes=[("CSV", "*.csv")],
+            initialfile="SPPS_V9_verified_lab_results_FOR_REVIEW.csv",
+        )
+        if not target:
+            return
+        try:
+            result = experimental_workflow.export_verified_lab_qc(self.gui, target)
+            messagebox.showinfo(
+                "Lab QC export",
+                f"Exported {result['rows']} verified measured row(s).\n\n"
+                "Review the product path, actual performed conditions, repeated Run IDs "
+                "and measurement basis in the existing AI & ML import screen before training. "
+                "This operation did not mark any AI data as verified or retrain a model.",
+                parent=self,
+            )
+        except (ValueError, OSError, RuntimeError) as exc:
+            messagebox.showerror("Lab QC export", str(exc), parent=self)
+
     def _refresh_health(self) -> None:
         health = experimental_workflow.data_health(self.gui)
         counts = health.get("counts") or {}; missing = health.get("missing_canonical_keys") or {}
@@ -768,8 +801,18 @@ class ExperimentalDataWindow(tk.Toplevel):
         model_info = experimental_workflow.loading_model_info(self.gui) or {}
         model_history = experimental_workflow.loading_model_history(self.gui) or []
         latest_model = model_history[0] if model_history else {}
+        collection = health.get("data_collection_readiness") or {}
         lines = [
             "Experimental Data Health", "",
+            "Data collection / measured evidence (not predictive accuracy)",
+            f"Verified outcome rows with measured QC: {collection.get('verified_measured_outcomes',0)}",
+            f"Independent recorded Run IDs: {collection.get('independent_run_ids',0)} / distinct sequences: {collection.get('distinct_sequences',0)}",
+            f"Measured yield: {collection.get('verified_yield_measurements',0)} / purity: {collection.get('verified_purity_measurements',0)} / resin loading: {collection.get('verified_loading_measurements',0)}",
+            f"Needs record review: {collection.get('awaiting_review',0)} / missing Run link: {collection.get('missing_run_context',0)} / missing plan snapshot: {collection.get('missing_plan_snapshot',0)}",
+            f"Historical invalid values: {collection.get('historical_out_of_range',0)} / possible repeated Run-stage measurements: {collection.get('possible_duplicate_measurement_groups',0)}",
+            "AI-reviewed Excel imports remain read-only and separate from operator-Verified SQLite measurements.",
+            "Do not treat record counts or an existing model as validated predictive accuracy.",
+            *[f"  • {action}" for action in collection.get('review_actions',[])], "",
             f"Records — Loading {counts.get('loading',0)} / Cleavage {counts.get('cleavage',0)} / Sequence STD {counts.get('sequence',0)} / Cleavage Usage {counts.get('cleavage_usage',0)} / Outcomes {counts.get('outcome',0)} / Issues {counts.get('issue',0)}",
             f"Status — Loading {status.get('loading',{})}",
             f"Status — Cleavage {status.get('cleavage',{})}",
@@ -1289,7 +1332,14 @@ class ExperimentalDataWindow(tk.Toplevel):
         measured=self._optional_float(self.quick_measured_loading.get())
         if measured is None:
             messagebox.showinfo("Loading Result","Enter the measured loading value.",parent=self); return
-        self._save_loading_measurement(measured)
+        if not math.isfinite(measured) or measured < 0:
+            messagebox.showerror("Loading Result", "Measured loading must be finite and non-negative (mmol/g).", parent=self)
+            return
+        try:
+            self._save_loading_measurement(measured)
+        except (ValueError, RuntimeError, OSError) as exc:
+            messagebox.showerror("Loading Result", str(exc), parent=self)
+            return
         self.quick_measured_loading.set("")
         self.refresh_all()
         self.run_loading_advisor()
@@ -1398,26 +1448,54 @@ class ExperimentalDataWindow(tk.Toplevel):
 
         def save():
             note=vars["note"].get().strip()
-            if kind.get()=="Loading":
-                measured=self._optional_float(vars["loading"].get())
-                if measured is None:
-                    messagebox.showinfo("Add Result","Enter the measured loading value.",parent=dialog); return
-                self._save_loading_measurement(measured,note)
-            else:
-                snap=self._current_cleavage_snapshot()
-                crude=self._optional_float(vars["crude"].get()); yld=self._optional_float(vars["yield"].get()); purity=self._optional_float(vars["purity"].get())
-                outcome=vars["outcome"].get().strip() or "Unknown"
-                payload=dict(snap); payload.update({"crude_g":crude,"raw_observation":note})
-                complete=payload.get("cleavage_eq") is not None and any(payload.get(k) is not None for k in ("tfa_ml","water_ml","tis_ml"))
-                experimental_workflow.add_cleavage_record(self.gui,payload,status="verified" if complete else "incomplete")
-                low=outcome.lower(); success_flag=1 if low=="success" else 0 if low=="fail" else None
-                experimental_workflow.add_outcome_record(self.gui,{
-                    "stage":"cleavage","product":snap.get("product"),"sequence":snap.get("sequence"),"result":outcome,
-                    "success_flag":success_flag,"yield_percent":yld,"purity_percent":purity,"crude_g":crude,"observation":note,
-                    "record_state":"failed_informative" if low=="fail" else "verified" if low in {"success","partial"} else "completed",
-                },status="verified" if low in {"success","partial","fail"} or yld is not None or purity is not None else "incomplete")
-                self.status.configure(text="Cleavage/final result saved. Planner cleavage conditions were attached automatically.")
-            dialog.destroy(); self.refresh_all()
+            try:
+                if kind.get()=="Loading":
+                    measured=self._optional_float(vars["loading"].get())
+                    if measured is None:
+                        raise ValueError("Enter the measured loading value.")
+                    if not math.isfinite(measured) or measured < 0:
+                        raise ValueError("Measured loading must be finite and non-negative (mmol/g).")
+                    self._save_loading_measurement(measured,note)
+                else:
+                    snap=self._current_cleavage_snapshot()
+                    crude=self._optional_float(vars["crude"].get())
+                    yld=self._optional_float(vars["yield"].get())
+                    purity=self._optional_float(vars["purity"].get())
+                    outcome=vars["outcome"].get().strip() or "Unknown"
+                    payload=dict(snap); payload.update({"crude_g":crude,"raw_observation":note})
+                    complete=payload.get("cleavage_eq") is not None and any(
+                        payload.get(k) is not None for k in ("tfa_ml","water_ml","tis_ml"))
+                    low=outcome.lower(); success_flag=1 if low=="success" else 0 if low=="fail" else None
+                    observation={
+                        "stage":"cleavage", "product":snap.get("product"), "sequence":snap.get("sequence"),
+                        "result":outcome, "success_flag":success_flag, "yield_percent":yld,
+                        "purity_percent":purity, "crude_g":crude, "observation":note,
+                        "record_state":"failed_informative" if low=="fail" else "verified" if low in {"success","partial"} else "completed",
+                    }
+                    from suite_gui.experimental_data import validate_measured_outcome
+                    warnings=validate_measured_outcome(observation, status="incomplete")
+                    outcome_status = ("verified" if low in {"success","partial","fail"}
+                                      or yld is not None or purity is not None else "incomplete")
+                    if warnings:
+                        outcome_status="incomplete"
+                        observation["record_state"]="draft"
+                    experimental_workflow.add_final_measurements(
+                        self.gui, payload, observation,
+                        cleavage_status="verified" if complete else "incomplete",
+                        outcome_status=outcome_status,
+                    )
+                    self.status.configure(text="Cleavage and final result committed together; Planner context attached.")
+                    if warnings:
+                        messagebox.showwarning(
+                            "Result requires review",
+                            "\n".join(warnings) + "\nRecorded as incomplete, not as ML training truth.",
+                            parent=dialog,
+                        )
+            except (ValueError, RuntimeError, OSError) as exc:
+                messagebox.showerror("Add Result", f"Result was not saved.\n\n{exc}", parent=dialog)
+                return
+            dialog.destroy()
+            self.refresh_all()
 
         footer=ttk.Frame(shell,style="SPPS.Root.TFrame"); footer.pack(fill="x",pady=(10,0))
         ttk.Button(footer,text="Cancel",command=dialog.destroy,style="SPPS.Secondary.TButton").pack(side="right")
@@ -1661,6 +1739,14 @@ class ExperimentalDataWindow(tk.Toplevel):
         self.wait_window(dialog)
         return bool(decision["ok"])
 
+    def import_ai_ml_data(self) -> None:
+        """Both panels use one profile-local reviewed dataset and ML model store.
+
+        SQLite laboratory records remain distinct from AI-reviewed imports.
+        """
+        from suite_gui.ai_excel_dialog_v9 import open_excel_ai_dialog
+        open_excel_ai_dialog(self.gui, parent=self, on_dataset_saved=self.refresh_all)
+
     def import_file(self) -> None:
         path = filedialog.askopenfilename(parent=self, title="Import Experimental Data", filetypes=[("Experimental data", "*.xlsx *.xlsm *.csv *.zip"), ("All files", "*.*")])
         if not path:
@@ -1719,8 +1805,8 @@ class ExperimentalDataWindow(tk.Toplevel):
             raise ValueError(f"Unsupported experimental record kind: {kind}")
         selected = list(tree.selection())
         ids = [tree.set(item, "record_id") for item in selected]
-        if not ids:
-            messagebox.showinfo("Experimental Data", "Select one or more records first.", parent=self); return
+        if not ids or any(not str(record_id).strip() for record_id in ids):
+            messagebox.showinfo("Experimental Data", "AI-imported rows are read-only. Select only SQLite lab records.", parent=self); return
         count = experimental_workflow.set_status(self.gui, kind, ids, status)
         self.status.configure(text=f"Updated {count} {kind} record(s) → {status}")
         self.refresh_all()
@@ -1741,14 +1827,21 @@ class ExperimentalDataWindow(tk.Toplevel):
             usage = experimental_workflow.cleavage_usage_records(self.gui)
             outcomes = experimental_workflow.outcome_records(self.gui)
             issues = experimental_workflow.issue_records(self.gui)
-            self._fill(self.loading_tree, loading); self._fill(self.cleavage_tree, cleavage); self._fill(self.sequence_tree, sequence); self._fill(self.usage_tree, usage); self._fill(self.outcome_tree, outcomes); self._fill(self.issue_tree, issues)
+            # The Excel AI store and the structured lab SQLite DB have different
+            # evidence contracts. Display both without writing AI imports into DB.
+            ai_outcomes = experimental_workflow.ai_reviewed_outcome_rows(self.gui)
+            self.ai_import_status.set(
+                f"Reviewed Excel data: {len(ai_outcomes)} row(s) · Advanced > History > Outcomes (read-only). "
+                "AI imports are separate from verified SQLite recommendations."
+            )
+            self._fill(self.loading_tree, loading); self._fill(self.cleavage_tree, cleavage); self._fill(self.sequence_tree, sequence); self._fill(self.usage_tree, usage); self._fill(self.outcome_tree, [*outcomes, *ai_outcomes]); self._fill(self.issue_tree, issues)
             if hasattr(self, "load_aa_combo"):
                 observed_aa = experimental_data.observed_loading_amino_acid_identities(loading)
                 current_norm = experimental_data.normalize_amino_acid(self.load_aa.get())
                 if current_norm and current_norm not in observed_aa:
                     observed_aa.insert(0, current_norm)
                 self.load_aa_combo.configure(values=observed_aa)
-            self.status.configure(text=f"Records  Loading {len(loading)}  •  Cleavage {len(cleavage)}  •  Issues {len(issues)}")
+            self.status.configure(text=f"Lab DB: Loading {len(loading)} · Cleavage {len(cleavage)} · Outcomes {len(outcomes)} · Issues {len(issues)} | AI-reviewed Excel: {len(ai_outcomes)}")
             if hasattr(self, "health_text"):
                 self._refresh_health()
             if hasattr(self, "analytics_text"):

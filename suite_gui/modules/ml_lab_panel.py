@@ -109,6 +109,7 @@ def build_ml_lab_tab(gui, notebook):
     gui.ml_target=tk.StringVar(value=''); gui.ml_task=tk.StringVar(value='regression')
     top=ttk.Frame(frame); top.grid(row=0,column=0,sticky='ew',pady=(0,6))
     ttk.Button(top,text='Refresh actual_runs.csv',command=lambda: refresh_ml(gui)).pack(side='left')
+    ttk.Button(top,text='Import Excel / CSV (AI)',command=lambda: __import__('suite_gui.ai_excel_dialog_v9',fromlist=['open_excel_ai_dialog']).open_excel_ai_dialog(gui)).pack(side='left',padx=(6,0))
     ttk.Label(top,text='Target').pack(side='left',padx=(12,2))
     gui.ml_target_combo=ttk.Combobox(top,textvariable=gui.ml_target,width=22,state='readonly'); gui.ml_target_combo.pack(side='left')
     ttk.Label(top,text='Task').pack(side='left',padx=(12,2))

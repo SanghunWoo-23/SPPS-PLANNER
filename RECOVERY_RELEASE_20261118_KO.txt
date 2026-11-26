@@ -1,0 +1,31 @@
+SPPS Planner V9.0.0 — 안정화 복구판 / 2026-11-18
+
+기준 소스: 사용자가 제공한 Downloads(1).zip 내 2026-11-16 FINAL PUBLIC / PRIVATE.
+이전 2026-11-18 FIXED 빌드에 추가된 광범위한 GUI/워크플로 수정은 적용하지 않았음.
+
+반영 내용
+1. 빈 데이터 환경에서 앱 최초 진입 시 ADD 창 표시 예약.
+2. 입력란에 직접 서열 입력 후 Generate 시 Project Manager 항목 생성 및 즉시 세션 저장.
+3. Add peptide 이후 기본 계산 엔진으로 Generate 한 번 실행하고 세션 저장.
+4. Public / Private Windows Installer 이름, AppId, 설치 디렉터리 및 바로가기 충돌 방지.
+5. 불필요한 단축키 설명 라벨 제거(단축키 자체 변경 없음).
+6. Private 실험 파일을 Public에 복사하지 않음. 양쪽 원본 데이터 파일 유지.
+
+확인 완료 (격리된 Linux/Xvfb GUI 환경)
+- Public, Private 모두 GUI 생성/종료 성공.
+- 빈 세션에서 GHK Generate True 확인.
+- 세션 JSON에 GHK 저장 확인, 재실행 뒤 GHK 복원 확인.
+- 저장된 세션에서 ADD 재표시 생략 확인.
+- Public GUI foundation unit tests 4 passed.
+
+검증 한계
+- 실제 Windows EXE/Installer 빌드, 설치, 사용자 PC 충돌 상황은 이 환경에서 재현/검증하지 못함.
+- ADD 창에 내용을 입력하고 버튼을 누르는 전체 수동 E2E 과정은 미검증.
+- 사용자 PC의 실제 오류 로그는 아직 제공되지 않아 튕김 원인을 확정할 수 없음.
+- 기존에 사용하던 18일 설치본을 16일 소스 복구판으로 대체하여 회귀 위험을 줄이는 방식임.
+
+실행/설치 안내
+- 각 소스 ZIP 압축 해제 후 README/기존 배포 스크립트 참조.
+- 기존 사용자 데이터 폴더 삭제 및 초기화하지 말 것.
+- 기존 설치본과 충돌을 피하려면 새 Public/Private 설치본을 별도 설치할 것.
+- 새 Installer는 Windows에서 별도로 생성해야 함.

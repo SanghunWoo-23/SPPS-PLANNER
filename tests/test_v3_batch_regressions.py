@@ -559,3 +559,55 @@ def test_r18_real_tk_blank_project_placeholder_does_not_create_batch_sequence(mo
         assert list(gui.batch_aa_tree.get_children()) == []
     finally:
         gui.destroy()
+
+
+def test_write_tree_keeps_rendered_cells_when_updating_rows():
+    """UI optimization must preserve blank-column and display formatting behavior."""
+    import pandas as pd
+    from suite_gui.classic_base import ClassicBaseCore
+
+    class RenderTree:
+        def __init__(self):
+            self.columns = ['No', 'Unit', 'Amount', 'Missing']
+            self.rows = []
+            self._counter = 0
+
+        def get_children(self):
+            return tuple(range(len(self.rows)))
+
+        def delete(self, *items):
+            for idx in sorted(items, reverse=True):
+                self.rows.pop(idx)
+
+        def __getitem__(self, name):
+            assert name == 'columns'
+            return self.columns
+
+        def configure(self, **kwargs):
+            self.columns = list(kwargs['columns'])
+
+        def heading(self, *_args, **_kwargs):
+            pass
+
+        def column(self, *_args, **_kwargs):
+            pass
+
+        def insert(self, _root, _where, values):
+            self.rows.append(tuple(values))
+
+    class Presenter:
+        _sanitize_display_value = ClassicBaseCore._sanitize_display_value
+        def _log(self, message):
+            raise AssertionError(message)
+
+    presenter = Presenter()
+    tree = RenderTree()
+    cols = ['No', 'Unit', 'Amount', 'Missing']
+    rows = pd.DataFrame([
+        {'No': 1, 'Unit': 'Fmoc-Ala-OH', 'Amount': 1.25005},
+        {'No': 2, 'Unit': 'Fmoc-Val-OH', 'Amount': float('nan')},
+    ])
+    ClassicBaseCore._write_tree(presenter, tree, rows, cols)
+    assert tree.rows == [("1", "Fmoc-Ala-OH", "1.2501", ""), ("2", "Fmoc-Val-OH", "", "")]
+    ClassicBaseCore._write_tree(presenter, tree, rows.iloc[:1], cols)
+    assert tree.rows == [("1", "Fmoc-Ala-OH", "1.2501", "")]

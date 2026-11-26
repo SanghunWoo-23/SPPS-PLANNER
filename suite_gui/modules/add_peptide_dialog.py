@@ -49,6 +49,7 @@ PRESETS = {
     "COMU + DIPEA": ("Manual", "COMU", "", "DIPEA", "DMF"),
     "EDC-HCl + HOBt (anhydrous) + NMM": ("Manual", "EDC-HCl", "HOBt (anhydrous)", "NMM", "DMF"),
     "EDC-HCl + HOBt hydrate + NMM": ("Manual", "EDC-HCl", "HOBt hydrate", "NMM", "DMF"),
+    "EDC-HCl + NHS": ("Manual", "EDC-HCl", "NHS", "", "DMF"),
     "Custom": ("Manual", "DIC", "HOBt (anhydrous)", "", "DMF"),
 }
 
@@ -399,7 +400,8 @@ _PLANNING_SIGNATURE_FIELDS = (
     "default_reagent_eq", "default_reagent_count",
     "default_catalyst_eq", "default_catalyst_count",
     "default_base_eq", "default_base_count",
-    "reagent_eq_follows_coupling_eq",
+    "reagent_eq_follows_coupling_eq", "synthesis_form", "branch_point", "branch_arm",
+    "branch_pg", "branch_depro_condition", "branch_coupling_review", "branch_boc_review", "selective_cleavage_review", "global_cleavage_review", "v9_mass_options",
 )
 
 
@@ -684,9 +686,13 @@ def _edit_change_summary(original: dict[str, Any], values: dict[str, str]) -> tu
         "scale": "Scale", "copies": "Copies", "resin": "Resin", "loading": "Loading",
         "apply_loading_calc": "Direct loading",
         "lot": "LOT No.", "reagent": "Coupling reagent", "additive": "Additive / catalyst",
-        "base": "Base", "solvent": "Solvent",
+        "base": "Base", "solvent": "Solvent", "synthesis_form": "Peptide form",
+        "branch_point": "Branch point", "branch_arm": "Branch arm",
+        "branch_pg": "Branch protection", "cyclic_product": "Cyclic product",
+        "cyclic_groups": "Side-chain protection",
     }
-    planning = {"sequence", "scale", "copies", "resin", "loading", "apply_loading_calc", "reagent", "additive", "base", "solvent"}
+    planning = {"sequence", "scale", "copies", "resin", "loading", "apply_loading_calc", "reagent", "additive", "base", "solvent", "synthesis_form",
+                "branch_point", "branch_arm", "branch_pg", "cyclic_product", "cyclic_groups", "disulfide_site_a", "disulfide_site_b"}
     changed = []
     recalc = False
     for key, label in labels.items():
@@ -721,8 +727,30 @@ def _duplicate_project_notes(gui: Any, values: dict[str, str], exclude_index: in
     return list(dict.fromkeys(notes))
 
 
+
+def _sequence_site_labels(sequence: str) -> list[str]:
+    from spps_planner.parser import tokenize_core_sequence
+    try:
+        return [f'{i}{token}' for i,token in enumerate(tokenize_core_sequence(sequence),1)]
+    except Exception:
+        return []
+
+
+def _site_position(value: str, sequence: str) -> int:
+    import re
+    text = str(value or '').strip()
+    match = re.fullmatch(r'([1-9]\d*)(.*)', text)
+    if not match:
+        raise ValueError('Select a valid sequence site.')
+    position = int(match.group(1))
+    labels = _sequence_site_labels(sequence)
+    if position > len(labels) or (match.group(2) and text != labels[position - 1]):
+        raise ValueError('Site does not match the current sequence.')
+    return position
+
 def _dialog_snapshot(values: dict[str, str]) -> tuple[tuple[str, str], ...]:
-    keys = ("project", "peptide", "sequence", "scale", "copies", "resin", "loading", "apply_loading_calc", "lot", "reagent", "additive", "base", "solvent")
+    keys = ("project", "peptide", "sequence", "scale", "copies", "resin", "loading", "apply_loading_calc", "lot", "reagent", "additive", "base", "solvent", "synthesis_form", "branch_point",
+            "branch_arm", "branch_pg", "branch_depro_condition", "branch_coupling_system", "branch_primary_eq", "branch_secondary_eq", "branch_coupling_solvent", "branch_boc2o_eq", "branch_boc_base_eq", "global_cleavage_total_volume_ml", "global_tfa_equivalents", "selective_cleavage_system", "selective_time_min", "selective_total_volume_ml", "cyclic_coupling_system", "cyclic_product", "cyclic_groups", "disulfide_site_a", "disulfide_site_b")
     return tuple((key, str(values.get(key, "") or "").strip()) for key in keys)
 
 def _get(gui: Any, name: str, default: str = "") -> str:
@@ -864,6 +892,66 @@ def build_item_payload(gui: Any, values: dict[str, str]) -> dict[str, Any]:
         "default_base": base,
         "default_coupling_solution_solvent": solvent,
     }
+    form = str(values.get('synthesis_form', 'linear')).strip().lower()
+    if form not in ('linear', 'branched', 'cyclic'):
+        raise ValueError('Choose Linear, Branch or Cyclic.')
+    item['synthesis_form'] = form
+    from spps_planner.reaction_planner_v9 import (
+        prepare_selective_cleavage_review, prepare_branch_coupling_review,
+        prepare_global_cleavage_review, prepare_branch_boc_review, REACTION_METHODS)
+    # Mild release is meaningful only for an explicit protected-linear
+    # head-to-tail route; neither Branch nor Disulfide inherits this stage.
+    if form in ('branched', 'cyclic'):
+        item['global_cleavage_review'] = prepare_global_cleavage_review(
+            total_volume_ml=values.get('global_cleavage_total_volume_ml',''),
+            tfa_equivalents=values.get('global_tfa_equivalents',''),
+            scale_mmol=values.get('scale',''))
+    if form == 'branched':
+        arm = str(values.get('branch_arm', '')).strip()
+        point = str(values.get('branch_point', '')).strip()
+        if not arm or not point:
+            raise ValueError('Branch requires a branch point and an arm sequence.')
+        item.update(branch_point=point, branch_arm=arm, branch_arm_sequence=arm,
+            branch_pg=str(values.get('branch_pg', 'Mtt')).strip(),
+            branch_boc_review=prepare_branch_boc_review(
+                boc2o_equivalents=values.get('branch_boc2o_eq','3'),
+                diea_equivalents=values.get('branch_boc_base_eq','3')),
+            branch_depro_condition=str(values.get('branch_depro_condition', '')).strip(),
+            branch_coupling_review=prepare_branch_coupling_review(
+                str(values.get('branch_coupling_system', 'HBTU_NMM')).strip(),
+                equivalents={name:values.get('branch_primary_eq' if pos==0 else 'branch_secondary_eq','')
+                    for pos,(name,_) in enumerate(REACTION_METHODS[str(values.get('branch_coupling_system', 'HBTU_NMM')).strip()]['reagents'])},
+                solvent=str(values.get('branch_coupling_solvent','')).strip()))
+    if form == 'cyclic':
+        product = str(values.get('cyclic_product', 'head_to_tail_protected')).strip()
+        groups = str(values.get('cyclic_groups', 'catalog')).strip()
+        if product not in ('head_to_tail_protected', 'head_to_tail_deprotected', 'disulfide') or groups not in ('catalog', 'explicit', 'none'):
+            raise ValueError('Choose an available cyclic pathway and side-chain protection mode.')
+        # Selection is a draft, NOT a validated or operator-approved reaction.
+        coupling_id = str(values.get('cyclic_coupling_system', 'HBTU_NMM')).strip()
+        if coupling_id not in REACTION_METHODS:
+            raise ValueError('Choose an available cyclization coupling system.')
+        item['v9_mass_options'] = {'product_path': product, 'side_chain_mode': groups, 'reaction_review': None}
+        if product.startswith('head_to_tail'):
+            item['selective_cleavage_review'] = prepare_selective_cleavage_review(
+                str(values.get('selective_cleavage_system','TFA_DCM_1_5')).strip(), resin=resin,
+                contact_time_min=values.get('selective_time_min',''),
+                total_volume_ml=values.get('selective_total_volume_ml',''))
+            item['v9_mass_options'].update(coupling_system_id=coupling_id,
+                coupling_system_label=REACTION_METHODS[coupling_id]['label'])
+        if product == 'disulfide':
+            try:
+                positions = [_site_position(values.get(k, ''), sequence)
+                             for k in ('disulfide_site_a','disulfide_site_b')]
+            except (TypeError, ValueError) as exc:
+                raise ValueError('Select two Cys positions (positive sequence indices).') from exc
+            from suite_gui.auto_plan_evolution_v9 import review_disulfide_product
+            item['v9_mass_options']['disulfide_sites'] = positions
+            checked = review_disulfide_product(sequence, resin, item['v9_mass_options'])
+            if checked.get('status') != 'CROSSCHECK_PASS':
+                raise ValueError('Disulfide topology not validated: ' + str(checked.get('reason') or checked.get('status')))
+            item['v9_mass_options']['disulfide_structure_review'] = checked
+
     item.update(_method_eq_defaults(gui, chemistry))
     return item
 
@@ -937,6 +1025,27 @@ def _dialog_values_from_item(item: dict[str, Any]) -> dict[str, str]:
         "loading_time_h": str(item.get("loading_time_h", "") or "").strip(),
         "lot": str(item.get("lot", item.get("lot_no", "")) or "").strip(),
         "preset": _matching_preset(recipe),
+        "synthesis_form": str(item.get('synthesis_form', 'cyclic' if str((item.get('v9_mass_options') or {}).get('product_path', '')).startswith('head_to_tail') or (item.get('v9_mass_options') or {}).get('product_path') == 'disulfide' else 'linear')),
+        "branch_point": str(item.get('branch_point', 'K5')),
+        "branch_arm": str(item.get('branch_arm', 'RGD')),
+        "branch_pg": str(item.get('branch_pg', 'Mtt')),
+        "branch_depro_condition": str(item.get('branch_depro_condition', 'Mtt: dilute TFA/TIS/DCM')),
+        "branch_coupling_system": str((item.get('branch_coupling_review') or {}).get('system_id', 'HBTU_NMM')),
+        "branch_primary_eq": str(((item.get('branch_coupling_review') or {}).get('reagents') or [{},{}])[0].get('equivalents') or ''),
+        "branch_secondary_eq": str((((item.get('branch_coupling_review') or {}).get('reagents') or [{},{}]) + [{}])[1].get('equivalents') or ''),
+        "branch_coupling_solvent": str((item.get('branch_coupling_review') or {}).get('solvent','')),
+        "branch_boc2o_eq": str((((item.get('branch_boc_review') or {}).get('reagents') or [{},{}])[0]).get('equivalents') or '3'),
+        "branch_boc_base_eq": str(((((item.get('branch_boc_review') or {}).get('reagents') or [{},{}]) + [{}])[1]).get('equivalents') or '3'),
+        "global_cleavage_total_volume_ml": str((item.get('global_cleavage_review') or {}).get('total_volume_ml') or ''),
+        "global_tfa_equivalents": str((item.get('global_cleavage_review') or {}).get('tfa_equivalents') or ''),
+        "selective_cleavage_system": str((item.get('selective_cleavage_review') or {}).get('system_id', 'TFA_DCM_1_5')),
+        "selective_time_min": str((item.get('selective_cleavage_review') or {}).get('contact_time_min') or ''),
+        "selective_total_volume_ml": str((item.get('selective_cleavage_review') or {}).get('total_volume_ml') or ''),
+        "cyclic_coupling_system": str((item.get('v9_mass_options') or {}).get('coupling_system_id', 'HBTU_NMM')),
+        "cyclic_product": str((item.get('v9_mass_options') or {}).get('product_path') or 'head_to_tail_protected'),
+        "cyclic_groups": str((item.get('v9_mass_options') or {}).get('side_chain_mode') or 'catalog'),
+        "disulfide_site_a": str(((item.get('v9_mass_options') or {}).get('disulfide_sites') or ['', ''])[0]),
+        "disulfide_site_b": str(((item.get('v9_mass_options') or {}).get('disulfide_sites') or ['', ''])[1]),
         **recipe,
     }
 
@@ -958,6 +1067,27 @@ def _replace_project_item(gui: Any, index: int, item: dict[str, Any]) -> dict[st
     old = dict(items[int(index)])
     updated = dict(old)
     updated.update(dict(item))
+    if updated.get('synthesis_form') == 'cyclic':
+        previous = old.get('v9_mass_options') or {}
+        proposed = updated.get('v9_mass_options') or {}
+        if (previous.get('product_path') == proposed.get('product_path') and
+            previous.get('side_chain_mode') == proposed.get('side_chain_mode') and
+            previous.get('disulfide_sites') == proposed.get('disulfide_sites') and
+            previous.get('coupling_system_id') == proposed.get('coupling_system_id') and
+            str(old.get('sequence','')) == str(updated.get('sequence','')) and
+            str(old.get('resin','')) == str(updated.get('resin','')) and
+            str(old.get('scale','')) == str(updated.get('scale','')) and
+            str(old.get('copies','')) == str(updated.get('copies',''))):
+            updated['v9_mass_options'] = previous
+    elif old.get('v9_mass_options'):
+        updated.pop('v9_mass_options', None)
+    if updated.get('synthesis_form') != 'branched':
+        updated.pop('branch_coupling_review', None)
+        updated.pop('branch_boc_review', None)
+    if updated.get('synthesis_form') != 'cyclic' or not str((updated.get('v9_mass_options') or {}).get('product_path','')).startswith('head_to_tail'):
+        updated.pop('selective_cleavage_review', None)
+    if updated.get('synthesis_form') not in ('branched','cyclic'):
+        updated.pop('global_cleavage_review', None)
 
     recipe_fields = (
         "chemistry", "default_reagent", "default_catalyst", "default_base",
@@ -988,6 +1118,11 @@ def _replace_project_item(gui: Any, index: int, item: dict[str, Any]) -> dict[st
         updated["status"] = "Ready"
 
     gui.pm_items[int(index)] = updated
+    # The lazy output cache is indexed by row number. A replaced row keeps its
+    # index but no longer owns the displayed Plan/Materials values. Invalidate
+    # the cached display before restoring to prevent stale rows being saved.
+    if _planning_signature(old) != _planning_signature(updated):
+        getattr(gui, "_pm_rendered_output_index", {}).clear()
     try:
         gui.pm_list.delete(int(index))
         gui.pm_list.insert(int(index), gui.pm_display_name(updated))
@@ -1089,6 +1224,15 @@ def open_dialog(gui: Any, item_index: int | None = None):
             "loading_diea_eq": _get(gui, "loading_diea_eq", "4") or "4",
             "loading_time_h": _get(gui, "loading_time_h", ""),
             "lot": lot_default,
+            "synthesis_form": "linear", "branch_point": _get(gui, 'branch_point', 'K5'),
+            "branch_arm": _get(gui, 'branch_arm', 'RGD'), "branch_pg": _get(gui, 'branch_pg', 'Mtt'),
+            "branch_depro_condition": _get(gui, 'branch_depro_condition', 'Mtt: dilute TFA/TIS/DCM'),
+            "branch_coupling_system": "HBTU_NMM", "branch_primary_eq":"", "branch_secondary_eq":"",
+            "branch_coupling_solvent":"", "branch_boc2o_eq":"3", "branch_boc_base_eq":"3",
+            "global_cleavage_total_volume_ml":"", "global_tfa_equivalents":"", "selective_cleavage_system": "TFA_DCM_1_5",
+            "selective_time_min":"", "selective_total_volume_ml":"",
+            "cyclic_coupling_system": "HBTU_NMM",
+            "cyclic_product": "head_to_tail_protected", "cyclic_groups": "catalog", "disulfide_site_a": "", "disulfide_site_b": "",
             "preset": "DIC + HOBt (anhydrous)", "reagent": "DIC",
             "additive": "HOBt (anhydrous)", "base": "", "solvent": "DMF",
         }
@@ -1182,6 +1326,127 @@ def open_dialog(gui: Any, item_index: int | None = None):
         template_status_var.set("Editing this saved peptide; exact bottle identities are loaded below.")
     ttk.Label(template_bar, textvariable=template_status_var, foreground="#555").pack(side="left", padx=(8, 0))
     ttk.Label(step1, text=("Sequence, peptide name and LOT are not copied." if not edit_mode else "Saving changes updates this peptide only; Batch solution-prep defaults stay unchanged."), foreground="#666").grid(row=7, column=0, columnspan=4, sticky="w", pady=(3, 0))
+
+    # Per-peptide topology is stored with the Add/Edit record, not global defaults.
+    topology = ttk.Labelframe(step1, text='Peptide form / topology', padding=7)
+    topology.grid(row=8, column=0, columnspan=4, sticky='ew', pady=(8, 2))
+    topology.columnconfigure(1, weight=1)
+    ttk.Label(topology, text='Form').grid(row=0, column=0, sticky='w', padx=3)
+    ttk.Combobox(topology, textvariable=vars_['synthesis_form'], state='readonly',
+                 values=('linear', 'branched', 'cyclic'), width=24).grid(row=0, column=1, sticky='w', padx=4)
+    branch_frame = ttk.Frame(topology)
+    branch_frame.grid(row=1, column=0, columnspan=4, sticky='ew', pady=4)
+    for n, key, title in ((0, 'branch_point', 'Branch point'), (1, 'branch_arm', 'Arm sequence'),
+                          (2, 'branch_pg', 'Protecting group'), (3, 'branch_depro_condition', 'Deprotection')):
+        ttk.Label(branch_frame, text=title).grid(row=n, column=0, sticky='w', padx=3, pady=2)
+        ttk.Entry(branch_frame, textvariable=vars_[key], width=38).grid(row=n, column=1, sticky='ew', padx=4, pady=2)
+    from spps_planner.reaction_planner_v9 import REACTION_METHODS, SELECTIVE_CLEAVAGE_SYSTEMS
+    ttk.Label(branch_frame, text='Branch coupling system (draft)').grid(row=4, column=0, sticky='w', padx=3, pady=2)
+    branch_labels={v['label']:key for key,v in REACTION_METHODS.items()}
+    branch_label=tk.StringVar(value=REACTION_METHODS[vars_['branch_coupling_system'].get()]['label'])
+    ttk.Combobox(branch_frame,textvariable=branch_label,values=tuple(branch_labels),
+                 state='readonly',width=27).grid(row=4,column=1,sticky='w',padx=4)
+    branch_label.trace_add('write',lambda *_: vars_['branch_coupling_system'].set(branch_labels[branch_label.get()]))
+    for row,title,key in ((5,'Coupling reagent eq','branch_primary_eq'),
+                          (6,'Additive/base eq','branch_secondary_eq'),
+                          (7,'Solvent (operator-defined)','branch_coupling_solvent')):
+        ttk.Label(branch_frame,text=title).grid(row=row,column=0,sticky='w',padx=3,pady=2)
+        ttk.Entry(branch_frame,textvariable=vars_[key],width=26).grid(row=row,column=1,sticky='w',padx=4)
+    ttk.Label(branch_frame,text='N-terminal Boc2O (eq)').grid(row=8,column=0,sticky='w',padx=3,pady=2)
+    ttk.Entry(branch_frame,textvariable=vars_['branch_boc2o_eq'],width=14).grid(row=8,column=1,sticky='w',padx=4)
+    ttk.Label(branch_frame,text='N-terminal Boc base DIEA (eq)').grid(row=9,column=0,sticky='w',padx=3,pady=2)
+    ttk.Entry(branch_frame,textvariable=vars_['branch_boc_base_eq'],width=14).grid(row=9,column=1,sticky='w',padx=4)
+    ttk.Label(branch_frame,text='STD: main-chain N-terminal Boc protection before selective branch-handle deprotection. No mild resin cleavage.',
+              wraplength=650).grid(row=10,column=0,columnspan=3,sticky='w',pady=2)
+    branch_frame.columnconfigure(1, weight=1)
+    cyclic_frame = ttk.Frame(topology)
+    cyclic_frame.grid(row=2, column=0, columnspan=4, sticky='ew', pady=4)
+    ttk.Label(cyclic_frame, text='Product').grid(row=0, column=0, sticky='w', padx=3)
+    ttk.Combobox(cyclic_frame, textvariable=vars_['cyclic_product'], state='readonly',
+                 values=('head_to_tail_protected', 'head_to_tail_deprotected', 'disulfide'), width=32).grid(row=0,column=1,sticky='ew',padx=4)
+    ttk.Label(cyclic_frame, text='Side-chain protection').grid(row=1,column=0,sticky='w',padx=3)
+    ttk.Combobox(cyclic_frame, textvariable=vars_['cyclic_groups'], state='readonly',
+                 values=('catalog','explicit','none'),width=32).grid(row=1,column=1,sticky='ew',padx=4)
+    ttk.Label(cyclic_frame, text='Site A').grid(row=2,column=0,sticky='w',padx=3)
+    site_a = ttk.Combobox(cyclic_frame, textvariable=vars_['disulfide_site_a'], state='readonly', width=12)
+    site_a.grid(row=2,column=1,sticky='w',padx=4)
+    ttk.Label(cyclic_frame, text='Site B').grid(row=3,column=0,sticky='w',padx=3)
+    site_b = ttk.Combobox(cyclic_frame, textvariable=vars_['disulfide_site_b'], state='readonly', width=12)
+    site_b.grid(row=3,column=1,sticky='w',padx=4)
+    def update_site_choices(*_):
+        choices = _sequence_site_labels(vars_['sequence'].get())
+        for widget, key in ((site_a,'disulfide_site_a'),(site_b,'disulfide_site_b')):
+            old = vars_[key].get()
+            options = ['', *choices]
+            widget.configure(values=options)
+            try:
+                index = _site_position(old, vars_['sequence'].get()) if old else 0
+            except ValueError:
+                index = 0
+            candidate = choices[index - 1] if 1 <= index <= len(choices) else ''
+            if candidate != old:
+                vars_[key].set(candidate)
+    vars_['sequence'].trace_add('write', update_site_choices)
+    update_site_choices()
+    def update_disulfide_sites(*_):
+        enabled = vars_['cyclic_product'].get() == 'disulfide'
+        for widget in (site_a, site_b):
+            widget.configure(state='readonly' if enabled else 'disabled')
+        cyclic_box.configure(state='disabled' if enabled else 'readonly')
+    vars_['cyclic_product'].trace_add('write', update_disulfide_sites)
+    cyclic_frame.columnconfigure(1, weight=1)
+    ttk.Label(cyclic_frame, text='Cyclization coupling system (draft)').grid(row=4,column=0,sticky='w',padx=3)
+    cyclic_label=tk.StringVar(value=REACTION_METHODS[vars_['cyclic_coupling_system'].get()]['label'])
+    cyclic_box=ttk.Combobox(cyclic_frame,textvariable=cyclic_label,values=tuple(branch_labels),
+                 state='readonly',width=27)
+    cyclic_box.grid(row=4,column=1,sticky='w',padx=4)
+    update_disulfide_sites()
+    cyclic_label.trace_add('write',lambda *_: vars_['cyclic_coupling_system'].set(branch_labels[cyclic_label.get()]))
+    ttk.Label(cyclic_frame, text='Site labels show the sequence position and residue (e.g. 1S / 3S). Disulfide requires two actual Cys thiols.',
+              wraplength=660).grid(row=5,column=0,columnspan=3,sticky='w',pady=2)
+    ttk.Label(cyclic_frame, text='Cyclic reaction conditions require Auto Plan review before they can be treated as approved.',
+              wraplength=670).grid(row=6,column=0,columnspan=3,sticky='w',pady=4)
+    selective_frame=ttk.Frame(topology)
+    selective_frame.grid(row=3,column=0,columnspan=4,sticky='ew',pady=(8,2))
+    ttk.Label(selective_frame,text='Selective cleavage (draft)').grid(row=0,column=0,sticky='w',padx=3)
+    selective_labels={v['label']:key for key,v in SELECTIVE_CLEAVAGE_SYSTEMS.items()}
+    selective_label=tk.StringVar(value=SELECTIVE_CLEAVAGE_SYSTEMS[vars_['selective_cleavage_system'].get()]['label'])
+    ttk.Combobox(selective_frame,textvariable=selective_label,
+                 values=tuple(selective_labels),state='readonly',width=34).grid(row=0,column=1,sticky='w',padx=4)
+    selective_label.trace_add('write',lambda *_: vars_['selective_cleavage_system'].set(selective_labels[selective_label.get()]))
+    ttk.Label(selective_frame,text='Time (min; optional)').grid(row=2,column=0,sticky='w',padx=3)
+    ttk.Entry(selective_frame,textvariable=vars_['selective_time_min'],width=15).grid(row=2,column=1,sticky='w',padx=4)
+    ttk.Label(selective_frame,text='Total mixture (mL; optional)').grid(row=3,column=0,sticky='w',padx=3)
+    ttk.Entry(selective_frame,textvariable=vars_['selective_total_volume_ml'],width=15).grid(row=3,column=1,sticky='w',padx=4)
+    ttk.Label(selective_frame,text='Default: 1.5% TFA / DCM. Review resin, protection, time and workup; not an approved SOP.',
+              wraplength=670).grid(row=1,column=0,columnspan=3,sticky='w',pady=3)
+    ttk.Label(selective_frame,text='Selective cleavage is used only for the protected linear precursor of head-to-tail cyclization.',
+              wraplength=670).grid(row=4,column=0,columnspan=3,sticky='w',pady=2)
+    global_frame=ttk.Frame(topology)
+    global_frame.grid(row=4,column=0,columnspan=4,sticky='ew',pady=(6,2))
+    ttk.Label(global_frame,text='Final/global cleavage: 95% TFA / 2.5% TIS / 2.5% H2O (draft)',wraplength=670).grid(row=0,column=0,columnspan=3,sticky='w',padx=3,pady=2)
+    ttk.Label(global_frame,text='Total mixture (mL; optional)').grid(row=1,column=0,sticky='w',padx=3,pady=2)
+    ttk.Entry(global_frame,textvariable=vars_['global_cleavage_total_volume_ml'],width=15).grid(row=1,column=1,sticky='w',padx=4)
+    ttk.Label(global_frame,text='TFA eq vs peptide (optional)').grid(row=2,column=0,sticky='w',padx=3,pady=2)
+    ttk.Entry(global_frame,textvariable=vars_['global_tfa_equivalents'],width=15).grid(row=2,column=1,sticky='w',padx=4)
+    ttk.Label(global_frame,text='Enter total volume OR TFA eq. No fixed acid dosage is assumed. Global cleavage and thiol exposure require operator review.',
+              wraplength=670).grid(row=3,column=0,columnspan=3,sticky='w',padx=3,pady=2)
+    def update_topology(*_):
+        form = vars_['synthesis_form'].get()
+        product = vars_['cyclic_product'].get()
+        if form == 'branched':
+            branch_frame.grid(); cyclic_frame.grid_remove(); selective_frame.grid_remove(); global_frame.grid()
+        elif form == 'cyclic':
+            branch_frame.grid_remove(); cyclic_frame.grid(); global_frame.grid()
+            if str(product).startswith('head_to_tail'):
+                selective_frame.grid()
+            else:
+                selective_frame.grid_remove()
+        else:
+            branch_frame.grid_remove(); cyclic_frame.grid_remove(); selective_frame.grid_remove(); global_frame.grid_remove()
+    vars_['synthesis_form'].trace_add('write',update_topology)
+    vars_['cyclic_product'].trace_add('write',update_topology)
+    update_topology()
 
     step2 = ttk.Labelframe(shell, text="STEP 2 — Coupling chemicals", padding=10)
     catalog_choices = _catalog_choices()
@@ -1646,14 +1911,25 @@ def open_dialog(gui: Any, item_index: int | None = None):
                         gui.tabs.select(tab); break
             except Exception:
                 pass
+        # The Project Manager Plan is the canonical output. Regenerate after
+        # *both* Add and Save changes so Apply Change never receives an empty
+        # plan from invalidated old settings.
         try:
-            gui.schedule_autosave()
+            from suite_gui.modules import plan_workflow
+            result = plan_workflow.generate(gui, calculation_context.namespace())
+            if result is not True:
+                raise RuntimeError('New plan could not be generated from the saved peptide setup.')
+        except Exception as exc:
+            messagebox.showerror('Plan generation', str(exc), parent=win)
+            return
+        try:
+            gui.save_autosave_state()
         except Exception:
-            pass
+            try: gui.schedule_autosave()
+            except Exception: pass
         closing_state["committed"] = True
         win.destroy()
 
-    ttk.Label(buttons, text=("Ctrl+Enter = Save   Esc = Cancel" if edit_mode else "Ctrl+Enter = Add   Esc = Cancel"), foreground="#666").pack(side="left", padx=(0, 16))
     def request_close():
         if closing_state["committed"]:
             win.destroy(); return
@@ -1696,7 +1972,11 @@ def open_dialog(gui: Any, item_index: int | None = None):
         ready_note_var.set(note)
         add_btn.configure(state="normal" if ready else "disabled")
 
-    for key in ("sequence", "scale", "copies", "resin", "loading", "apply_loading_calc", "reagent", "additive", "base", "solvent"):
+    for key in ("sequence", "scale", "copies", "resin", "loading", "apply_loading_calc", "reagent", "additive", "base", "solvent",
+                "synthesis_form", "branch_point", "branch_arm", "branch_pg", "branch_boc2o_eq", "branch_boc_base_eq",
+                "cyclic_product", "cyclic_groups", "disulfide_site_a", "disulfide_site_b",
+                "selective_cleavage_system", "selective_time_min", "selective_total_volume_ml",
+                "global_cleavage_total_volume_ml", "global_tfa_equivalents"):
         vars_[key].trace_add("write", refresh_ready_state)
     refresh_ready_state()
     gui.add_peptide_confirm_button = add_btn

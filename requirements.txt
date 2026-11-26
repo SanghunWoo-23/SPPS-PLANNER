@@ -6,3 +6,7 @@ numpy
 pyinstaller>=6.8
 pyinstaller-hooks-contrib
 pillow
+
+# V9.0.0 advanced atom-mapped structure verification and local PDF evidence
+rdkit>=2024.03
+pypdf>=5.0,<7

@@ -20,7 +20,16 @@ def _namespace() -> dict[str, Any]:
 def generate(gui: Any, *_args: Any, **_kwargs: Any) -> Any:
     """Generate the visible Plan and every linked result table."""
     project_manager_workflow._sync_modifier_to_aa(gui)
-    return plan_workflow.generate(gui, _namespace())
+    from suite_gui.first_run_recovery import register_unsaved_sequence
+    created = register_unsaved_sequence(gui)
+    success = plan_workflow.generate(gui, _namespace())
+    if success is True:
+        if created:
+            # Write immediately, rather than waiting for the GUI event loop.
+            gui.save_autosave_state()
+        else:
+            gui.schedule_autosave()
+    return success
 
 
 def apply_change(gui: Any, *_args: Any, **_kwargs: Any) -> Any:

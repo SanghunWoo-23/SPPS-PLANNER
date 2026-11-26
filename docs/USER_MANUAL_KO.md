@@ -1,4 +1,7 @@
-# SPPS Planner V8.0.0 사용자 매뉴얼
+# SPPS Planner V9.0.0 사용자 매뉴얼
+
+**V9.0.0 현행 안내:** [현재 구현·제한사항](CURRENT_STATUS_KO.md) · [과거 V9 개발 기록](history/README.md). 아래 V8 기준 화면 설명은 유지되는 기능의 참고 자료입니다.
+
 
 ## 1. 프로그램의 역할
 

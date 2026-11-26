@@ -1,4 +1,7 @@
-# SPPS Planner V8.0.0 User Manual
+# SPPS Planner V9.0.0 User Manual
+
+**V9.0.0 current features:** [current implementation and limitations](CURRENT_STATUS_KO.md) · [archived V9 notes](history/README.md). V8-era steps below describe retained workflows.
+
 
 SPPS Planner turns a peptide sequence plus resin, scale, loading and chemistry
 settings into an editable synthesis Plan connected to Materials, Totals,

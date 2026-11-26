@@ -7,6 +7,7 @@ parsed records from operator-verified records before supervised training.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from contextlib import nullcontext
 import csv
 import json
 import math
@@ -1762,10 +1763,39 @@ def import_cleavage_usage_csv(path: str | Path, db_path: str | Path | None = Non
     return {"kind":"cleavage_usage","inserted":inserted,"parsed":parsed_count,"source":str(source)}
 
 
-def add_outcome(values: Mapping[str, Any], db_path: str | Path | None = None, *, status: str = "verified") -> dict[str, Any]:
+def validate_measured_outcome(values: Mapping[str, Any], *, status: str = "verified") -> list[str]:
+    """Validate operator-entered numbers before committing any measured result.
+
+    A crude mass/yield over 100% may be a real observation (salts/solvent), but
+    requires review and must not become supervised training truth automatically.
+    """
+    warnings: list[str] = []
+    for name, unit in (("yield_percent", "%"), ("purity_percent", "%"), ("crude_g", "g")):
+        raw = values.get(name)
+        if raw is None or (isinstance(raw, str) and not raw.strip()):
+            continue
+        try:
+            value = float(str(raw).strip().replace(",", ""))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be a measured numeric value ({unit}).") from exc
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"{name} must be a finite, non-negative measured value ({unit}).")
+        if name == "purity_percent" and value > 100:
+            raise ValueError("Measured purity cannot exceed 100%. Check the unit or input.")
+        if name == "yield_percent" and value > 100:
+            warnings.append("Yield exceeds 100%; check crude salts, moisture and calculation basis before verifying.")
+    if warnings and status == "verified":
+        raise ValueError("; ".join(warnings) + " Save as incomplete until reviewed.")
+    return warnings
+
+
+def add_outcome(values: Mapping[str, Any], db_path: str | Path | None = None, *, status: str = "verified", _connection: sqlite3.Connection | None = None) -> dict[str, Any]:
     if status not in STATUSES:
         raise ValueError(f"Unsupported status: {status}")
-    initialize(db_path); now = _now()
+    validate_measured_outcome(values, status=status)
+    if _connection is None:
+        initialize(db_path)
+    now = _now()
     row = {
         "record_id": _id(), "status": status, "stage": str(values.get("stage") or "").strip().lower(),
         "product": str(values.get("product") or "").strip(), "sequence": str(values.get("sequence") or "").strip(),
@@ -1781,10 +1811,42 @@ def add_outcome(values: Mapping[str, Any], db_path: str | Path | None = None, *,
         "created_at": now, "updated_at": now,
     }
     row["product_key"] = canonical_product_key(row["product"]); row["sequence_key"] = canonical_sequence_key(row["sequence"])
-    with _connect(db_path) as con:
+    with (_connect(db_path) if _connection is None else nullcontext(_connection)) as con:
         keys=list(row); con.execute(f"INSERT INTO experimental_outcomes ({','.join(keys)}) VALUES ({','.join('?' for _ in keys)})", [row[k] for k in keys])
         saved=con.execute("SELECT * FROM experimental_outcomes WHERE record_id=?",(row["record_id"],)).fetchone()
     return dict(saved)
+
+
+
+def add_final_measurements(
+    cleavage: Mapping[str, Any], outcome: Mapping[str, Any], db_path: str | Path | None = None,
+    *, cleavage_status: str = "verified", outcome_status: str = "verified",
+) -> dict[str, dict[str, Any]]:
+    """Atomically save the final cleavage condition and its measured outcome.
+
+    The two records must describe the *same* Work Item and Run. A failure in
+    either insert leaves neither record behind. Never promote a planned condition
+    or an invalid measurement to training evidence.
+    """
+    if any(str(cleavage.get(key) or "").strip() != str(outcome.get(key) or "").strip()
+           for key in ("run_id", "work_item_id")):
+        raise ValueError("Final cleavage and outcome must refer to the same Work Item and Run.")
+    if not str(cleavage.get("run_id") or "").strip():
+        raise ValueError("An active Run ID is required before saving final measurements.")
+    for field, canonical in (("sequence", canonical_sequence_key), ("product", canonical_product_key)):
+        first = str(cleavage.get(field) or "").strip()
+        second = str(outcome.get(field) or "").strip()
+        if first and second and canonical(first) != canonical(second):
+            raise ValueError(f"Final cleavage and outcome have different {field} values.")
+    validate_measured_outcome(outcome, status=outcome_status)
+    initialize(db_path)
+    with _connect(db_path) as con:
+        saved_cleavage = add_record("cleavage", cleavage, db_path,
+                                    status=cleavage_status, _connection=con)
+        saved_outcome = add_outcome(outcome, db_path,
+                                    status=outcome_status, _connection=con)
+    return {"cleavage": saved_cleavage, "outcome": saved_outcome}
+
 
 
 def add_issue(values: Mapping[str, Any], db_path: str | Path | None = None, *, status: str = "verified") -> dict[str, Any]:
@@ -2117,7 +2179,7 @@ def update_record(kind: str, record_id: str, changes: Mapping[str, Any], db_path
     return dict(row)
 
 
-def add_record(kind: str, values: Mapping[str, Any], db_path: str | Path | None = None, *, status: str = "verified") -> dict[str, Any]:
+def add_record(kind: str, values: Mapping[str, Any], db_path: str | Path | None = None, *, status: str = "verified", _connection: sqlite3.Connection | None = None) -> dict[str, Any]:
     """Insert one operator-entered experimental record without fabricating missing values.
 
     V5 additionally allows direct operator creation of cleavage_usage rows when the
@@ -2125,7 +2187,8 @@ def add_record(kind: str, values: Mapping[str, Any], db_path: str | Path | None 
     """
     if status not in STATUSES:
         raise ValueError(f"Unsupported status: {status}")
-    initialize(db_path)
+    if _connection is None:
+        initialize(db_path)
     table = {
         "loading": "loading_records",
         "cleavage": "cleavage_records",
@@ -2146,6 +2209,15 @@ def add_record(kind: str, values: Mapping[str, Any], db_path: str | Path | None 
         row.setdefault("planner_snapshot_json", "{}")
         row.setdefault("actual_condition_json", "{}")
     if kind == "loading":
+        measured_loading = row.get("loading_rate_mmol_g")
+        if measured_loading is not None and str(measured_loading).strip():
+            try:
+                measured_number = float(str(measured_loading).strip().replace(",", ""))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Measured loading must be numeric (mmol/g).") from exc
+            if not math.isfinite(measured_number) or measured_number < 0:
+                raise ValueError("Measured loading must be finite and non-negative (mmol/g).")
+            row["loading_rate_mmol_g"] = measured_number
         raw = str(row.get("amino_acid_raw") or row.get("amino_acid_normalized") or "").strip()
         if raw and not row.get("amino_acid_normalized"):
             row["amino_acid_normalized"] = normalize_amino_acid(raw)
@@ -2213,10 +2285,83 @@ def add_record(kind: str, values: Mapping[str, Any], db_path: str | Path | None 
         if not synthesis_key:
             row["synthesis_key"] = "|".join(x for x in [row["product_key"], row["sequence_key"], _trim_float(scale)] if x)
     keys = list(row)
-    with _connect(db_path) as con:
+    with (_connect(db_path) if _connection is None else nullcontext(_connection)) as con:
         con.execute(f"INSERT INTO {table} ({','.join(keys)}) VALUES ({','.join('?' for _ in keys)})", [row[k] for k in keys])
         saved = con.execute(f"SELECT * FROM {table} WHERE record_id=?", (row["record_id"],)).fetchone()
     return dict(saved)
+
+
+def export_verified_outcomes_csv(destination: str | Path, db_path: str | Path | None = None) -> dict[str, Any]:
+    """Export *observed*, verified QC to a reviewable AI import CSV.
+
+    No plan value is converted to a measured value, and untyped product paths
+    stay blank. This is a one-way operator-initiated staging export, not an
+    approval or silent merge of the experimental and AI training stores.
+    """
+    output = Path(destination)
+    if output.suffix.lower() != ".csv":
+        raise ValueError("Lab QC staging export must have a .csv extension.")
+    if output.is_symlink():
+        raise ValueError("Refusing to replace a symbolic-link destination.")
+    initialize(db_path)
+    with _connect(db_path) as con:
+        rows = con.execute("""
+            SELECT record_id,run_id,work_item_id,stage,sequence,product,
+                   yield_percent,purity_percent,planner_snapshot_json,source_locator
+            FROM experimental_outcomes WHERE status='verified'
+                AND ((yield_percent BETWEEN 0 AND 100) OR (purity_percent BETWEEN 0 AND 100))
+            ORDER BY created_at,record_id
+        """).fetchall()
+    if not rows:
+        raise ValueError("No verified measured yield/purity results are available for export.")
+    columns = ["sequence","actual_yield_percent","actual_purity_percent","scale_mmol",
+               "resin","chemistry","run_id","product_path","reaction_step",
+               "lab_record_id","work_item_id","lab_product","source_locator",
+               "planned_scale_mmol","planned_resin"]
+    output.parent.mkdir(parents=True,exist_ok=True)
+    import os
+    with tempfile.NamedTemporaryFile(mode="w",encoding="utf-8-sig",newline="",
+                                     prefix=".spps_qc_",suffix=".tmp",dir=output.parent,delete=False) as tmp:
+        staging=Path(tmp.name)
+        try:
+            writer=csv.DictWriter(tmp,fieldnames=columns)
+            writer.writeheader()
+            for row in rows:
+                try:
+                    snapshot=json.loads(row["planner_snapshot_json"] or "{}")
+                except (ValueError,TypeError):
+                    snapshot={}
+                if not isinstance(snapshot,dict):
+                    snapshot={}
+                writer.writerow({
+                    "sequence":row["sequence"],
+                    "actual_yield_percent": row["yield_percent"],
+                    "actual_purity_percent":row["purity_percent"],
+                    # The frozen Plan is not evidence that the operator actually
+                    # used this scale/resin; stage them separately for review.
+                    "scale_mmol":"", "resin":"",
+                    "planned_scale_mmol":snapshot.get("scale_mmol", ""),
+                    "planned_resin":snapshot.get("resin", ""),
+                    # Cannot prove coupling chemistry or product topology from an
+                    # untyped snapshot: leave for deliberate operator review.
+                    "chemistry":"", "product_path":"",
+                    "run_id":row["run_id"],"reaction_step":row["stage"],
+                    "lab_record_id":row["record_id"],
+                    "work_item_id":row["work_item_id"],
+                    "lab_product":row["product"],"source_locator":row["source_locator"],
+                })
+            tmp.flush();os.fsync(tmp.fileno())
+        except BaseException:
+            staging.unlink(missing_ok=True)
+            raise
+    try:
+        staging.replace(output)
+    except BaseException:
+        staging.unlink(missing_ok=True)
+        raise
+    return {"path":str(output),"rows":len(rows),"requires_ai_review":True}
+
+
 
 def flag_loading_outliers(db_path: str | Path | None = None) -> int:
     """Flag statistical/physical review candidates without deleting any value."""

@@ -9,6 +9,12 @@ from suite_gui.modules import add_peptide_dialog
 from suite_gui.release import SPPSGui
 
 
+def _walk_dialog(widget):
+    for child in widget.winfo_children():
+        yield child
+        yield from _walk_dialog(child)
+
+
 def _values(**overrides):
     data = {
         "project": "P", "peptide": "Pep", "sequence": "ACD", "scale": "0.2",
@@ -83,9 +89,17 @@ def test_add_dialog_scrolls_from_sequence_entry_mousewheel():
         app.pm_add_button.invoke(); app.update()
         canvas = app.add_peptide_canvas
         before = canvas.yview()[0]
-        focused = app.add_peptide_dialog.focus_get()
-        assert focused is not None
-        focused.event_generate("<MouseWheel>", delta=-120)
+        # Windows CI does not guarantee OS-level foreground focus in the
+        # noninteractive runner. Exercise the real sequence Entry directly.
+        import tkinter.ttk as ttk
+        sequence_var = str(app.add_peptide_dialog_vars["sequence"])
+        entries = [
+            widget for widget in _walk_dialog(app.add_peptide_dialog)
+            if isinstance(widget, ttk.Entry)
+            and str(widget.cget("textvariable")) == sequence_var
+        ]
+        assert len(entries) == 1 and entries[0].winfo_exists()
+        entries[0].event_generate("<MouseWheel>", delta=-120)
         app.update()
         after = canvas.yview()[0]
         assert after > before

@@ -51,3 +51,17 @@ def test_current_windows_installer_docs_and_ci_match_build():
     assert "INSTALL_BUILD_TOOLS_AND_BUILD.bat" in read_first
     assert "installer\\output\\SPPS_Planner_Setup_V9.0.0.exe" not in guide
     assert "installer\\output\\SPPS_Planner_Setup_V9.0.0.exe" not in ci
+
+
+def test_ci_linux_exact_python_runner_compatibility():
+    """Pin the Linux image that provides our exact CPython 3.11.9 build.
+
+    Ubuntu-latest moved to 26.04 and setup-python cannot resolve 3.11.9
+    there. Keep Tk/Xvfb, pytest and all acceptance steps enabled.
+    """
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    linux_job = ci.split("  linux-tk:", 1)[1]
+    assert "runs-on: ubuntu-24.04" in linux_job
+    assert "python-version: '3.11.9'" in linux_job
+    assert "xvfb-run -a python -m pytest -q" in linux_job
+    assert "runs-on: ubuntu-latest" not in linux_job
